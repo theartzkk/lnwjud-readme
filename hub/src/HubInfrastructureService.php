@@ -144,6 +144,29 @@ final class HubInfrastructureService
             $days = $item['certificateDaysRemaining'] ?? null; $days = is_int($days) && $days >= -3650 && $days <= 3650 ? $days : null;
             $domains[] = ['name' => $name, 'tls' => ($item['tls'] ?? false) === true, 'certificateExpiresAt' => $expires, 'certificateDaysRemaining' => $days];
         }
+        $sites = [];
+        foreach (is_array($value['sites'] ?? null) ? $value['sites'] : [] as $item) {
+            if (!is_array($item) || array_is_list($item)) continue;
+            $host = strtolower(trim((string)($item['primaryHost'] ?? '')));
+            if (preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/', $host) !== 1 || strlen($host) > 253) continue;
+            $hosts = [];
+            foreach (is_array($item['hosts'] ?? null) ? $item['hosts'] : [] as $candidate) {
+                if (!is_string($candidate)) continue; $candidate = strtolower(trim($candidate));
+                if (preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/', $candidate) === 1 && strlen($candidate) <= 253) $hosts[$candidate] = true;
+            }
+            $route = strtoupper((string)($item['routeType'] ?? 'UNKNOWN'));
+            if (!in_array($route, ['STATIC','PHP','PROXY','REDIRECT','UNKNOWN'], true)) $route = 'UNKNOWN';
+            $port = $item['upstreamPort'] ?? null; $port = is_int($port) && $port >= 1 && $port <= 65535 ? $port : null;
+            $redirect = $item['redirectHost'] ?? null;
+            $redirect = is_string($redirect) && preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/', $redirect) === 1 && strlen($redirect) <= 253 ? strtolower($redirect) : null;
+            $rootClass = strtoupper((string)($item['rootClass'] ?? ''));
+            $rootClass = in_array($rootClass, ['AWH_SITE_ROOT','WEB_ROOT','SYSTEM_ROOT'], true) ? $rootClass : null;
+            $config = $item['configName'] ?? null;
+            $config = is_string($config) && preg_match('/^[A-Za-z0-9._-]{1,120}$/', $config) === 1 ? $config : null;
+            $id = $item['inventoryId'] ?? null;
+            $id = is_string($id) && preg_match('/^nginx-[a-f0-9]{20}$/', $id) === 1 ? $id : 'nginx-'.substr(hash('sha256',$host),0,20);
+            $sites[] = ['inventoryId'=>$id,'primaryHost'=>$host,'hosts'=>array_slice(array_keys($hosts),0,20),'tls'=>($item['tls']??false)===true,'routeType'=>$route,'upstreamPort'=>$port,'redirectHost'=>$redirect,'rootClass'=>$rootClass,'configName'=>$config];
+        }
         return [
             'schemaVersion' => 1,
             'generatedAt' => $generatedAt,
@@ -154,6 +177,7 @@ final class HubInfrastructureService
             'storage' => $this->capacity($storage),
             'services' => array_slice($services, 0, 12),
             'domains' => array_slice($domains, 0, 100),
+            'sites' => array_slice($sites, 0, 200),
             'security' => ['fail2ban' => $this->state($security['fail2ban'] ?? 'UNKNOWN'), 'automaticUpdates' => $this->state($security['automaticUpdates'] ?? 'UNKNOWN')],
         ];
     }

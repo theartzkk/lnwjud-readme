@@ -105,6 +105,64 @@ function telemetryNginxDomains(): array
     ksort($domains); return array_values($domains);
 }
 
+function telemetryNginxSites(): array
+{
+    $files = [];
+    foreach (['/etc/nginx/sites-enabled/*', '/etc/nginx/conf.d/*.conf'] as $pattern) {
+        foreach (glob($pattern) ?: [] as $file) if (is_file($file) && is_readable($file)) $files[] = $file;
+    }
+    $sites = [];
+    $priority = ['UNKNOWN'=>0, 'REDIRECT'=>1, 'STATIC'=>2, 'PHP'=>3, 'PROXY'=>4];
+    foreach (array_unique($files) as $file) {
+        $raw = @file_get_contents($file); if (!is_string($raw) || $raw === '') continue;
+        $lines = preg_split('/\R/', $raw) ?: []; $inside = false; $depth = 0; $block = [];
+        foreach ($lines as $line) {
+            $trim = trim(preg_replace('/#.*$/', '', $line) ?? '');
+            if (!$inside && preg_match('/^server\s*\{$/', $trim)) { $inside = true; $depth = 1; $block = []; continue; }
+            if (!$inside) continue;
+            $depth += substr_count($trim, '{') - substr_count($trim, '}');
+            if ($depth <= 0) {
+                $text = implode("\n", $block);
+                $names = [];
+                if (preg_match_all('/\bserver_name\s+([^;]+);/', $text, $matches)) {
+                    foreach ($matches[1] as $chunk) foreach (preg_split('/\s+/', trim($chunk)) ?: [] as $name) {
+                        $name = strtolower(rtrim($name, '.'));
+                        if ($name !== '' && $name !== '_' && $name !== 'localhost' && !str_contains($name, '$') && preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/', $name) === 1 && strlen($name) <= 253) $names[] = $name;
+                    }
+                }
+                $names = array_values(array_unique($names));
+                if ($names !== []) {
+                    $tls = preg_match('/\blisten\s+[^;]*443[^;]*;/', $text) === 1;
+                    $route = 'UNKNOWN'; $port = null; $redirectHost = null; $rootClass = null;
+                    if (preg_match('/\bproxy_pass\s+https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):([0-9]{1,5})(?:[\/;]|$)/i', $text, $m) === 1) {
+                        $candidate = (int) $m[1]; if ($candidate >= 1 && $candidate <= 65535) $port = $candidate;
+                        $route = 'PROXY';
+                    } elseif (preg_match('/\bfastcgi_pass\s+[^;]+;/', $text) === 1) {
+                        $route = 'PHP';
+                    } elseif (preg_match('/\breturn\s+30[1278]\s+https?:\/\/([a-z0-9.-]+)/i', $text, $m) === 1) {
+                        $route = 'REDIRECT'; $redirectHost = strtolower(rtrim($m[1], '.'));
+                    } elseif (preg_match('/\broot\s+([^;]+);/', $text, $m) === 1) {
+                        $route = 'STATIC'; $root = trim($m[1]);
+                        $rootClass = str_starts_with($root, '/srv/awh-sites/') ? 'AWH_SITE_ROOT' : (str_starts_with($root, '/var/www/') ? 'WEB_ROOT' : 'SYSTEM_ROOT');
+                    }
+                    $config = basename($file); $config = preg_match('/^[A-Za-z0-9._-]{1,120}$/', $config) === 1 ? $config : null;
+                    foreach ($names as $host) {
+                        $row = ['inventoryId'=>'nginx-'.substr(hash('sha256',$host),0,20),'primaryHost'=>$host,'hosts'=>$names,'tls'=>$tls,'routeType'=>$route,'upstreamPort'=>$port,'redirectHost'=>$redirectHost,'rootClass'=>$rootClass,'configName'=>$config];
+                        $existing = $sites[$host] ?? null;
+                        $replace = !is_array($existing)
+                            || (($priority[$route] ?? 0) > ($priority[$existing['routeType'] ?? 'UNKNOWN'] ?? 0))
+                            || ($tls && !($existing['tls'] ?? false) && (($priority[$route] ?? 0) >= ($priority[$existing['routeType'] ?? 'UNKNOWN'] ?? 0)));
+                        if ($replace) $sites[$host] = $row;
+                    }
+                }
+                $inside = false; $depth = 0; $block = []; continue;
+            }
+            $block[] = $trim;
+        }
+    }
+    ksort($sites); return array_values($sites);
+}
+
 function telemetrySnapshot(): array
 {
     $mem = telemetryMemInfo(); $cpu = telemetryCpuSample();
@@ -137,6 +195,7 @@ function telemetrySnapshot(): array
         'storage' => ['totalBytes' => $diskTotal, 'freeBytes' => $diskFree, 'usedBytes' => max(0, $diskTotal - $diskFree), 'usedPercent' => $diskTotal > 0 ? round(((max(0, $diskTotal - $diskFree)) / $diskTotal) * 100, 1) : null],
         'services' => $services,
         'domains' => telemetryNginxDomains(),
+        'sites' => telemetryNginxSites(),
         'security' => ['fail2ban' => telemetrySystemd('fail2ban.service')['active'], 'automaticUpdates' => telemetrySystemd('unattended-upgrades.service')['active']],
     ];
 }

@@ -4,32 +4,41 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <meta name="theme-color" content="#f7f8fb" />
-<title>เว็บของฉัน · KRUART AWH</title>
+<title>Hosting Center · KRUART AWH</title>
 <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
 <link rel="stylesheet" href="./hosting.css?release=__AWH_WEB_RELEASE_ID__" />
 <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
-  <link rel="stylesheet" href="./kruart-system.css?release=__AWH_WEB_RELEASE_ID__" />
-  <link rel="stylesheet" href="./interaction-feedback.css?release=__AWH_WEB_RELEASE_ID__" />
+<link rel="stylesheet" href="./kruart-system.css?release=__AWH_WEB_RELEASE_ID__" />
+<link rel="stylesheet" href="./interaction-feedback.css?release=__AWH_WEB_RELEASE_ID__" />
 </head>
 <body>
 <header class="hosting-header"><a class="hosting-brand" href="./"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><strong>AWH</strong></a><div class="hosting-actions"><span id="hosting-state">กำลังตรวจความพร้อม…</span><a class="awh-back-link" href="./panel.html">ดูแลระบบ</a><button id="hosting-refresh" type="button">ตรวจอีกครั้ง</button></div></header>
 <main class="hosting-main">
-<section class="hosting-hero"><div><p class="eyebrow">เว็บของฉัน</p><h1>สร้างเว็บ แล้วเปิดใช้ได้จากที่เดียว</h1><p>ตั้งชื่อ เลือกงานที่ต้องการใช้ แล้วให้ AWH เตรียมส่วนที่เหลือให้ ไม่ต้องเข้าเซิร์ฟเวอร์หรือจำคำสั่งระบบ</p></div><div id="hosting-summary" class="hosting-summary">กำลังโหลด</div></section>
+<section class="hosting-hero"><div><p class="eyebrow">AWH Hosting Center</p><h1>ทุกเว็บไซต์ในเซิร์ฟเวอร์ อยู่ที่เดียว</h1><p>เห็นเว็บไซต์ โดเมน ระบบที่ใช้ HTTPS และสถานะการดูแลจากภาพเดียว รวมเว็บเดิมที่มีอยู่แล้วและเว็บใหม่ในอนาคต</p></div><div id="hosting-summary" class="hosting-summary">กำลังโหลด</div></section>
 
-<section class="hosting-panel create-panel"><div class="section-heading"><div><span>เริ่มเว็บใหม่</span><h2>เพิ่มเว็บไซต์</h2></div><small>กรอกเพียง 3 อย่าง แล้วกดสร้างเว็บไซต์</small></div>
-<form id="hosting-create-form" class="hosting-form">
-<label>ชื่อเว็บไซต์<input id="site-name" maxlength="120" required placeholder="เช่น BAY LearnLab" /></label>
-<label>ชื่อสำหรับลิงก์<input id="site-slug" maxlength="48" required placeholder="learn" /><small>ใช้ภาษาอังกฤษ ตัวเลข และขีดกลาง</small></label>
+<section id="hosting-kpis" class="hosting-kpis" aria-label="ภาพรวม Hosting"></section>
+<p id="hosting-message" class="form-message hosting-global-message" role="status"></p>
+
+<section class="hosting-panel sites-panel">
+<div class="section-heading"><div><span>Server inventory</span><h2>เว็บไซต์และ Subdomain ทั้งหมด</h2></div><small id="inventory-freshness">กำลังอ่านสถานะจากเซิร์ฟเวอร์</small></div>
+<div class="inventory-toolbar"><label class="inventory-search"><span class="sr-only">ค้นหาเว็บไซต์</span><input id="inventory-search" type="search" placeholder="ค้นหาเว็บหรือ subdomain" autocomplete="off" /></label><label class="inventory-filter"><span class="sr-only">กรองรายการ</span><select id="inventory-filter"><option value="ALL">ทั้งหมด</option><option value="MANAGED">AWH ดูแล</option><option value="DISCOVERED">ตรวจพบจากเซิร์ฟเวอร์</option><option value="ALIAS">ชื่อทางเข้า / Redirect</option></select></label></div>
+<div id="site-list" class="site-list"></div>
+</section>
+
+<section class="hosting-panel domains-panel"><div class="section-heading"><div><span>Domains & HTTPS</span><h2>โดเมนและใบรับรอง</h2></div><small>ตรวจจากเส้นทางที่ Nginx ให้บริการจริง</small></div><div id="domain-list" class="domain-list"></div></section>
+
+<details class="hosting-panel create-panel"><summary class="create-summary"><span><small>โปรเจกต์ใหม่</small><strong>เพิ่มเว็บไซต์</strong></span><em>กรอกเพียง 3 อย่าง แล้วกดสร้างเว็บไซต์</em></summary>
+<form id="hosting-create-form" class="hosting-form create-body">
+<label>ชื่อเว็บไซต์<input id="site-name" maxlength="120" required placeholder="เช่น BAY Library" /></label>
+<label>ชื่อสำหรับลิงก์<input id="site-slug" maxlength="48" required placeholder="library" /><small>ใช้ภาษาอังกฤษ ตัวเลข และขีดกลาง</small></label>
 <div class="url-preview" aria-live="polite"><span>ที่อยู่เว็บที่ต้องการ</span><strong id="site-url-preview">—</strong><small id="site-url-note">AWH จะเชื่อมชื่อนี้ให้เมื่อเว็บไซต์พร้อม</small></div>
 <label class="project-field">ใช้ข้อมูลจาก<select id="site-project" required></select><small>เลือกโปรเจกต์ที่มีไฟล์เว็บไซต์ของคุณ</small></label>
 <details class="hosting-advanced"><summary>ตัวเลือกเพิ่มเติม</summary><div class="hosting-form advanced-grid"><label>วิธีทำงาน<select id="site-runtime"><option value="AUTO">ให้ AWH เลือกให้</option><option value="PHP">PHP</option><option value="NODE">Node</option><option value="STATIC">เว็บไซต์แบบไฟล์</option></select></label><label>ฐานข้อมูล<select id="site-database"><option value="AUTO">ให้ AWH เลือกให้</option><option value="NONE">ไม่ใช้ฐานข้อมูล</option><option value="SQLITE">SQLite</option><option value="MARIADB">MariaDB</option></select></label><label class="check-row"><input id="site-backup" type="checkbox" checked /><span>สำรองข้อมูลอัตโนมัติ</span></label></div></details>
-<button class="primary-button create-button" type="submit">สร้างเว็บไซต์</button><p id="hosting-message" class="form-message" role="status"></p>
-</form></section>
-
-<section class="hosting-panel sites-panel"><div class="section-heading"><div><span>เว็บไซต์ของฉัน</span><h2>เว็บที่ดูแลอยู่</h2></div><small>ดูว่าเว็บไหนพร้อมใช้ และทำสิ่งที่ต้องทำต่อได้ทันที</small></div><div id="site-list" class="site-list"></div></section>
+<button class="primary-button create-button" type="submit">สร้างเว็บไซต์</button>
+</form></details>
 
 <details class="system-details"><summary>รายละเอียดระบบ</summary><p>ส่วนนี้ใช้เมื่อต้องตรวจสถานะเบื้องหลังหรือแก้ปัญหาเชิงเทคนิค</p><section id="hosting-ecosystem" class="hosting-ecosystem" aria-label="รายละเอียดระบบเว็บไซต์"></section></details>
 </main>
-  <script src="./interaction-feedback.js?release=__AWH_WEB_RELEASE_ID__" defer></script>
+<script src="./interaction-feedback.js?release=__AWH_WEB_RELEASE_ID__" defer></script>
 <script type="module" src="./hosting.js?release=__AWH_WEB_RELEASE_ID__"></script>
 </body></html>

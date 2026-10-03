@@ -4,6 +4,11 @@ const $=(id)=>document.getElementById(id);
 const CANONICAL_DOMAIN='kruart.online';
 let control=null;
 let sites=[];
+let inventory=[];
+let inventoryMeta=null;
+let domains=[];
+let inventoryFilter='ALL';
+let inventoryQuery='';
 let dnsPlan=null;
 let ecosystem=null;
 let hostingRefreshInFlight=null;
@@ -16,9 +21,15 @@ const statusLabel=(state)=>({
   FAILED:'ต้องตรวจสอบ',
   DISABLED:'หยุดเผยแพร่',
   DRAFT:'รอไฟล์เว็บไซต์',
+  DEGRADED:'ต้องตรวจสอบ',
+  ROUTED:'ตรวจพบเส้นทาง',
+  ALIAS:'ชื่อทางเข้า',
 })[state]||'กำลังตรวจสอบ';
 
-const runtimeLabel=(value)=>({AUTO:'อัตโนมัติ',PHP:'PHP',NODE:'Node',STATIC:'เว็บไซต์แบบไฟล์'})[value]||value||'—';
+const runtimeLabel=(value)=>({AUTO:'อัตโนมัติ',PHP:'PHP',NODE:'Node',STATIC:'เว็บไซต์แบบไฟล์',SERVICE:'บริการเว็บ',REDIRECT:'Redirect',UNKNOWN:'ยังไม่ระบุ'})[value]||value||'—';
+const ownershipLabel=(value)=>({MANAGED:'AWH ดูแล',DISCOVERED:'ตรวจพบจากเซิร์ฟเวอร์',ALIAS:'ชื่อทางเข้า / Redirect'})[value]||'ตรวจพบ';
+const routeLabel=(value)=>({STATIC:'Static',PHP:'PHP',PROXY:'Reverse proxy',REDIRECT:'Redirect',UNKNOWN:'ยังไม่ระบุ'})[value]||value||'—';
+const environmentLabel=(value)=>({PRODUCTION:'ใช้งานจริง',STAGING:'ทดสอบ',PREVIEW:'ตัวอย่าง'})[value]||value||'—';
 
 function slugify(value){
   return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48);
@@ -148,6 +159,8 @@ function dnsInstruction(host){
   return `DNS · A · ${host} → ${dnsPlan.target}`;
 }
 
+function siteSourceReady(site){return site.source?.ready===true;}
+
 function sourceInstruction(site){
   const source=site.source||{};
   if(source.ready)return null;
@@ -199,116 +212,155 @@ function domainButton(site){
   return node;
 }
 
-function renderSites(){
-  const host=$('site-list');
+function formatBytes(value){
+  const bytes=Number(value);if(!Number.isFinite(bytes)||bytes<0)return '—';
+  if(bytes>=1073741824)return (bytes/1073741824).toFixed(bytes>=10737418240?0:1)+' GB';
+  if(bytes>=1048576)return (bytes/1048576).toFixed(0)+' MB';
+  return Math.round(bytes/1024)+' KB';
+}
+
+function renderHostingSummary(){
+  const meta=inventoryMeta||{};
+  const total=inventory.length||sites.length;
+  const managed=Number(meta.managedCount??sites.length);
+  const discovered=Number(meta.discoveredCount||0);
+  const aliases=Number(meta.aliasCount||0);
+  $('hosting-summary').textContent=total?(total+' รายการ · '+managed+' AWH ดูแล'):'ยังไม่พบเว็บไซต์';
+  const host=$('hosting-kpis');
   host.replaceChildren();
-  const ready=sites.filter((site)=>site.state==='READY').length;
-  $('hosting-summary').textContent=sites.length?`${ready} พร้อมใช้ · ${sites.length} เว็บไซต์`:'ยังไม่มีเว็บไซต์';
+  const cards=[
+    ['เว็บไซต์/เส้นทาง',String(total),'รวมรายการที่พบจากเซิร์ฟเวอร์'],
+    ['AWH ดูแล',String(managed),'มี Project และ release authority'],
+    ['เว็บเดิมที่ตรวจพบ',String(discovered),'อ่านสถานะเท่านั้น ยังไม่เปลี่ยน config'],
+    ['ชื่อทางเข้า',String(aliases),'alias หรือ redirect ที่มีอยู่จริง'],
+    ['พื้นที่ว่าง',formatBytes(meta.storageAvailableBytes),Number.isFinite(Number(meta.storageUsedPercent))?('ใช้ไป '+Number(meta.storageUsedPercent).toFixed(0)+'% ของ VPS'):'กำลังรอสถานะพื้นที่'],
+  ];
+  for(const [label,value,note] of cards){
+    const card=document.createElement('div');card.className='hosting-kpi';
+    const small=document.createElement('span');small.textContent=label;
+    const strong=document.createElement('strong');strong.textContent=value;
+    const detail=document.createElement('small');detail.textContent=note;
+    card.append(small,strong,detail);host.append(card);
+  }
+  const freshness=$('inventory-freshness');
+  if(freshness){
+    const state=String(meta.state||'UNAVAILABLE');
+    const at=meta.generatedAt?new Date(meta.generatedAt):null;
+    freshness.textContent=state==='READY'&&at&&!Number.isNaN(at.valueOf())
+      ?('ตรวจล่าสุด '+at.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}))
+      :state==='STALE'?'ข้อมูลจากเซิร์ฟเวอร์เก่ากว่าปกติ':'กำลังรอข้อมูลจากเซิร์ฟเวอร์';
+  }
+}
 
-  for(const site of sites){
-    const card=document.createElement('article');
-    card.className='site-card';
+function renderDomains(){
+  const host=$('domain-list');if(!host)return;host.replaceChildren();
+  for(const domain of domains){
+    if(!domain||!domain.host)continue;
+    const row=document.createElement('article');row.className='domain-row';
+    const main=document.createElement('div');main.className='domain-main';
+    const name=document.createElement('strong');name.textContent=domain.host;
+    const detail=document.createElement('small');
+    const ownership=ownershipLabel(domain.ownership);
+    detail.textContent=domain.tls
+      ?(ownership+' · HTTPS'+(Number.isInteger(domain.certificateDaysRemaining)?(' · เหลือ '+domain.certificateDaysRemaining+' วัน'):''))
+      :(ownership+' · ยังไม่ยืนยัน HTTPS');
+    main.append(name,detail);
+    const chip=document.createElement('span');chip.className='tls-chip '+(domain.tls?'ok':'attention');chip.textContent=domain.tls?'HTTPS':'HTTP';
+    row.append(main,chip);host.append(row);
+  }
+  if(!host.childElementCount){const empty=document.createElement('div');empty.className='site-empty';empty.textContent='ยังไม่พบข้อมูลโดเมนจากเซิร์ฟเวอร์';host.append(empty);}
+}
 
-    const head=document.createElement('div');
-    head.className='site-head';
-    const title=document.createElement('h3');title.textContent=site.name;
-    const state=document.createElement('span');state.className='site-state';state.textContent=statusLabel(site.state);
-    head.append(title,state);
-    card.append(head);
+function inventoryMatches(item){
+  if(inventoryFilter!=='ALL'&&item.ownership!==inventoryFilter)return false;
+  if(!inventoryQuery)return true;
+  const fullHosts=[item.primaryHost,...(Array.isArray(item.hosts)?item.hosts:[])].filter(Boolean).map((value)=>String(value).toLowerCase());
+  const suffix='.'+CANONICAL_DOMAIN;
+  const shortHosts=fullHosts.map((host)=>host.endsWith(suffix)?host.slice(0,-suffix.length):host);
+  const name=String(item.name||'').toLowerCase();
+  const searchableName=fullHosts.includes(name)?(name.endsWith(suffix)?name.slice(0,-suffix.length):name):name;
+  const hostTerms=inventoryQuery.includes('.')?fullHosts:shortHosts;
+  const hay=[searchableName,item.projectName,item.routeType,item.runtimeType,...hostTerms].filter(Boolean).join(' ').toLowerCase();
+  return hay.includes(inventoryQuery);
+}
 
-    const desired=document.createElement('div');
-    desired.className='site-url';
-    const currentHost=site.domainHost||desiredHost(site.slug||'');
-    const domainLabel=site.domainState==='ACTIVE'
-      ?'ชื่อเว็บพร้อมใช้'
-      :site.domainState==='REQUESTED'
-        ?'กำลังเชื่อมชื่อเว็บ'
-        :site.domainState==='FAILED'
-          ?'ชื่อเว็บต้องตรวจสอบ'
-          :'ชื่อเว็บที่ต้องการ';
-    desired.textContent=`${domainLabel} · https://${currentHost}`;
-    card.append(desired);
-    if(site.domainState==='ACTIVE'){
-      const tlsNote=document.createElement('div');
-      tlsNote.className='site-event';
-      tlsNote.textContent=ecosystem?.tls?.renewal?.state==='READY'?'HTTPS · ต่ออายุอัตโนมัติพร้อม':'HTTPS · ตรวจระบบต่ออายุ';
-      card.append(tlsNote);
+function renderSites(){
+  const host=$('site-list');host.replaceChildren();
+  const source=inventory.length?inventory:sites.map((site)=>({
+    inventoryId:'managed-'+site.siteId,ownership:'MANAGED',managedSiteId:site.siteId,projectId:site.projectId,projectName:site.projectName,
+    name:site.name,primaryHost:site.domainHost||site.primaryHost||desiredHost(site.slug||''),hosts:[site.domainHost||site.primaryHost||desiredHost(site.slug||'')],
+    environment:site.environment||'PRODUCTION',state:site.state,routeDetected:false,routeType:site.runtimeType==='NODE'?'PROXY':site.runtimeType,
+    runtimeType:site.runtimeType,upstreamPort:site.port||null,tls:site.domainState==='ACTIVE',url:site.url,source:site.source,
+    backupEnabled:site.backupEnabled,currentReleaseId:site.currentReleaseId,rollbackReleaseId:site.rollbackReleaseId,lastEvent:site.lastEvent,
+  }));
+  const managedById=new Map(sites.map((site)=>[site.siteId,site]));
+  const rows=source.filter(inventoryMatches);
+
+  for(const item of rows){
+    const managed=item.managedSiteId?managedById.get(item.managedSiteId):null;
+    const card=document.createElement('article');card.className='site-card ownership-'+String(item.ownership||'DISCOVERED').toLowerCase();
+
+    const head=document.createElement('div');head.className='site-head';
+    const titleWrap=document.createElement('div');titleWrap.className='site-title-wrap';
+    const title=document.createElement('h3');title.textContent=item.name||item.primaryHost||'เว็บไซต์';
+    const hostName=document.createElement('a');hostName.className='site-url';hostName.href=item.url||((item.tls===false?'http':'https')+'://'+item.primaryHost+'/');hostName.target='_blank';hostName.rel='noopener noreferrer';hostName.textContent=item.primaryHost||'—';
+    titleWrap.append(title,hostName);
+    const state=document.createElement('span');state.className='site-state';state.dataset.kind=item.ownership||'DISCOVERED';state.dataset.state=item.state||'UNKNOWN';state.textContent=item.ownership==='MANAGED'?statusLabel(item.state):ownershipLabel(item.ownership);
+    head.append(titleWrap,state);card.append(head);
+
+    const strip=document.createElement('div');strip.className='site-health-strip';
+    const chips=[
+      [item.tls?'HTTPS':'HTTP',item.tls?'ok':'attention'],
+      [routeLabel(item.routeType),'neutral'],
+      [environmentLabel(item.environment),'neutral'],
+    ];
+    if(Number.isInteger(item.certificateDaysRemaining))chips.push(['SSL '+item.certificateDaysRemaining+' วัน',item.certificateDaysRemaining<21?'attention':'ok']);
+    for(const [label,kind] of chips){const chip=document.createElement('span');chip.className='health-chip '+kind;chip.textContent=label;strip.append(chip);}
+    card.append(strip);
+
+    const note=document.createElement('div');note.className='site-event';
+    if(item.ownership==='DISCOVERED')note.textContent='ตรวจพบจาก Nginx · AWH แสดงข้อมูลแบบอ่านอย่างเดียวและยังไม่เปลี่ยนเว็บนี้';
+    else if(item.ownership==='ALIAS')note.textContent=item.redirectHost?('ชื่อทางเข้าเดิม · ส่งต่อไป '+item.redirectHost):'ชื่อทางเข้า/Redirect ที่ตรวจพบจาก Nginx';
+    else{
+      const sourceNote=sourceInstruction(managed||item);const eventNote=humanEvent(managed||item);
+      note.textContent=sourceNote||eventNote||(item.routeDetected?'เส้นทางเว็บถูกตรวจพบในเซิร์ฟเวอร์':'AWH กำลังตรวจเส้นทางเว็บ');
+    }
+    card.append(note);
+
+    if(managed&&managed.source?.ready!==true){
+      const sourceAction=document.createElement('div');sourceAction.className='site-source-action';
+      const text=document.createElement('span');text.textContent='ยังไม่พบแหล่งเว็บไซต์ที่พร้อมใช้';
+      const link=document.createElement('a');link.href='./owner-center.html?project='+encodeURIComponent(managed.projectId)+'#source';link.textContent='ตั้งค่าแหล่งเว็บไซต์';link.className='secondary-button';
+      sourceAction.append(text,link);card.append(sourceAction);
     }
 
-    if(site.source?.ready!==true){
-      const source=document.createElement('div');
-      source.className='site-source-action';
-      const text=document.createElement('span');
-      text.textContent='ยังไม่พบแหล่งเว็บไซต์ที่พร้อมใช้';
-      const link=document.createElement('a');
-      link.href=`./owner-center.html?project=${encodeURIComponent(site.projectId)}#source`;
-      link.textContent='ตั้งค่าแหล่งเว็บไซต์';
-      link.className='secondary-button';
-      source.append(text,link);
-      card.append(source);
+    if(managed){
+      const actions=document.createElement('div');actions.className='site-actions';
+      if(managed.state==='READY'&&managed.domainState!=='ACTIVE')actions.append(domainButton(managed));
+      if(managed.state!=='DISABLED'&&siteSourceReady(managed))actions.append(button('อัปเดตเว็บไซต์','secondary-button',managed,'deploy'));
+      if(managed.rollbackReleaseId&&managed.state!=='DISABLED')actions.append(button('กลับไปเวอร์ชันก่อน','secondary-button',managed,'rollback'));
+      if(managed.state!=='DISABLED')actions.append(button('หยุดเผยแพร่','danger-button',managed,'disable'));
+      if(actions.childElementCount)card.append(actions);
     }
 
-    const sourceNote=sourceInstruction(site);
-    const eventNote=humanEvent(site);
-    if(sourceNote){
-      const note=document.createElement('div');note.className='site-event';note.textContent=sourceNote;card.append(note);
-    }else if(eventNote){
-      const note=document.createElement('div');note.className='site-event';note.textContent=eventNote;card.append(note);
-    }
-
-    if(site.url){
-      const link=document.createElement('a');
-      link.className='site-url';
-      link.href=site.url;
-      link.target='_blank';
-      link.rel='noopener noreferrer';
-      link.textContent='เปิดเว็บไซต์ ↗';
-      card.append(link);
-    }else{
-      const copy=document.createElement('div');
-      copy.className='site-url';
-      copy.textContent=site.state==='FAILED'?'ยังเปิดเว็บไม่ได้ — ตรวจรายการที่ต้องทำด้านบน':'กำลังเตรียมลิงก์สำหรับเปิดเว็บ';
-      card.append(copy);
-    }
-
-    const actions=document.createElement('div');
-    actions.className='site-actions';
-    if(site.state==='READY'&&site.domainState!=='ACTIVE')actions.append(domainButton(site));
-    if(site.state!=='DISABLED'&&site.source?.ready===true)actions.append(button('อัปเดตเว็บไซต์','secondary-button',site,'deploy'));
-    if(site.rollbackReleaseId&&site.state!=='DISABLED')actions.append(button('กลับไปเวอร์ชันก่อน','secondary-button',site,'rollback'));
-    if(site.state!=='DISABLED')actions.append(button('หยุดเผยแพร่','danger-button',site,'disable'));
-    card.append(actions);
-
-    const tech=document.createElement('details');
-    tech.className='site-tech';
-    const techSummary=document.createElement('summary');
-    techSummary.textContent='รายละเอียดทางเทคนิค';
-    const meta=document.createElement('div');
-    meta.className='site-meta';
-    meta.append(
-      statusChip(`โปรเจกต์: ${site.projectName||'—'}`),
-      statusChip(`ระบบ: ${runtimeLabel(site.runtimeType)}${site.runtimeVersion?` ${site.runtimeVersion}`:''}`),
-      statusChip(`ฐานข้อมูล: ${site.databaseMode||'อัตโนมัติ'}`),
-      statusChip(site.backupEnabled?'สำรองข้อมูล: เปิด':'สำรองข้อมูล: ปิด'),
-      statusChip(site.source?.ready?'ไฟล์ต้นทาง: พร้อม':`ไฟล์ต้นทาง: ${site.source?.syncState||'ยังไม่มี'}`),
-    );
-    if(site.port)meta.append(statusChip(`พอร์ตภายใน: ${site.port}`));
-    if(site.domainState==='REQUESTED'){
-      const dns=document.createElement('div');
-      dns.className='site-url';
-      dns.textContent=dnsInstruction(currentHost);
-      tech.append(techSummary,meta,dns);
-    }else tech.append(techSummary,meta);
-    card.append(tech);
-    host.append(card);
+    const tech=document.createElement('details');tech.className='site-tech';
+    const summary=document.createElement('summary');summary.textContent='รายละเอียดเว็บไซต์';
+    const meta=document.createElement('div');meta.className='site-meta';
+    meta.append(statusChip('สถานะ: '+ownershipLabel(item.ownership)),statusChip('ระบบ: '+runtimeLabel(item.runtimeType)),statusChip('เส้นทาง: '+routeLabel(item.routeType)),statusChip('สภาพแวดล้อม: '+environmentLabel(item.environment)));
+    if(item.projectName)meta.append(statusChip('โปรเจกต์: '+item.projectName));
+    if(item.upstreamPort)meta.append(statusChip('พอร์ตภายใน: '+item.upstreamPort));
+    if(item.configName)meta.append(statusChip('Nginx: '+item.configName));
+    if(item.rootClass==='AWH_SITE_ROOT')meta.append(statusChip('พื้นที่ไฟล์: AWH Site'));
+    else if(item.rootClass==='WEB_ROOT')meta.append(statusChip('พื้นที่ไฟล์: เว็บเดิม'));
+    if(item.databaseMode)meta.append(statusChip('ฐานข้อมูล: '+item.databaseMode+(item.databaseState?(' · '+item.databaseState):'')));
+    if(item.backupEnabled)meta.append(statusChip('สำรองข้อมูล: เปิด'));
+    if(siteSourceReady(item))meta.append(statusChip('ไฟล์ต้นทาง: พร้อม'));
+    if(item.currentReleaseId)meta.append(statusChip('รุ่นปัจจุบัน: '+String(item.currentReleaseId).slice(0,18)));
+    tech.append(summary,meta);card.append(tech);host.append(card);
   }
 
-  if(!host.childElementCount){
-    const empty=document.createElement('div');
-    empty.className='site-empty';
-    empty.textContent='ยังไม่มีเว็บไซต์ เริ่มจากช่อง “เพิ่มเว็บไซต์” ด้านบนได้เลย';
-    host.append(empty);
-  }
+  if(!host.childElementCount){const empty=document.createElement('div');empty.className='site-empty';empty.textContent='ไม่พบเว็บไซต์ตามตัวกรองนี้';host.append(empty);}
+  renderHostingSummary();
 }
 
 function needsLiveRefresh(){
@@ -332,10 +384,14 @@ async function refreshHostingData(background=false){
     try{
       const result=await listManagedSites();
       sites=Array.isArray(result.sites)?result.sites:[];
+      inventory=Array.isArray(result.inventory)?result.inventory:[];
+      inventoryMeta=result.inventoryMeta&&typeof result.inventoryMeta==='object'?result.inventoryMeta:null;
+      domains=Array.isArray(result.domains)?result.domains:[];
       dnsPlan=result.dns&&typeof result.dns==='object'?result.dns:null;
       ecosystem=result.ecosystem&&typeof result.ecosystem==='object'?result.ecosystem:null;
       renderEcosystem();
       renderSites();
+      renderDomains();
       $('hosting-state').textContent='พร้อมใช้งาน';
     }catch(error){
       reportError(error);
@@ -363,6 +419,9 @@ async function refresh(){
     $('hosting-message').textContent=friendlyError(error,'ยังโหลดหน้าเว็บของฉันไม่ได้ ลองกด “ตรวจอีกครั้ง”');
   }
 }
+
+$('inventory-search').addEventListener('input',(event)=>{inventoryQuery=String(event.currentTarget.value||'').trim().toLowerCase();renderSites();});
+$('inventory-filter').addEventListener('change',(event)=>{inventoryFilter=String(event.currentTarget.value||'ALL');renderSites();});
 
 $('site-name').addEventListener('input',()=>{
   if(!$('site-slug').dataset.edited)$('site-slug').value=slugify($('site-name').value);
