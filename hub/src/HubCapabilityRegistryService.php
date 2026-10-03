@@ -231,7 +231,9 @@ final class HubCapabilityRegistryService
         $leftDeploy=self::mutationResourceIsDeploy($left);
         $rightDeploy=self::mutationResourceIsDeploy($right);
         if(($leftDeploy&&self::mutationResourceIsGlobal($left))||($rightDeploy&&self::mutationResourceIsGlobal($right))){
-            return $leftDeploy&&$rightDeploy;
+            // Host-global VPS Platform deployment freezes canonical host mutations.
+            // Candidate/workspace/read lanes were already excluded above.
+            return true;
         }
 
         $sameProject=hash_equals(strtolower(trim($leftProject)),strtolower(trim($rightProject)));

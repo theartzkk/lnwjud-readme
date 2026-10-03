@@ -160,6 +160,8 @@ try {
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:DEPLOY:AWH')===false,'raw resource comparison stays backwards-compatible');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANDIDATE','CANONICAL:SOURCE')===false,'isolated candidate work never blocks source promotion');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE',$project,'CANONICAL:DEPLOY:AWH',$project)===true,'same-project source and deploy are interlocked');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE',$project,'CANONICAL:DEPLOY:VPS_PLATFORM',$project2)===true,'host-global VPS Platform deploy interlocks canonical source across projects');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANDIDATE',$project,'CANONICAL:DEPLOY:VPS_PLATFORM',$project2)===false,'candidate work stays isolated from host-global platform deployment');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY:AWH',$project,'CANONICAL:DEPLOY:BAY_ASSESSMENT',$project2)===false,'independent release tracks may deploy across projects');
 
     $arbRows=[
