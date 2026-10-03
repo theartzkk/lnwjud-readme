@@ -50,7 +50,7 @@ test('execution metadata is context-only rather than an AI behavior policy',asyn
   assert.deepEqual(context.blockerHandling.closureEvidence,['rootCause','prevention','regression','recovery','observability']);
   assert.equal(context.workspaceRouting.durableCandidateRoot,'/var/lib/awh-remote/worktrees');
   assert.equal(context.workspaceRouting.unpromotedCandidateInEphemeralRootAllowed,false);
-  assert.equal(context.storageSafety.targetFreeBytes,6442450944);
+  assert.equal(context.storageSafety.targetFreeBytes,17179869184);
   assert.equal(context.storageSafety.selfHealBeforeBlock,true);
   assert.equal(context.storageSafety.projectAwareJanitor,true);
   assert.equal(context.storageSafety.pressureKeepNewestPerRepo,2);

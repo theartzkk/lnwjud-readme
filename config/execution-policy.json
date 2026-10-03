@@ -126,8 +126,8 @@
     "ephemeralWorkMustBeReproducible": true
   },
   "storageSafety": {
-    "targetFreeBytes": 6442450944,
-    "warningFreeBytes": 6442450944,
+    "targetFreeBytes": 17179869184,
+    "warningFreeBytes": 17179869184,
     "blockFreeBytes": 3221225472,
     "criticalFreeBytes": 1610612736,
     "tempPressureBytes": 2147483648,

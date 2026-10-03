@@ -171,6 +171,12 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(deploy, /sudo env AWH_RELEASE_ROOT="\$RELEASE" "\$RELEASE\/deploy\/operator-bridge\/install\.sh"/);
   assert.match(deploy, /sudo -u bayadmin test -w \/var\/lib\/awh-remote\/operator-staging/);
   assert.match(deploy, /OPERATOR_BRIDGE_READY/);
+  assert.match(deploy, /HOSTING_IDENTITY_RECONCILE/);
+  assert.match(deploy, /awh-hosting-identity@\*\.service/);
+  assert.match(deploy, /awh-hosting-identity\.php/);
+  assert.match(deploy, /systemctl reset-failed "\$identity_unit"/);
+  assert.match(deploy, /HOSTING_IDENTITY_READY/);
+  assert.ok(deploy.indexOf('stage HOSTING_IDENTITY_READY')<deploy.indexOf('stage EXECUTION_AUTHORITY_RELEASE'),'historical hosting identity failures reconcile before Platform authority is relinquished');
   assert.ok(deploy.indexOf('stage OPERATOR_BRIDGE_RECONCILE')>deploy.indexOf('stage SOURCE_DRIFT_VERIFIED'),'operator bridge reconciliation follows source-drift verification');
   assert.ok(deploy.indexOf('stage OPERATOR_BRIDGE_READY')<deploy.indexOf('stage EXECUTION_AUTHORITY_RELEASE'),'operator bridge reconciliation completes before the release authority is relinquished');
   assert.match(deploy, /platform_attempt=1[\s\S]*platform_attempt=\$\(\(platform_attempt \+ 1\)\)/);

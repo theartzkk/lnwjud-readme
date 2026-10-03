@@ -161,7 +161,7 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(janitor, /head_in_canonical_main/);
   assert.match(janitor, /DURABLE_KEEP_NEWEST/);
   assert.match(janitor, /durableReclaimedLogicalBytes/);
-  assert.match(guard, /RECOVER=79/);
+  assert.match(guard, /RECOVER=72/);
   assert.match(tempService, /ReadWritePaths=.*-\/var\/lib\/awh-remote\/tmp/);
   assert.match(tempService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/worktrees/);
   assert.match(guardService, /ReadWritePaths=.*-\/var\/lib\/awh-remote\/tmp/);
@@ -179,8 +179,10 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(tempTimer, /OnUnitActiveSec=30m/);
   assert.match(databaseTimer, /OnActiveSec=15m/);
   assert.match(databaseTimer, /OnUnitActiveSec=15m/);
-  assert.match(guard, /TARGET_FREE=6442450944/);
-  assert.match(guard, /WARN_FREE=6442450944/);
+  assert.match(guard, /TARGET_FREE=17179869184/);
+  assert.match(guard, /WARN=75/);
+  assert.match(guard, /RECOVER=72/);
+  assert.match(guard, /WARN_FREE=17179869184/);
   assert.match(guard, /AWH_STORAGE_PRESSURE=1/);
   assert.match(guard, /AWH_TMP_KEEP_NEWEST_PER_REPO=1/);
   assert.match(temp, /AWH_PRESSURE_OPERATOR_STAGE_MAX_AGE_MINUTES:-60/);
@@ -226,7 +228,7 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(remote, /sudo rm -f "\$LEGACY_DROPIN"/);
   assert.match(remote, /systemctl show -p ExecStart --value awh-temp-cleanup\.service/);
   assert.match(remote, /systemctl show -p ExecStart --value awh-retention\.service/);
-  assert.match(operatorBridge, /STORAGE_TARGET_FREE_BYTES=6442450944/);
+  assert.match(operatorBridge, /STORAGE_TARGET_FREE_BYTES=17179869184/);
   assert.match(operatorBridge, /STORAGE_BLOCK_FREE_BYTES=3221225472/);
   assert.match(operatorBridge, /storageSafetyState/);
   assert.match(operatorBridge, /AWH_STORAGE_GUARD_STATE/);

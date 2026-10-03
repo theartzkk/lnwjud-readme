@@ -39,7 +39,7 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.equal(contract.rules.unpromotedCandidateInEphemeralRootAllowed, false);
   assert.equal(contract.rules.maintenanceRuntimeUsesReleasePointerOnly, true);
   assert.equal(contract.rules.storageSelfHealBeforeBlock, true);
-  assert.equal(contract.rules.storageTargetFreeBytes, 6442450944);
+  assert.equal(contract.rules.storageTargetFreeBytes, 17179869184);
   assert.equal(contract.rules.sandboxedConnectorFilesystemViewIsHostAuthority, false);
   assert.equal(contract.rules.hostFilesystemIncidentRequiresAuthorityCrossCheck, true);
   assert.equal(contract.rules.destructiveHostRepairFromConnectorOnlyEvidenceAllowed, false);

@@ -51,7 +51,7 @@
     "unpromotedCandidateInEphemeralRootAllowed": false,
     "maintenanceRuntimeUsesReleasePointerOnly": true,
     "storageSelfHealBeforeBlock": true,
-    "storageTargetFreeBytes": 6442450944,
+    "storageTargetFreeBytes": 17179869184,
     "sandboxedConnectorFilesystemViewIsHostAuthority": false,
     "hostFilesystemIncidentRequiresAuthorityCrossCheck": true,
     "destructiveHostRepairFromConnectorOnlyEvidenceAllowed": false,

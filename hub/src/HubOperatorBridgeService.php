@@ -38,7 +38,7 @@ final class HubOperatorBridgeService
     private const MISSION_STALE_SECONDS=300;
     private const PLATFORM_FREEZE_ENABLE_CONFIRMATION='ENABLE_PLATFORM_MAINTENANCE_FREEZE';
     private const PLATFORM_FREEZE_DISABLE_CONFIRMATION='DISABLE_PLATFORM_MAINTENANCE_FREEZE';
-    private const STORAGE_TARGET_FREE_BYTES=6442450944;
+    private const STORAGE_TARGET_FREE_BYTES=17179869184;
     private const STORAGE_BLOCK_FREE_BYTES=3221225472;
     private const STORAGE_CRITICAL_FREE_BYTES=1610612736;
     private const STORAGE_GUARD_MAX_AGE_SECONDS=1800;
@@ -405,7 +405,7 @@ final class HubOperatorBridgeService
         $liveReady=$freeBytes!==null&&$totalBytes!==null&&$totalBytes>0&&$freeBytes>=0&&$freeBytes<=$totalBytes;
         $usedPercent=$liveReady?(int)floor((($totalBytes-$freeBytes)*100)/$totalBytes):null;
         $diskBlocked=$liveReady&&($usedPercent>=90||$freeBytes<self::STORAGE_BLOCK_FREE_BYTES);
-        $state=$liveReady?($usedPercent>=95||$freeBytes<self::STORAGE_CRITICAL_FREE_BYTES?'CRITICAL':($usedPercent>=80||$freeBytes<self::STORAGE_TARGET_FREE_BYTES?'WARNING':'OK')):'UNKNOWN';
+        $state=$liveReady?($usedPercent>=95||$freeBytes<self::STORAGE_CRITICAL_FREE_BYTES?'CRITICAL':($usedPercent>=75||$freeBytes<self::STORAGE_TARGET_FREE_BYTES?'WARNING':'OK')):'UNKNOWN';
         // The guard file is a periodic snapshot. Live disk telemetry is the mutation
         // authority whenever it is available; otherwise a recently verified guard
         // snapshot is the fail-safe fallback. This prevents a recovered disk from
