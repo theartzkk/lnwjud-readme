@@ -64,7 +64,9 @@ final class HubCoreReleaseOperator
 
     private function claim(string $at): ?array
     {
-        $lease=gmdate('c',strtotime($at)+300);
+        // The execution envelope is the canonical single-writer authority. It must
+        // cover the whole bounded release window, not only the dispatcher claim.
+        $lease=gmdate('c',strtotime($at)+self::LEASE_SECONDS);
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             $q=$this->pdo->prepare("SELECT e.*,t.goal FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id
@@ -102,6 +104,16 @@ final class HubCoreReleaseOperator
         $state=trim((string)($status['out']??''));
         if(in_array($state,['active','activating'],true)){
             $lease=gmdate('c',strtotime($at)+self::LEASE_SECONDS);
+            try{
+                $authority=(new HubCapabilityRegistryService($this->pdo))->activateExecutionAuthority((string)$row['execution_id'],$lease,$at);
+            }catch(Throwable $error){
+                $this->fail((string)$row['execution_id'],(string)$row['task_id'],'CORE_RELEASE_AUTHORITY_LOST',$at);
+                return ['schemaVersion'=>1,'state'=>'FAILED','executionId'=>(string)$row['execution_id'],'code'=>'CORE_RELEASE_AUTHORITY_LOST'];
+            }
+            if(($authority['granted']??false)!==true){
+                $this->fail((string)$row['execution_id'],(string)$row['task_id'],'CORE_RELEASE_AUTHORITY_LOST',$at);
+                return ['schemaVersion'=>1,'state'=>'FAILED','executionId'=>(string)$row['execution_id'],'code'=>'CORE_RELEASE_AUTHORITY_LOST'];
+            }
             $this->pdo->prepare("UPDATE control_task_executions SET lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('LEASED','RUNNING')")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$row['execution_id']]);
             return ['schemaVersion'=>1,'state'=>'RUNNING','executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'unit'=>$unit];
         }

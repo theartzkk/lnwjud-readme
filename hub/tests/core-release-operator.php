@@ -154,7 +154,7 @@ try{
     $running=$pdo->query("SELECT state,lease_owner,attempt_count FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetch();
     $activeEnvelope=$pdo->query("SELECT state,mutation_scope,lease_expires_at FROM control_execution_envelopes WHERE execution_id=".$pdo->quote($execution))->fetch();
     cr_assert(is_array($running)&&$running['state']==='RUNNING'&&str_starts_with((string)$running['lease_owner'],'core-release:')&&(int)$running['attempt_count']===1,'dispatcher records one leased transient execution');
-    cr_assert(is_array($activeEnvelope)&&$activeEnvelope['state']==='ACTIVE'&&$activeEnvelope['mutation_scope']==='EXTERNAL'&&is_string($activeEnvelope['lease_expires_at']),'dispatcher activates typed release authority before the execution becomes RUNNING');
+    cr_assert(is_array($activeEnvelope)&&$activeEnvelope['state']==='ACTIVE'&&$activeEnvelope['mutation_scope']==='EXTERNAL'&&($activeEnvelope['lease_expires_at']??null)==='2026-09-23T05:00:01+00:00','dispatcher activates typed release authority for the full bounded release window instead of a five-minute claim lease');
 
     // E2E queue regression: A is RUNNING, a real Platform service request for B must be admitted
     // as WAITING_FOR_WORKER/QUEUED, remain queued while A is active, then dispatch automatically
@@ -177,6 +177,8 @@ try{
 
     $whileA=$operator->tick('2026-09-23T01:00:03+00:00');
     cr_assert(($whileA['state']??null)==='RUNNING'&&($whileA['executionId']??null)===$execution,'operator observes A as RUNNING instead of claiming B');
+    $renewedEnvelope=$pdo->query("SELECT state,lease_expires_at FROM control_execution_envelopes WHERE execution_id=".$pdo->quote($execution))->fetch();
+    cr_assert(is_array($renewedEnvelope)&&($renewedEnvelope['state']??null)==='ACTIVE'&&($renewedEnvelope['lease_expires_at']??null)==='2026-09-23T05:00:03+00:00','active release heartbeat renews canonical execution authority together with its execution lease');
     cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($queuedBExecution))->fetchColumn()==='QUEUED'
         &&$pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($queuedBTask))->fetchColumn()==='WAITING_FOR_WORKER','B remains queued while A is active');
 
