@@ -1898,7 +1898,7 @@ if test "$PLATFORM_HARDENING" = 1; then
   sudo systemctl is-active --quiet awh-operator-bridge.socket
   stage OPERATOR_BRIDGE_READY
   stage HOSTING_IDENTITY_RECONCILE
-  failed_identity_units=$(sudo systemctl --failed --no-legend --plain 'awh-hosting-identity@*.service' 2>/dev/null | awk '{print $1}' || true)
+  failed_identity_units=$(sudo systemctl list-units --failed --no-legend --plain 'awh-hosting-identity@*.service' 2>/dev/null | awk '{print $1}' || true)
   for identity_unit in $failed_identity_units; do
     case "$identity_unit" in awh-hosting-identity@*.service) ;; *) continue ;; esac
     identity_site=${identity_unit#awh-hosting-identity@}
@@ -1912,7 +1912,7 @@ if test "$PLATFORM_HARDENING" = 1; then
       *) printf '%s\n' "HOSTING_IDENTITY_RECONCILE_FAILED=$identity_site:$identity_rc" >&2; exit 1 ;;
     esac
   done
-  if sudo systemctl --failed --no-legend --plain 'awh-hosting-identity@*.service' 2>/dev/null | grep -q '^awh-hosting-identity@'; then
+  if sudo systemctl list-units --failed --no-legend --plain 'awh-hosting-identity@*.service' 2>/dev/null | grep -q '^awh-hosting-identity@'; then
     printf '%s\n' 'HOSTING_IDENTITY_RECONCILE_FAILED=remaining-failed-units' >&2
     exit 1
   fi
