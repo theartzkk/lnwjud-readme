@@ -14,6 +14,7 @@ Environment=AWH_MANAGED_SITE_ROOT=/srv/awh-sites
 Environment=AWH_SITE_CONFIG_ROOT=/etc/awh-sites
 Environment=AWH_NGINX_SITES_AVAILABLE=/etc/nginx/sites-available
 Environment=AWH_NGINX_SITES_ENABLED=/etc/nginx/sites-enabled
+ExecStartPre=/usr/bin/php /opt/awh-hub/control-plane-current/deploy/awh-hosting/awh-hosting-identity-reconcile.php
 ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/awh-hosting-operator.php
 NoNewPrivileges=true
 PrivateTmp=true
