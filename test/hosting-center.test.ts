@@ -26,6 +26,8 @@ test('Hosting Center exposes reconciled read-only server inventory without a sec
   assert.match(html,/id="hosting-topology"/);
   assert.match(html,/id="site-environment"/);
   assert.match(html,/rel="icon"/);
+  assert.match(html,/id="hosting-state" role="status" aria-live="polite"/);
+  assert.match(html,/id="hosting-summary" class="hosting-summary" role="status" aria-live="polite" aria-atomic="true"/);
   assert.match(html,/id="inventory-search"/);
   assert.match(js,/ownershipLabel/);
   assert.match(js,/ตรวจพบจาก Nginx/);
