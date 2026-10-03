@@ -5,6 +5,8 @@ CANONICAL_BAY_GIT=${AWH_CANONICAL_BAY_GIT:-/srv/awh-git/bay-excuse-x.git}
 CANONICAL_ROOT=${AWH_CANONICAL_ROOT:-/srv/awh-git}
 REMOTE_ELECTRON_CACHE=${AWH_REMOTE_ELECTRON_CACHE:-/var/lib/awh-remote/.cache/electron}
 REMOTE_NPM_CACHE=${AWH_REMOTE_NPM_CACHE:-/var/lib/awh-remote/.npm/_cacache}
+CORE_NPM_CACHE=${AWH_CORE_NPM_CACHE:-/var/lib/awh-hub/npm-cache}
+CORE_NPM_CACHE_MAX_BYTES=${AWH_CORE_NPM_CACHE_MAX_BYTES:-2147483648}
 REMOTE_UV_CACHE=${AWH_REMOTE_UV_CACHE:-/var/lib/awh-remote/.cache/uv}
 HUB_DB=${AWH_HUB_DB_PATH:-/var/lib/awh-hub/awh.sqlite}
 TEMP_ROOT=${AWH_TEMP_ROOT:-/tmp}
@@ -200,7 +202,7 @@ reclaim_dependency_dirs() {
 
 purge_regenerable_cache() {
   local d size
-  for d in "$REMOTE_ELECTRON_CACHE" "$REMOTE_NPM_CACHE" "$REMOTE_UV_CACHE"; do
+  for d in "$REMOTE_ELECTRON_CACHE" "$REMOTE_NPM_CACHE" "$CORE_NPM_CACHE" "$REMOTE_UV_CACHE"; do
     [[ -d "$d" ]] || continue
     path_in_use "$d" && continue
     size=$(du -sb -- "$d" 2>/dev/null | awk '{print $1}' || echo 0)
@@ -209,9 +211,21 @@ purge_regenerable_cache() {
   done
 }
 
+purge_core_npm_cache_if_oversize() {
+  [[ -d "$CORE_NPM_CACHE" ]] || return 0
+  path_in_use "$CORE_NPM_CACHE" && return 0
+  local size
+  size=$(du -sb -- "$CORE_NPM_CACHE" 2>/dev/null | awk '{print $1}' || echo 0)
+  [[ "$size" =~ ^[0-9]+$ ]] || return 0
+  (( size >= CORE_NPM_CACHE_MAX_BYTES )) || return 0
+  rm -rf -- "$CORE_NPM_CACHE"
+  bytes=$((bytes+size))
+}
+
 if [[ "$global_cleanup_allowed" == true ]]; then
   reclaim_dependency_dirs "$TEMP_ROOT"
   reclaim_dependency_dirs "$OPERATOR_STAGE_ROOT"
+  purge_core_npm_cache_if_oversize
   if [[ "${AWH_STORAGE_PRESSURE:-0}" == 1 ]]; then
     purge_old_vault_exports
     purge_regenerable_cache
