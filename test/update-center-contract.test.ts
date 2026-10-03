@@ -65,7 +65,7 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/function actionFeedback\(button,text,tone='info',targetKey=null/);
   assert.match(script,/function actionErrorText\(error,button\)/);
   assert.match(script,/CORE_RELEASE_NOT_READY/);
-  assert.match(script,/localOperation=null;const text=actionErrorText/);
+  assert.match(script,/clearPinnedOperation\(targetKey\);if\(localOperation\?\.key===targetKey\)localOperation=null/);
   assert.doesNotMatch(script,/askConfirm|askStepUp/);
   const lineBundleStart=script.indexOf('async function updateLineOaBundle');
   const lineBundleEnd=script.indexOf('async function refreshAgent');
@@ -617,7 +617,7 @@ test('Update Center streams canonical release progress in real time with bounded
   assert.match(script,/เชื่อมต่ออยู่/);
   assert.match(script,/const delay=active\?\(liveConnected\?45000:12000\):90000/);
   assert.match(script,/localOperation\?\.key===item\?\.key/);
-  assert.match(script,/key:item\.key,name:'VPS Platform'/);
+  assert.match(script,/submitPinnedUpdate\(item,'VPS Platform'/);
   assert.match(script,/key:'awh-line-gateway',name:'LINE OA · AWH Gateway'/);
   assert.match(script,/if\(changed\)render\(\);else renderProgress\(\)/);
   assert.match(script,/relativeLiveTime/);
@@ -744,27 +744,53 @@ test('Update Center self-recovers from stale PWA module caches instead of showin
 });
 
 
-test('Update Center owner flow is single-flight, exact-target pinned, and resilient to transient refresh failures', async()=>{
-  const script=await readFile(join(ROOT,'web/updates.js'),'utf8');
-  assert.match(script,/OWNER_OPERATION_STORAGE_KEY='awh-update-center-owner-operation-v1'/);
-  assert.match(script,/OWNER_COMMAND_RECONCILE_MS=120000/);
+test('Update Center owner flow is per-target, queue-aware, exact-target pinned, and resilient to transient replies', async()=>{
+  const [script,service,operator]=await Promise.all([
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubCoreReleaseOperator.php'),'utf8'),
+  ]);
+  assert.match(script,/OWNER_OPERATION_STORAGE_KEY='awh-update-center-owner-operations-v2'/);
+  assert.match(script,/const actionInFlightTargets=new Set\(\)/);
+  assert.match(script,/let pinnedOperations=readPinnedOperations\(\)/);
+  assert.match(script,/function pinnedOperationFor\(key\)/);
+  assert.match(script,/function operationWillQueue\(targetKey\)/);
+  assert.match(script,/function ownerActionLocked\(targetKey\)/);
+  assert.match(script,/actionInFlightTargets\.has\(targetKey\)\|\|pinnedOperations\.has\(targetKey\)/);
+  assert.doesNotMatch(script,/if\(actionInFlight\|\|pinnedOperation\)return true/);
+  assert.match(script,/function beginPinnedOperation/);
   assert.match(script,/function pinAcceptedOperation/);
-  assert.match(script,/function reconcilePinnedOperation/);
-  assert.match(script,/function ownerActionLocked/);
+  assert.match(script,/function markPinnedOutcomeUnknown/);
+  assert.match(script,/function reconcilePinnedOperations/);
   assert.match(script,/sessionStorage\.setItem\(OWNER_OPERATION_STORAGE_KEY/);
-  assert.match(script,/ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ/);
-  assert.match(script,/กำลังตรวจความพร้อมและตรึงรุ่นที่จะอัปเดต/);
-  assert.match(script,/button\.disabled=!allowDuringOperation&&ownerActionLocked\(targetKey\)/);
-  assert.match(script,/Boolean\(pinnedOperation\)/);
-  assert.match(script,/const delay=active\?\(liveConnected\?45000:12000\):90000/);
+  assert.match(script,/OWNER_OPERATION_OUTCOME_PROBE_MS=30000/);
+  assert.match(script,/OWNER_OPERATION_MAX_AGE_MS=21600000/);
+  assert.doesNotMatch(script,/OWNER_COMMAND_RECONCILE_MS=120000/);
+  assert.match(script,/function actionLabel\(item,normalLabel\)/);
+  assert.match(script,/return 'เข้าคิว VPS'/);
+  assert.match(script,/return 'เข้าคิว AWH'/);
+  assert.match(script,/รอคิว · จะเริ่มอัตโนมัติเมื่อ release writer ว่าง/);
+  assert.match(script,/submitPinnedUpdate/);
+  assert.match(script,/UPDATE_OUTCOME_UNKNOWN/);
+  assert.match(script,/กำลังตรวจ task เดิมก่อนเปิดให้กดใหม่/);
+  assert.match(script,/queuedPinnedOperations/);
+  assert.match(script,/new Set\(\[\.\.\.queued\.map/);
+  assert.match(script,/item\?\.activeReleaseSha&&itemQueued\(item\)/);
+  assert.match(script,/approved '\+short\(item\.activeReleaseSha\)/);
+  assert.match(service,/\$activePlatformSha=/);
+  assert.match(service,/\$platformTargetMoved=/);
+  assert.match(service,/\$activeCoreSha=/);
+  assert.match(service,/\$awhTargetMoved=/);
+  assert.match(service,/'activeReleaseSha'=>\$activePlatformSha/);
+  assert.match(service,/'activeReleaseSha'=>\$activeCoreSha/);
+  assert.match(service,/exact SHA ที่ Owner อนุมัติไว้/);
+  assert.match(operator,/WHERE e\.executor_kind='VPS' AND e\.required_capability IN \(:core,:platform\) AND e\.state='QUEUED'/);
+  assert.match(operator,/ORDER BY e\.created_at,e\.execution_id LIMIT 1/);
   assert.match(script,/ใช้สถานะล่าสุด · จะตรวจใหม่อัตโนมัติ/);
   assert.match(script,/const storageBlocked=Boolean\(telemetryReady\)/);
-  assert.match(script,/ยังไม่สรุปเป็นปัญหาและจะตรวจซ้ำอัตโนมัติ/);
-  assert.match(script,/refresh\(\{manual:true\}\)/);
-  assert.match(script,/refresh\(\{initial:true\}\)/);
   assert.match(script,/if\(progress<23\)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'/);
   assert.match(script,/if\(progress<55\)return 'กำลังตรวจ QA สำรองข้อมูล และเตรียม rollback ก่อนติดตั้ง'/);
-  assert.match(script,/if\(progress<88\)return 'กำลังเปิดใช้ Runtime และหน้าเว็บรุ่นใหม่'/);
-  assert.match(script,/กำลัง Verify Production และตรวจการทำงานรอบสุดท้าย/);
   assert.match(script,/const thresholds=\[22,54,84,98,100\]/);
+  assert.match(script,/ownerReleaseNoteText/);
+  assert.match(script,/แก้สิทธิ์ระบบ Managed Hosting ให้จัดการบัญชีบริการได้อย่างเสถียร/);
 });

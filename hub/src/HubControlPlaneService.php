@@ -271,23 +271,26 @@ final class HubControlPlaneService
         $activePlatform = null;
         foreach ((array)($platform['releases'] ?? []) as $row) {
             if (!is_array($row) || !is_string($row['releaseSha'] ?? null)) continue;
-            if ($platformCandidate !== null && !hash_equals($platformCandidate,strtolower((string)$row['releaseSha']))) continue;
             if (in_array((string)($row['taskState'] ?? ''),['COMPLETED','FAILED','CANCELLED'],true)) continue;
             $activePlatform=$row; break;
         }
+        $activePlatformSha=is_array($activePlatform)&&is_string($activePlatform['releaseSha']??null)?strtolower((string)$activePlatform['releaseSha']):null;
+        $platformTargetMoved=$activePlatformSha!==null&&$platformCandidate!==null&&!hash_equals($activePlatformSha,$platformCandidate);
         $platformState = ($platformCandidate !== null && ($platformCurrent === null || !hash_equals($platformCandidate,$platformCurrent))) ? 'UPDATE_AVAILABLE' : 'CURRENT';
         if (is_array($activePlatform)) $platformState=(string)($activePlatform['approvalStatus']??'')==='PENDING'?'WAITING_FOR_APPROVAL':'UPDATING';
         if ($coreStorageBlocked && in_array($platformState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true)) $platformState='BLOCKED';
         $platformReason = match($platformState) {
             'CURRENT' => 'VPS Platform track ตรงกับรุ่นฐานที่บันทึกไว้',
             'WAITING_FOR_APPROVAL' => 'พบคำขอ VPS Platform เดิมที่ยังไม่เริ่ม Production · กดทำต่อได้โดยใช้ task เดิม',
-            'UPDATING' => 'VPS Platform controller กำลังอัปเดต shared runtime/infrastructure',
+            'UPDATING' => $platformTargetMoved
+                ? 'VPS Platform ใช้ exact SHA ที่ Owner อนุมัติไว้ · Source ใหม่จะไม่สลับรุ่นระหว่างรอคิวหรือกำลังติดตั้ง'
+                : 'VPS Platform controller กำลังอัปเดต shared runtime/infrastructure',
             'BLOCKED' => 'Storage ยังไม่ถึง release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90%',
             default => 'มี VPS Platform ใหม่พร้อมเข้าสู่ typed release boundary',
         };
         $items[]=[
             'key'=>'vps-platform','projectId'=>null,'name'=>'VPS Platform','kind'=>'PLATFORM','adapter'=>'PLATFORM_RELEASE',
-            'state'=>$platformState,'current'=>$platformCurrent,'candidate'=>$platformCandidate,
+            'state'=>$platformState,'current'=>$platformCurrent,'candidate'=>$platformCandidate,'activeReleaseSha'=>$activePlatformSha,
             'releaseDetailsRequired'=>true,'approvalRequired'=>true,'approvalId'=>is_array($activePlatform)&&is_string($activePlatform['approvalId']??null)?$activePlatform['approvalId']:null,
             'taskId'=>is_array($activePlatform)&&is_string($activePlatform['taskId']??null)?$activePlatform['taskId']:null,
             'taskState'=>is_array($activePlatform)?(string)($activePlatform['taskState']??''):null,
@@ -307,11 +310,12 @@ final class HubControlPlaneService
         $activeCore = null;
         foreach ((array) ($core['releases'] ?? []) as $row) {
             if (!is_array($row) || !is_string($row['releaseSha'] ?? null)) continue;
-            if ($candidate !== null && !hash_equals($candidate, strtolower((string) $row['releaseSha']))) continue;
             if (in_array((string) ($row['taskState'] ?? ''), ['COMPLETED','FAILED','CANCELLED'], true)) continue;
             $activeCore = $row;
             break;
         }
+        $activeCoreSha=is_array($activeCore)&&is_string($activeCore['releaseSha']??null)?strtolower((string)$activeCore['releaseSha']):null;
+        $awhTargetMoved=$activeCoreSha!==null&&$candidate!==null&&!hash_equals($activeCoreSha,$candidate);
         $runtimeState = is_string($release['componentState'] ?? null) ? (string) $release['componentState'] : 'UNKNOWN';
         $needsRuntimeRepair = $runtimeState === 'SPLIT';
         $awhState = ($candidate !== null && ($awhCurrent === null || !hash_equals($candidate, $awhCurrent))) || ($needsRuntimeRepair && $candidate !== null) ? 'UPDATE_AVAILABLE' : 'CURRENT';
@@ -323,11 +327,13 @@ final class HubControlPlaneService
                 ? 'พบคำขอ AWH เดิมที่ยังไม่เริ่ม Production · กดทำต่อได้โดยใช้ task เดิม'
                 : ($awhState === 'BLOCKED'
                     ? 'Storage ยังไม่ถึง Core Release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90% ก่อนอัปเดต'
-                    : 'มีรุ่นล่าสุดพร้อมเข้าสู่ Core Release'));
+                    : ($awhTargetMoved
+                        ? 'AWH ใช้ exact SHA ที่ Owner อนุมัติไว้ · Source ใหม่จะไม่สลับรุ่นระหว่างรอคิวหรือกำลังติดตั้ง'
+                        : 'มีรุ่นล่าสุดพร้อมเข้าสู่ Core Release')));
         if ($needsRuntimeRepair && $awhState === 'UPDATE_AVAILABLE') $awhReason = 'ตรวจพบ Control/Web/Enrollment อยู่คนละรุ่น ระบบจะ reconcile ให้ตรงกับ Source Authority ล่าสุดผ่าน Core Release เดียว';
         $items[] = [
             'key'=>'awh-core','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900','name'=>'Art’s Workspace Hub',
-            'kind'=>'CORE','adapter'=>'CORE_RELEASE','state'=>$awhState,'current'=>$awhCurrent,'candidate'=>$candidate,
+            'kind'=>'CORE','adapter'=>'CORE_RELEASE','state'=>$awhState,'current'=>$awhCurrent,'candidate'=>$candidate,'activeReleaseSha'=>$activeCoreSha,
             'approvalRequired'=>true,'approvalId'=>is_array($activeCore) && is_string($activeCore['approvalId'] ?? null) ? $activeCore['approvalId'] : null,
             'taskId'=>is_array($activeCore)&&is_string($activeCore['taskId']??null)?$activeCore['taskId']:null,
             'taskState'=>is_array($activeCore)?(string)($activeCore['taskState']??''):null,

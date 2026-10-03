@@ -16,65 +16,132 @@ let stopLiveUpdates=null;
 let liveConnected=false;
 let liveUpdatedAt=0;
 let lastLiveUiSignature='';
-let actionInFlight=false;
+const actionInFlightTargets=new Set();
 const targetFeedback=new Map();
-const OWNER_OPERATION_STORAGE_KEY='awh-update-center-owner-operation-v1';
-const OWNER_COMMAND_RECONCILE_MS=120000;
+const OWNER_OPERATION_STORAGE_KEY='awh-update-center-owner-operations-v2';
+const LEGACY_OWNER_OPERATION_STORAGE_KEY='awh-update-center-owner-operation-v1';
+const OWNER_OPERATION_OUTCOME_PROBE_MS=30000;
+const OWNER_OPERATION_MAX_AGE_MS=21600000;
 const QUEUED_RELEASE_TASK_STATES=new Set(['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_CAPABILITY']);
 const itemQueued=(item)=>item?.state==='UPDATING'&&QUEUED_RELEASE_TASK_STATES.has(String(item?.taskState||'').toUpperCase());
-function readPinnedOperation(){
+
+function operationTarget(item){
+  return String(item?.candidate||item?.candidateReleaseSha||item?.release?.sourceSha||item?.release?.version||'');
+}
+function readPinnedOperations(){
+  const map=new Map();
   try{
-    const value=JSON.parse(sessionStorage.getItem(OWNER_OPERATION_STORAGE_KEY)||'null');
-    if(!value||typeof value!=='object'||typeof value.key!=='string'||!Number.isFinite(Number(value.acceptedAt)))return null;
-    if(Date.now()-Number(value.acceptedAt)>OWNER_COMMAND_RECONCILE_MS)return null;
-    return value;
-  }catch{return null;}
+    const raw=sessionStorage.getItem(OWNER_OPERATION_STORAGE_KEY);
+    const parsed=raw?JSON.parse(raw):null;
+    if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed)){
+      for(const [key,value] of Object.entries(parsed)){
+        if(!key||!value||typeof value!=='object'||!Number.isFinite(Number(value.acceptedAt)))continue;
+        if(Date.now()-Number(value.acceptedAt)>OWNER_OPERATION_MAX_AGE_MS)continue;
+        map.set(key,{...value,key});
+      }
+    }
+    if(map.size===0){
+      const legacyRaw=sessionStorage.getItem(LEGACY_OWNER_OPERATION_STORAGE_KEY);
+      const legacy=legacyRaw?JSON.parse(legacyRaw):null;
+      if(legacy&&typeof legacy==='object'&&typeof legacy.key==='string'&&Number.isFinite(Number(legacy.acceptedAt))&&Date.now()-Number(legacy.acceptedAt)<=OWNER_OPERATION_MAX_AGE_MS){
+        map.set(legacy.key,{...legacy,status:'ACCEPTED'});
+      }
+      sessionStorage.removeItem(LEGACY_OWNER_OPERATION_STORAGE_KEY);
+    }
+  }catch{}
+  return map;
 }
-let pinnedOperation=readPinnedOperation();
-function persistPinnedOperation(){
-  try{if(pinnedOperation)sessionStorage.setItem(OWNER_OPERATION_STORAGE_KEY,JSON.stringify(pinnedOperation));else sessionStorage.removeItem(OWNER_OPERATION_STORAGE_KEY);}catch{}
+let pinnedOperations=readPinnedOperations();
+function persistPinnedOperations(){
+  try{
+    if(pinnedOperations.size===0){sessionStorage.removeItem(OWNER_OPERATION_STORAGE_KEY);return;}
+    const value={};for(const [key,operation] of pinnedOperations)value[key]=operation;
+    sessionStorage.setItem(OWNER_OPERATION_STORAGE_KEY,JSON.stringify(value));
+  }catch{}
 }
-function pinnedFor(item){
-  return Boolean(pinnedOperation&&item?.key===pinnedOperation.key&&Date.now()-Number(pinnedOperation.acceptedAt||0)<=OWNER_COMMAND_RECONCILE_MS);
+function pinnedOperationFor(key){return typeof key==='string'?pinnedOperations.get(key)||null:null;}
+function pinnedFor(item){return Boolean(pinnedOperationFor(item?.key));}
+function clearPinnedOperation(key){
+  if(typeof key!=='string'||!pinnedOperations.has(key))return;
+  pinnedOperations.delete(key);persistPinnedOperations();
+}
+function activeServerItems(){return primaryItems().filter((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));}
+function operationWillQueue(targetKey){
+  if(typeof targetKey!=='string'||targetKey==='')return false;
+  if(activeServerItems().some((item)=>item.key!==targetKey&&item.state==='UPDATING'&&!itemQueued(item)))return true;
+  for(const [key,operation] of pinnedOperations){
+    if(key===targetKey)continue;
+    if(['SUBMITTING','ACCEPTED','ACTIVE'].includes(String(operation?.status||'')))return true;
+  }
+  return false;
 }
 function ownerActionLocked(targetKey){
-  if(actionInFlight||pinnedOperation)return true;
-  const active=primaryItems().filter((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
-  if(!active.length)return false;
-  return active.some((item)=>item.key!==targetKey||item.state==='UPDATING');
+  if(typeof targetKey!=='string'||targetKey==='')return false;
+  if(actionInFlightTargets.has(targetKey)||pinnedOperations.has(targetKey))return true;
+  const same=primaryItems().find((item)=>item.key===targetKey);
+  return Boolean(same&&['UPDATING','WAITING_FOR_APPROVAL'].includes(same.state));
 }
-function pinAcceptedOperation(item,name,request,progress,messageText){
-  const target=String(item?.candidate||item?.candidateReleaseSha||item?.release?.sourceSha||item?.release?.version||'');
-  pinnedOperation={key:item.key,name,target:target||null,taskId:request?.taskId||null,executionId:request?.executionId||null,acceptedAt:Date.now()};
-  persistPinnedOperation();
-  localOperation={key:item.key,name,progress,message:messageText};
-  targetFeedback.set(item.key,{text:'รับคำสั่งแล้ว · ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ',tone:'info'});
+function beginPinnedOperation(item,name,queuedHint=false){
+  const key=String(item?.key||'');if(!key)return null;
+  const existing=pinnedOperations.get(key);if(existing)return existing;
+  const operation={key,name,target:operationTarget(item)||null,taskId:null,executionId:null,acceptedAt:Date.now(),status:queuedHint?'QUEUED':'SUBMITTING'};
+  pinnedOperations.set(key,operation);persistPinnedOperations();
+  if(!queuedHint)localOperation={key,name,progress:6,message:'กำลังส่งคำสั่งและตรึงรุ่นที่อนุมัติ'};
+  targetFeedback.set(key,{text:queuedHint?'กำลังส่งคำขอเข้าคิว · รุ่นที่เลือกจะไม่ถูกสลับระหว่างรอ':'กำลังส่งคำสั่งและตรึงรุ่นที่อนุมัติ',tone:'info'});
+  return operation;
 }
-function reconcilePinnedOperation(){
-  if(!pinnedOperation)return;
-  const item=primaryItems().find((row)=>row.key===pinnedOperation.key);
-  if(!item)return;
-  const target=String(pinnedOperation.target||'');
-  const currentValues=[item.current,item.currentSourceRevision,item.trackSourceSha].filter((value)=>typeof value==='string').map(String);
-  if(item.state==='CURRENT'&&(!target||currentValues.includes(target)||!item.candidate)){
-    targetFeedback.set(item.key,{text:'อัปเดตสำเร็จ · ตรวจ Production แล้ว',tone:'good'});
-    pinnedOperation=null;persistPinnedOperation();localOperation=null;return;
+function pinAcceptedOperation(item,name,request,progress,messageText,queuedHint=false){
+  const key=String(item?.key||'');if(!key)return false;
+  const queued=queuedHint||QUEUED_RELEASE_TASK_STATES.has(String(request?.state||'').toUpperCase())&&operationWillQueue(key);
+  const previous=pinnedOperations.get(key)||{};
+  const operation={...previous,key,name,target:previous.target||operationTarget(item)||null,taskId:request?.taskId||previous.taskId||null,executionId:request?.executionId||previous.executionId||null,acceptedAt:Number(previous.acceptedAt||Date.now()),status:queued?'QUEUED':'ACCEPTED'};
+  pinnedOperations.set(key,operation);persistPinnedOperations();
+  if(!queued)localOperation={key,name,progress,message:messageText};
+  targetFeedback.set(key,{text:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อ release writer ว่าง':'รับคำสั่งแล้ว · ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ',tone:'info'});
+  return queued;
+}
+function markPinnedOutcomeUnknown(item,name){
+  const key=String(item?.key||'');if(!key)return;
+  const previous=pinnedOperations.get(key)||{key,name,target:operationTarget(item)||null,acceptedAt:Date.now()};
+  pinnedOperations.set(key,{...previous,key,name,status:'OUTCOME_UNKNOWN',outcomeUnknownAt:Date.now()});persistPinnedOperations();
+  targetFeedback.set(key,{text:'การตอบกลับขาดหายหลังส่งคำสั่ง · กำลังตรวจ task เดิมก่อนเปิดให้กดใหม่',tone:'info'});
+}
+function queuedPinnedOperations(){return [...pinnedOperations.values()].filter((operation)=>operation?.status==='QUEUED');}
+function reconcilePinnedOperations(){
+  if(pinnedOperations.size===0)return;
+  let changed=false;
+  for(const [key,operation] of [...pinnedOperations]){
+    const item=primaryItems().find((row)=>row.key===key);
+    const age=Date.now()-Number(operation.acceptedAt||0);
+    if(age>OWNER_OPERATION_MAX_AGE_MS){pinnedOperations.delete(key);changed=true;continue;}
+    if(!item)continue;
+    const serverTask=typeof item.taskId==='string'?item.taskId:null;
+    const sameTask=!operation.taskId||!serverTask||operation.taskId===serverTask;
+    if(['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)&&sameTask){
+      const queued=itemQueued(item);
+      operation.status=queued?'QUEUED':'ACTIVE';
+      if(serverTask)operation.taskId=serverTask;
+      pinnedOperations.set(key,operation);changed=true;
+      targetFeedback.set(key,{text:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อ release writer ว่าง':ownerProgressMessage(item,item.progressEvent,item.state==='WAITING_FOR_APPROVAL'),tone:'info'});
+      if(!queued&&(!localOperation||localOperation.key===key))localOperation={key,name:operation.name||item.name,progress:Math.max(8,Number(item?.progressEvent?.progress??item?.progress??8)),message:ownerProgressMessage(item,item.progressEvent,item.state==='WAITING_FOR_APPROVAL')};
+      continue;
+    }
+    if(item.state==='CURRENT'){
+      targetFeedback.set(key,{text:'อัปเดตสำเร็จ · ตรวจ Production แล้ว',tone:'good'});
+      pinnedOperations.delete(key);if(localOperation?.key===key)localOperation=null;changed=true;continue;
+    }
+    if(item.state==='BLOCKED'){
+      targetFeedback.set(key,{text:'รอบล่าสุดหยุดที่จุดปลอดภัย · Production เดิมยังอยู่ กรุณาดูเหตุผลก่อนลองใหม่',tone:'bad'});
+      pinnedOperations.delete(key);if(localOperation?.key===key)localOperation=null;changed=true;continue;
+    }
+    if(item.state==='UPDATE_AVAILABLE'&&!item.taskId&&!item.approvalId){
+      const uncertain=operation.status==='OUTCOME_UNKNOWN'&&Date.now()-Number(operation.outcomeUnknownAt||operation.acceptedAt||0)<OWNER_OPERATION_OUTCOME_PROBE_MS;
+      if(uncertain){targetFeedback.set(key,{text:'กำลังตรวจว่าคำสั่งรอบก่อนถูกบันทึกหรือไม่ · ยังไม่ต้องกดซ้ำ',tone:'info'});continue;}
+      targetFeedback.set(key,{text:operation.status==='OUTCOME_UNKNOWN'?'ไม่พบ task จากคำสั่งรอบก่อน · สามารถลองใหม่ได้':'งานรอบก่อนสิ้นสุดแล้ว · มีรุ่นใหม่พร้อมอัปเดต',tone:'info'});
+      pinnedOperations.delete(key);if(localOperation?.key===key)localOperation=null;changed=true;continue;
+    }
   }
-  if(['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)){
-    localOperation={key:item.key,name:pinnedOperation.name||item.name,progress:Math.max(8,Number(item?.progressEvent?.progress??item?.progress??8)),message:ownerProgressMessage(item,item.progressEvent,item.state==='WAITING_FOR_APPROVAL')};
-    return;
-  }
-  if(item.state==='BLOCKED'){
-    targetFeedback.set(item.key,{text:'รอบล่าสุดหยุดที่จุดปลอดภัย · Production เดิมยังอยู่ กรุณาดูเหตุผลก่อนลองใหม่',tone:'bad'});
-    pinnedOperation=null;persistPinnedOperation();localOperation=null;return;
-  }
-  const age=Date.now()-Number(pinnedOperation.acceptedAt||0);
-  if(age<OWNER_COMMAND_RECONCILE_MS){
-    localOperation={key:item.key,name:pinnedOperation.name||item.name,progress:8,message:'รับคำสั่งแล้ว · กำลังยืนยันสถานะจาก release controller · ไม่ต้องกดซ้ำ'};
-    return;
-  }
-  targetFeedback.set(item.key,{text:'การทำงานรอบก่อนสิ้นสุดแล้ว แต่ยังมีรุ่นรออัปเดต · ตรวจรายละเอียดก่อนกดใหม่',tone:'info'});
-  pinnedOperation=null;persistPinnedOperation();localOperation=null;
+  if(changed)persistPinnedOperations();
 }
 
 const stateLabel=(state)=>({
@@ -340,7 +407,7 @@ function primaryItems(){
 function summary(){
   const counts={current:0,update:0,progress:0,queue:0,attention:0};
   for(const item of primaryItems()){
-    if(pinnedFor(item)){counts.progress++;continue;}
+    if(pinnedFor(item)){counts.progress++;if(pinnedOperationFor(item.key)?.status==='QUEUED')counts.queue++;continue;}
     if(['CURRENT','INTERNAL_MANAGED'].includes(item.state))counts.current++;
     else if(item.state==='UPDATE_AVAILABLE')counts.update++;
     else if(['WAITING_FOR_APPROVAL','UPDATING'].includes(item.state)){counts.progress++;if(itemQueued(item))counts.queue++;}
@@ -368,7 +435,11 @@ function summary(){
 }
 
 function releaseText(item){
-  if(pinnedFor(item))return 'รับคำสั่งแล้ว · กำลังยืนยันสถานะล่าสุด';
+  const pinned=pinnedOperationFor(item?.key);
+  if(pinned?.status==='QUEUED')return 'รับคำสั่งแล้ว · รอคิว · รุ่นที่อนุมัติ '+short(pinned.target);
+  if(pinned?.status==='OUTCOME_UNKNOWN')return 'ส่งคำสั่งแล้ว · กำลังยืนยัน task เดิม';
+  if(pinned)return 'รับคำสั่งแล้ว · กำลังยืนยันสถานะล่าสุด';
+  if(item?.activeReleaseSha&&itemQueued(item))return 'รอคิว · รุ่นที่อนุมัติ '+short(item.activeReleaseSha);
   if(item.current&&item.candidate&&!hash(item.current)&&!hash(item.candidate)&&item.current!==item.candidate)return item.current+' → '+item.candidate;
   if(item.state==='CURRENT'&&item.current&&!hash(item.current))return 'รุ่น '+item.current;
   if(item.state==='UPDATE_AVAILABLE')return 'มีรุ่นใหม่พร้อมติดตั้ง';
@@ -386,7 +457,7 @@ function meta(...values){
 function technicalDetails(item){
   const details=document.createElement('details');details.className='update-technical';
   const summary=document.createElement('summary');summary.textContent='รายละเอียดทางเทคนิค';
-  const values=[adapterLabel(item.adapter),item.current?'current '+short(item.current):null,item.candidate?'candidate '+short(item.candidate):null];
+  const values=[adapterLabel(item.adapter),item.current?'current '+short(item.current):null,item.candidate?'candidate '+short(item.candidate):null,item.activeReleaseSha?'approved '+short(item.activeReleaseSha):null];
   if(item.releaseTrack)values.push('track '+item.releaseTrack);
   if(item.sourceAuthority)values.push('source '+item.sourceAuthority);
   if(item.currentReleaseId)values.push('release '+item.currentReleaseId);
@@ -442,18 +513,29 @@ function actionErrorText(error,button){
 }
 function actionButton(text,handler,className='primary-button',targetKey=null,successText='รับคำสั่งแล้ว · ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ',allowDuringOperation=false){
   const button=document.createElement('button');button.type='button';button.className=className;button.textContent=text;if(targetKey)button.dataset.targetKey=targetKey;
-  if(!allowDuringOperation&&ownerActionLocked(targetKey)){button.disabled=true;button.title='มีงานอัปเดตกำลังดำเนินการ · ระบบจะเปิดปุ่มให้อัตโนมัติเมื่อถึงจุดปลอดภัย';}
+  if(!allowDuringOperation&&ownerActionLocked(targetKey)){button.disabled=true;button.title='ระบบนี้มีคำสั่งอัปเดตอยู่แล้ว · ไม่สร้างงานซ้ำ';}
   button.addEventListener('click',async()=>{
-    if(!allowDuringOperation&&ownerActionLocked(targetKey)){actionFeedback(button,'มีงานอัปเดตกำลังดำเนินการ · ไม่ต้องกดซ้ำ ระบบจะทำต่อเอง','info',targetKey);return;}
+    if(!allowDuringOperation&&ownerActionLocked(targetKey)){actionFeedback(button,'ระบบนี้มีคำสั่งอัปเดตอยู่แล้ว · ไม่ต้องกดซ้ำ','info',targetKey);return;}
     const initialText=button.textContent;
-    actionInFlight=true;button.disabled=true;button.dataset.busy='true';button.setAttribute('aria-busy','true');button.textContent='กำลังรับคำสั่ง…';
-    actionFeedback(button,'กำลังตรวจความพร้อมและตรึงรุ่นที่จะอัปเดต','info',targetKey);
-    try{await handler();actionFeedback(button,successText,'good',targetKey);}
+    if(targetKey)actionInFlightTargets.add(targetKey);button.disabled=true;button.dataset.busy='true';button.setAttribute('aria-busy','true');button.textContent='กำลังรับคำสั่ง…';
+    actionFeedback(button,operationWillQueue(targetKey)?'กำลังส่งคำขอเข้าคิวและตรึงรุ่นที่เลือก':'กำลังตรวจความพร้อมและตรึงรุ่นที่จะอัปเดต','info',targetKey);
+    try{
+      const result=await handler();
+      const feedback=typeof result?.feedback==='string'?result.feedback:successText;
+      actionFeedback(button,feedback,result?.tone||'good',targetKey);
+    }
     catch(error){
-      pinnedOperation=null;persistPinnedOperation();localOperation=null;const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad',targetKey);syncLiveStream();renderProgress();
+      const outcomeUnknown=error?.outcomeUnknown===true||String(error?.code||'').toUpperCase()==='UPDATE_OUTCOME_UNKNOWN';
+      if(outcomeUnknown){
+        const text='ส่งคำสั่งแล้วแต่การตอบกลับขาดหาย · กำลังตรวจ task เดิมก่อนเปิดให้กดใหม่';
+        message(text,'info');actionFeedback(button,text,'info',targetKey);void refresh();
+      }else{
+        clearPinnedOperation(targetKey);if(localOperation?.key===targetKey)localOperation=null;
+        const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad',targetKey);syncLiveStream();renderProgress();
+      }
     }
     finally{
-      actionInFlight=false;button.removeAttribute('data-busy');button.removeAttribute('aria-busy');button.textContent=initialText;
+      if(targetKey)actionInFlightTargets.delete(targetKey);button.removeAttribute('data-busy');button.removeAttribute('aria-busy');button.textContent=initialText;
       button.disabled=!allowDuringOperation&&ownerActionLocked(targetKey);
     }
   });
@@ -461,7 +543,10 @@ function actionButton(text,handler,className='primary-button',targetKey=null,suc
 }
 function ownerFacingReason(item){
   if(!item)return 'ระบบที่เกี่ยวข้องยังไม่พร้อม';
-  if(pinnedFor(item))return 'รับคำสั่งแล้ว · ระบบกำลังทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ';
+  const pinned=pinnedOperationFor(item?.key);
+  if(pinned?.status==='QUEUED')return 'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติเมื่อ release writer ว่าง';
+  if(pinned?.status==='OUTCOME_UNKNOWN')return 'ส่งคำสั่งแล้ว · กำลังตรวจ task เดิมก่อนอนุญาตให้ลองใหม่';
+  if(pinned)return 'รับคำสั่งแล้ว · ระบบกำลังทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ';
   const reason=String(item.reason||'').trim();
   if(itemQueued(item))return 'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติเมื่อ writer ว่าง';
   if(item.state==='CURRENT')return 'ระบบนี้เป็นรุ่นล่าสุด';
@@ -520,6 +605,21 @@ function releaseNoteCount(notes){
   return noteGroups.reduce((total,[key])=>total+(Array.isArray(summary[key])?summary[key].length:0),0);
 }
 
+function ownerReleaseNoteText(value){
+  const raw=String(value||'').trim();
+  const normalized=raw.replace(/^(?:fix|feat|chore|test|refactor)(?:\([^)]*\))?:\s*/i,'').trim();
+  const known=new Map([
+    ['make hosting identity etc bind writable','แก้สิทธิ์ระบบ Managed Hosting ให้จัดการบัญชีบริการได้อย่างเสถียร'],
+    ['harden mobile command composer','ปรับช่องคำสั่งบนมือถือให้กดส่งและใช้งานกับคีย์บอร์ดได้เสถียรขึ้น'],
+    ['guard provider bundle closure','เพิ่มการตรวจแพ็กเกจผู้ให้บริการก่อนเปิดใช้จริง'],
+    ['validate closure deploy stages','เพิ่มการตรวจทุกขั้นของการติดตั้งก่อนปิดงาน'],
+    ['reclaim merged durable worktrees','คืนพื้นที่จากชุดงานพัฒนาที่รวมเสร็จแล้วอัตโนมัติ'],
+    ['harden permanent closure baseline','เสริม baseline สำหรับการปิดงานและบำรุงรักษาระยะยาว'],
+    ['let pressure guard reclaim durable worktrees','ให้ Storage Guard คืนพื้นที่จากชุดงานที่ใช้เสร็จแล้วอัตโนมัติ'],
+  ]);
+  return known.get(normalized.toLowerCase())||normalized||raw;
+}
+
 function renderReleaseNotes(item,host){
   const notes=item?.releaseNotes;
   if(!notes||typeof notes!=='object')return;
@@ -530,7 +630,7 @@ function renderReleaseNotes(item,host){
   const details=document.createElement('details');details.className='release-notes';
   if(['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'].includes(item.state))details.open=true;
   const summaryEl=document.createElement('summary');
-  summaryEl.textContent=count>0?'มีอะไรเปลี่ยนในรุ่นนี้ · '+count+' รายการ':(notes.ownerSummary||'รายละเอียดรุ่นนี้');
+  summaryEl.textContent=count>0?'มีอะไรเปลี่ยนในรุ่นนี้ · '+count+' รายการ':ownerReleaseNoteText(notes.ownerSummary||'รายละเอียดรุ่นนี้');
   details.append(summaryEl);
   const body=document.createElement('div');body.className='release-notes-body';
   for(const [key,label,icon] of noteGroups){
@@ -539,7 +639,7 @@ function renderReleaseNotes(item,host){
     const group=document.createElement('section');group.className='release-note-group';
     const h=document.createElement('h4');h.textContent=icon+' '+label;
     const ul=document.createElement('ul');
-    for(const row of rows){const li=document.createElement('li');li.textContent=String(row);ul.append(li);}
+    for(const row of rows){const li=document.createElement('li');li.textContent=ownerReleaseNoteText(row);ul.append(li);}
     group.append(h,ul);body.append(group);
   }
   if(internal.length){
@@ -627,11 +727,13 @@ function renderHistory(){
   const summary=$('release-history-summary');
   if(summary)summary.textContent=allRows.length?'ล่าสุด '+Math.min(allRows.length,6)+' รายการ':'ยังไม่มีประวัติ';
   if(!rows.length){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ยังไม่มีประวัติที่แสดงได้';host.append(empty);return;}
-  const state={COMPLETED:'ติดตั้งสำเร็จ',FAILED:'ไม่สำเร็จ',CANCELLED:'ถูกแทน/ยกเลิก'};
+  const state={COMPLETED:'ติดตั้งสำเร็จ',FAILED:'ไม่สำเร็จ',CANCELLED:'ยกเลิก',QUEUED:'รอคิว',WAITING_FOR_WORKER:'รอคิว',RUNNING:'กำลังอัปเดต',ROLLED_BACK:'ย้อนกลับแล้ว',SUPERSEDED:'ถูกแทนด้วยรุ่นใหม่'};
   for(const row of rows){
     const item=document.createElement('article');item.className='history-row';item.dataset.state=String(row.state||'');
     const dot=document.createElement('span');dot.className='history-dot';
-    const copy=document.createElement('div');const strong=document.createElement('strong');strong.textContent=state[row.state]||String(row.state||'ประวัติ');
+    const copy=document.createElement('div');const strong=document.createElement('strong');
+    const superseded=String(row.failureCode||'').includes('SUPERSEDED');
+    strong.textContent=superseded?'ถูกแทนด้วยรุ่นใหม่':(state[row.state]||String(row.state||'ประวัติ'));
     const meta=document.createElement('span');
     const date=row.updatedAt?new Date(row.updatedAt).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):'';
     meta.textContent=[row.releaseSha?short(row.releaseSha):null,date].filter(Boolean).join(' · ');
@@ -654,6 +756,17 @@ function renderDevices(item,host){
     row.append(name,status);list.append(row);
   }
   details.append(summary,list);host.append(details);
+}
+
+function actionLabel(item,normalLabel){
+  if(!item?.key)return normalLabel;
+  if(ownerActionLocked(item.key))return normalLabel;
+  if(!operationWillQueue(item.key))return normalLabel;
+  if(item.adapter==='PLATFORM_RELEASE')return 'เข้าคิว VPS';
+  if(item.adapter==='CORE_RELEASE')return 'เข้าคิว AWH';
+  if(item.adapter==='ASSESSMENT_RELEASE')return 'เข้าคิว Assessment';
+  if(item.adapter==='LEARNLAB_RELEASE')return 'เข้าคิว LearnLab';
+  return 'เข้าคิว '+String(item.name||'อัปเดต');
 }
 
 function renderCard(item){
@@ -686,13 +799,13 @@ function renderCard(item){
   renderTargetHistory(item,main);
   main.append(technicalDetails(item));
   const actions=document.createElement('div');actions.className='update-actions';
-  if(item.adapter==='PLATFORM_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton('อัปเดต VPS',()=>updatePlatform(item),'primary-button',item.key));
-  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate)actions.append(actionButton('ทำต่อ VPS Platform',()=>updatePlatform(item),'primary-button',item.key));
-  else if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton(item.runtimeState==='SPLIT'?'ปรับ Runtime และอัปเดต':'อัปเดต AWH',()=>updateAwh(item),'primary-button',item.key));
-  else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate)actions.append(actionButton('ทำต่อ AWH',()=>updateAwh(item),'primary-button',item.key));
-  else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidateReleaseSha&&item.candidateVersion)actions.append(actionButton('ทำต่อ LearnLab',()=>resumeLearnLab(item),'primary-button',item.key));
-  else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate&&item.candidateVersion)actions.append(actionButton('อัปเดต Assessment',()=>updateAssessment(item),'primary-button',item.key));
-  else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate&&item.candidateVersion)actions.append(actionButton('ทำต่อ Assessment',()=>updateAssessment(item),'primary-button',item.key));
+  if(item.adapter==='PLATFORM_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton(actionLabel(item,'อัปเดต VPS'),()=>updatePlatform(item),'primary-button',item.key));
+  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate)actions.append(actionButton(actionLabel(item,'ทำต่อ VPS Platform'),()=>updatePlatform(item),'primary-button',item.key));
+  else if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton(actionLabel(item,item.runtimeState==='SPLIT'?'ปรับ Runtime และอัปเดต':'อัปเดต AWH'),()=>updateAwh(item),'primary-button',item.key));
+  else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate)actions.append(actionButton(actionLabel(item,'ทำต่อ AWH'),()=>updateAwh(item),'primary-button',item.key));
+  else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidateReleaseSha&&item.candidateVersion)actions.append(actionButton(actionLabel(item,'ทำต่อ LearnLab'),()=>resumeLearnLab(item),'primary-button',item.key));
+  else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate&&item.candidateVersion)actions.append(actionButton(actionLabel(item,'อัปเดต Assessment'),()=>updateAssessment(item),'primary-button',item.key));
+  else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate&&item.candidateVersion)actions.append(actionButton(actionLabel(item,'ทำต่อ Assessment'),()=>updateAssessment(item),'primary-button',item.key));
   else if(item.adapter==='MANAGED_HOSTING'&&item.state==='UPDATE_AVAILABLE'&&item.siteId)actions.append(actionButton('อัปเดต',()=>updateHosting(item),'primary-button',item.key));
   else if(item.adapter==='BAY_UPDATE_CENTER'&&item.state==='UPDATE_AVAILABLE'&&item.release)actions.append(actionButton('อัปเดต '+item.name,()=>updateBay(item),'primary-button',item.key));
   if(item.canCancel===true&&item.taskId)actions.append(actionButton('ยกเลิก',()=>cancelUpdate(item),'secondary-button',item.key,'ยกเลิกงานแล้ว · ยังไม่มีการเปลี่ยน Production',true));
@@ -789,7 +902,7 @@ function progressEventFresh(event,maxAgeMs=20000){
 }
 
 function hasActiveUpdate(){
-  return Boolean(localOperation)||Boolean(pinnedOperation)||primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
+  return Boolean(localOperation)||pinnedOperations.size>0||primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
 }
 
 function stopLiveStream(){
@@ -800,7 +913,7 @@ function stopLiveStream(){
 function liveUiSignature(snapshot){
   const items=Array.isArray(snapshot?.items)?snapshot.items:[];
   return JSON.stringify(items.map((item)=>[
-    item?.key||null,item?.state||null,item?.current||null,item?.candidate||null,item?.taskId||null,item?.taskState||null,item?.canCancel===true,
+    item?.key||null,item?.state||null,item?.current||null,item?.candidate||null,item?.activeReleaseSha||null,item?.taskId||null,item?.taskState||null,item?.canCancel===true,
     Number(item?.progress??0),item?.progressEvent?.state||null,item?.progressEvent?.progress??null,item?.progressEvent?.message||null,
   ]));
 }
@@ -813,8 +926,8 @@ function ensureLiveStream(){
     const changed=nextSignature!==lastLiveUiSignature;
     liveConnected=true;liveUpdatedAt=Date.now();center=normalized;lastLiveUiSignature=nextSignature;
     $('updates-freshness').textContent='สด · '+new Date(snapshot.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    reconcilePinnedOperation();
-    if(!pinnedOperation&&!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
+    reconcilePinnedOperations();
+    if(pinnedOperations.size===0&&!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
     if(changed)render();else renderProgress();
     scheduleRefresh();
   },()=>{
@@ -829,27 +942,31 @@ function syncLiveStream(){
 
 function renderProgress(){
   const active=(center?.items||[]).filter((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
+  const queuedPins=queuedPinnedOperations();
   const host=$('operation-progress');
   const queueHost=$('operation-queue');
-  if(!active.length&&!localOperation){host.hidden=true;if(queueHost)queueHost.hidden=true;return;}
+  if(!active.length&&!localOperation&&queuedPins.length===0){host.hidden=true;if(queueHost)queueHost.hidden=true;return;}
   host.hidden=false;
   const queued=active.filter(itemQueued);
   const item=active.find((row)=>row.state==='UPDATING'&&!itemQueued(row))
     ||active.find((row)=>row.state==='WAITING_FOR_APPROVAL')
-    ||active[0];
+    ||active[0]
+    ||null;
   const waiting=item?.state==='WAITING_FOR_APPROVAL';
-  const queuedOnly=itemQueued(item);
+  const queuedOnly=item?itemQueued(item):(!localOperation&&queuedPins.length>0);
+  const queuedPin=queuedOnly&&!item?queuedPins[0]:null;
   const localForItem=!item||localOperation?.key===item?.key?localOperation:null;
   const progress=queuedOnly?0:Math.max(0,Math.min(100,Number(item?.progressEvent?.progress??item?.progress??(waiting?5:localForItem?.progress??15))));
-  $('operation-progress-title').textContent=waiting?'รอยืนยันก่อนติดตั้ง':queuedOnly?('รอคิวอัปเดต '+(item?.name||localForItem?.name||'ระบบ')):('กำลังอัปเดต '+(item?.name||localForItem?.name||'ระบบ'));
+  const operationName=item?.name||localForItem?.name||queuedPin?.name||'ระบบ';
+  $('operation-progress-title').textContent=waiting?'รอยืนยันก่อนติดตั้ง':queuedOnly?('รอคิวอัปเดต '+operationName):('กำลังอัปเดต '+operationName);
   $('operation-progress-percent').textContent=queuedOnly?'รอคิว':Math.round(progress)+'%';
   $('operation-progress-bar').style.width=progress+'%';
   const event=item?.progressEvent||null;
   const eventFresh=liveConnected&&progressEventFresh(event);
-  $('operation-progress-message').textContent=ownerProgressMessage(item,event,waiting);
+  $('operation-progress-message').textContent=queuedOnly?'รับคำสั่งแล้ว · จะเริ่มอัตโนมัติเมื่อ release writer ว่าง':ownerProgressMessage(item,event,waiting);
   $('operation-progress-live').textContent=(eventFresh?'● สด · ':(liveConnected?'● เชื่อมต่ออยู่ · ':'สำรอง · '))+relativeLiveTime(event?.occurredAt||null);
   if(queueHost){
-    const names=queued.map((row)=>row.name).filter(Boolean);
+    const names=[...new Set([...queued.map((row)=>row.name),...queuedPins.map((operation)=>operation.name)].filter(Boolean))];
     queueHost.hidden=names.length===0;
     queueHost.textContent=names.length===0?'':'รอคิว '+names.length+' ระบบ · '+names.join(' · ');
   }
@@ -858,49 +975,59 @@ function renderProgress(){
   const thresholds=[22,54,84,98,100];
   [...$('operation-steps').children].forEach((step,index)=>{
     const previous=index===0?0:thresholds[index-1];
-    step.dataset.status=progress>=thresholds[index]?'done':(progress>=previous?'active':'pending');
+    step.dataset.status=queuedOnly?'pending':progress>=thresholds[index]?'done':(progress>=previous?'active':'pending');
   });
 }
 
+async function submitPinnedUpdate(item,name,progress,messageText,requestFn){
+  const queuedHint=operationWillQueue(item.key);
+  beginPinnedOperation(item,name,queuedHint);
+  try{
+    const request=await requestFn();
+    const queued=pinAcceptedOperation(item,name,request,progress,messageText,queuedHint);
+    return {request,queued,feedback:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อ release writer ว่าง':'รับคำสั่งแล้ว · ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ',tone:'info'};
+  }catch(error){
+    if(typeof error?.code==='string'&&error.code!==''){
+      clearPinnedOperation(item.key);if(localOperation?.key===item.key)localOperation=null;throw error;
+    }
+    markPinnedOutcomeUnknown(item,name);
+    const uncertain=Object.assign(new Error('ส่งคำสั่งแล้วแต่ยังยืนยันผลตอบกลับไม่ได้'),{code:'UPDATE_OUTCOME_UNKNOWN',outcomeUnknown:true,cause:error});
+    throw uncertain;
+  }
+}
+
 async function updatePlatform(item){
-  localOperation={key:item.key,name:'VPS Platform',progress:6,message:'กำลังตรึงรุ่น VPS Platform ที่เลือกและตรวจความพร้อม'};
-  const request=await requestPlatformRelease(item.candidate,false);
-  pinAcceptedOperation(item,'VPS Platform',request,8,'รับคำสั่งแล้ว · ระบบกำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify · ไม่ต้องกดซ้ำ');
-  message('VPS Platform รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ');
+  const result=await submitPinnedUpdate(item,'VPS Platform',8,'รับคำสั่งแล้ว · ระบบกำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify · ไม่ต้องกดซ้ำ',()=>requestPlatformRelease(item.candidate,false));
+  message(result.queued?'VPS Platform เข้าคิวแล้ว · จะเริ่มเองเมื่อ AWH/งานก่อนหน้าจบ Verify':'VPS Platform รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ','info');
   await refresh();
+  return result;
 }
 
 async function updateAwh(item){
-  const split=item.runtimeState==='SPLIT';
-  const detail=split
-    ?'ตรวจพบ component บางส่วนอยู่คนละรุ่น ระบบจะใช้ release ล่าสุดเพื่อปรับ Runtime ให้สอดคล้อง แล้วจึง Verify ทั้งชุด'
-    :'ระบบจะตรวจทุก gate สำรองข้อมูล ติดตั้ง และ Verify ก่อนเปลี่ยน Production';
-  localOperation={key:item.key,name:'AWH',progress:6,message:'กำลังตรึงรุ่น AWH ที่เลือกและตรวจความพร้อม'};
-  const request=await requestCoreRelease(item.candidate,false);
-  pinAcceptedOperation(item,'AWH',request,8,'รับคำสั่งแล้ว · ระบบกำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify · ไม่ต้องกดซ้ำ');
-  message('AWH รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ');
+  const result=await submitPinnedUpdate(item,'AWH',8,'รับคำสั่งแล้ว · ระบบกำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify · ไม่ต้องกดซ้ำ',()=>requestCoreRelease(item.candidate,false));
+  message(result.queued?'AWH เข้าคิวแล้ว · จะเริ่มเองเมื่อ release writer ว่าง':'AWH รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ','info');
   await refresh();
+  return result;
 }
 async function resumeLearnLab(item){
-  localOperation={key:item.key,name:'LearnLab',progress:6,message:'กำลังทำงานอัปเดตเดิมต่อโดยไม่สร้าง release ซ้ำ'};
-  const request=await requestLearnLabRelease(item.candidateReleaseSha,item.candidateVersion);
-  pinAcceptedOperation(item,'LearnLab',request,8,'รับคำสั่งแล้ว · กำลังทำงานเดิมต่อและตรวจผล · ไม่ต้องกดซ้ำ');
-  message('LearnLab รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ');
+  const result=await submitPinnedUpdate(item,'LearnLab',8,'รับคำสั่งแล้ว · กำลังทำงานเดิมต่อและตรวจผล · ไม่ต้องกดซ้ำ',()=>requestLearnLabRelease(item.candidateReleaseSha,item.candidateVersion));
+  message(result.queued?'LearnLab เข้าคิวแล้ว · จะเริ่มเองเมื่อ release writer ว่าง':'LearnLab รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ','info');
   await refresh();
+  return result;
 }
 
 async function updateAssessment(item){
-  const request=await requestAssessmentRelease(item.candidate,item.candidateVersion);
-  pinAcceptedOperation(item,'Assessment',request,10,'รับคำสั่งแล้ว · กำลังเตรียม Staging และตรวจผล · ไม่ต้องกดซ้ำ');
-  message('Assessment รับคำสั่งแล้ว · ระบบกำลังดำเนินการแบบ staging-first ไม่ต้องกดซ้ำ');
+  const result=await submitPinnedUpdate(item,'Assessment',10,'รับคำสั่งแล้ว · กำลังเตรียม Staging และตรวจผล · ไม่ต้องกดซ้ำ',()=>requestAssessmentRelease(item.candidate,item.candidateVersion));
+  message(result.queued?'Assessment เข้าคิวแล้ว · จะเริ่มเองเมื่อ release writer ว่าง':'Assessment รับคำสั่งแล้ว · ระบบกำลังดำเนินการแบบ staging-first ไม่ต้องกดซ้ำ','info');
   await refresh();
+  return result;
 }
 
 async function updateHosting(item){
-  const request=await managedSiteAction(item.siteId,'deploy');
-  pinAcceptedOperation(item,item.name,request,8,'รับคำสั่งแล้ว · Managed Hosting กำลังติดตั้งและตรวจ health · ไม่ต้องกดซ้ำ');
-  message(item.name+' รับคำสั่งแล้ว · ระบบจะติดตั้งและตรวจ health ให้อัตโนมัติ');
+  const result=await submitPinnedUpdate(item,item.name,8,'รับคำสั่งแล้ว · Managed Hosting กำลังติดตั้งและตรวจ health · ไม่ต้องกดซ้ำ',()=>managedSiteAction(item.siteId,'deploy'));
+  message(result.queued?item.name+' เข้าคิวแล้ว · จะเริ่มเองเมื่อ writer ว่าง':item.name+' รับคำสั่งแล้ว · ระบบจะติดตั้งและตรวจ health ให้อัตโนมัติ','info');
   await refresh();
+  return result;
 }
 
 async function updateBay(item){
@@ -912,9 +1039,9 @@ async function updateBay(item){
     message(item.name+' รับคำสั่งติดตั้งแล้ว · ระบบกำลังตรวจสถานะใหม่ ไม่ต้องกดซ้ำ');
   }catch(error){
     if(error?.code==='BAY_INSTALL_OUTCOME_UNKNOWN'){
-      pinnedOperation={key:item.key,name:item.name,target:String(item.candidate||release.version||''),taskId:null,executionId:null,acceptedAt:Date.now()};persistPinnedOperation();
+      beginPinnedOperation(item,item.name,operationWillQueue(item.key));markPinnedOutcomeUnknown(item,item.name);
       localOperation={key:item.key,name:item.name,progress:8,message:'ส่งคำสั่งแล้วแต่การเชื่อมต่อขาด · กำลังตรวจผลก่อน ห้ามติดตั้งซ้ำ'};
-      message(friendly(error));await refreshBay();return;
+      message(friendly(error));await refreshBay();return {feedback:'ส่งคำสั่งแล้ว · กำลังยืนยันผลก่อนเปิดให้กดใหม่',tone:'info'};
     }
     throw error;
   }
@@ -1167,12 +1294,12 @@ async function refresh(options={}){
     await loadAuthSession();
     center=normalizeUpdateCenter(await loadUpdateCenter());
     lastLiveUiSignature=liveUiSignature(center);
-    reconcilePinnedOperation();
+    reconcilePinnedOperations();
     $('updates-freshness').textContent='ตรวจล่าสุด '+new Date(center.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
     render();
     await Promise.allSettled([refreshBay(),refreshAgent()]);
-    reconcilePinnedOperation();
-    if(!pinnedOperation&&!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
+    reconcilePinnedOperations();
+    if(pinnedOperations.size===0&&!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
     reconcileRecoveredActionMessage();
   }catch(error){
     if(center){
