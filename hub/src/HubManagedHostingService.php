@@ -40,7 +40,13 @@ final class HubManagedHostingService
     {
         $owner=$this->ownerSession($token); $q=$this->pdo->prepare("SELECT s.*,p.name AS project_name,b.binding_kind,b.host AS binding_host,b.port AS binding_port,b.tls_mode,b.state AS binding_state,d.engine AS db_engine,d.state AS db_state,(SELECT host FROM control_site_bindings x WHERE x.site_id=s.site_id AND x.binding_kind='DOMAIN' AND x.state<>'DISABLED' ORDER BY x.updated_at DESC LIMIT 1) AS domain_host,(SELECT state FROM control_site_bindings x WHERE x.site_id=s.site_id AND x.binding_kind='DOMAIN' AND x.state<>'DISABLED' ORDER BY x.updated_at DESC LIMIT 1) AS domain_state,(SELECT event_name FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_name,(SELECT state FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_state,(SELECT message FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_message,(SELECT occurred_at FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_at,(SELECT e.task_id FROM control_site_events e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_task_executions x ON x.task_id=t.task_id WHERE e.site_id=s.site_id AND x.required_capability='hosting.site.deploy' AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY e.occurred_at DESC LIMIT 1) AS active_deploy_task_id,(SELECT t.state FROM control_site_events e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_task_executions x ON x.task_id=t.task_id WHERE e.site_id=s.site_id AND x.required_capability='hosting.site.deploy' AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY e.occurred_at DESC LIMIT 1) AS active_deploy_task_state,v.active_revision_id AS source_revision_id,COALESCE(v.sync_state,'EMPTY') AS source_sync_state,(SELECT e.last_error_code FROM control_task_executions e WHERE e.project_id=s.project_id AND e.required_capability IN ('hosting.site.provision','hosting.site.deploy') AND e.state IN ('WAITING_FOR_CAPABILITY','FAILED') ORDER BY e.updated_at DESC LIMIT 1) AS source_blocker_code,(SELECT r.vault_revision_id FROM control_site_releases r WHERE r.release_id=s.current_release_id AND r.site_id=s.site_id LIMIT 1) AS current_release_revision_id FROM control_managed_sites s JOIN projects p ON p.project_id=s.project_id LEFT JOIN control_site_bindings b ON b.site_id=s.site_id AND b.is_primary=1 AND b.state<>'DISABLED' LEFT JOIN control_site_database_bindings d ON d.site_id=s.site_id LEFT JOIN control_project_vaults v ON v.project_id=s.project_id WHERE s.created_by_user_id=:owner ORDER BY CASE s.state WHEN 'READY' THEN 0 WHEN 'PROVISIONING' THEN 1 WHEN 'QUEUED' THEN 2 ELSE 3 END,s.updated_at DESC LIMIT 200");
         $q->execute(['owner'=>$owner['user_id']]); $rows=array_map([self::class,'siteRow'],$q->fetchAll());
-        $recent=$this->recentSiteEvents((string)$owner['user_id']);foreach($rows as &$row)$row['recentEvents']=$recent[$row['siteId']]??[];unset($row);
+        $recent=$this->recentSiteEvents((string)$owner['user_id']);
+        foreach($rows as &$row){
+            $row['recentEvents']=$recent[$row['siteId']]??[];
+            try{$row['secretsState']='READY';$row['secretsConfigured']=$this->siteSecretStore((string)$row['siteId'])->configured();}
+            catch(Throwable){$row['secretsState']='UNAVAILABLE';$row['secretsConfigured']=null;}
+        }
+        unset($row);
         $root=strtolower(trim((string)(getenv('AWH_ROOT_DOMAIN')?:'kruart.online'))); $now=gmdate('c');
         try{$telemetry=HubInfrastructureService::fromEnvironment()->status($now);}catch(Throwable){$telemetry=['state'=>'UNAVAILABLE','generatedAt'=>null,'server'=>null];}
         $adoptions=$this->adoptionState((string)$owner['user_id']);
@@ -202,11 +208,11 @@ final class HubManagedHostingService
         $claimed=[];$sites=[];
         foreach($managed as $site){
             if(!is_array($site))continue;
-            $hosts=[];
-            foreach([$site['domainHost']??null,$site['primaryHost']??null,isset($site['slug'])?(string)$site['slug'].'.'.$root:null] as $host){
+            $hosts=[];$environment=strtoupper((string)($site['environment']??'PRODUCTION'));$environmentSuffix=$environment==='STAGING'?'-staging':($environment==='PREVIEW'?'-preview':'');$defaultHost=strtolower((string)$site['slug'].$environmentSuffix.'.'.$root);
+            foreach([$site['domainHost']??null,$site['primaryHost']??null,$defaultHost] as $host){
                 if(!is_string($host)||$host==='')continue;$host=strtolower($host);$hosts[$host]=true;$claimed[$host]=(string)$site['siteId'];
             }
-            $primary=is_string($site['domainHost']??null)&&$site['domainHost']!==''?strtolower((string)$site['domainHost']):(is_string($site['primaryHost']??null)&&$site['primaryHost']!==''?strtolower((string)$site['primaryHost']):strtolower((string)$site['slug'].'.'.$root));
+            $primary=is_string($site['domainHost']??null)&&$site['domainHost']!==''?strtolower((string)$site['domainHost']):(is_string($site['primaryHost']??null)&&$site['primaryHost']!==''?strtolower((string)$site['primaryHost']):$defaultHost);
             $route=$routeMap[$primary]??null;$domain=$domainMap[$primary]??null;
             $routeType=is_array($route)?(string)($route['routeType']??'UNKNOWN'):match((string)($site['runtimeType']??'AUTO')){'STATIC'=>'STATIC','PHP'=>'PHP','NODE'=>'PROXY',default=>'UNKNOWN'};
             $redirect=is_array($route)&&is_string($route['redirectHost']??null)?strtolower((string)$route['redirectHost']):null;
@@ -225,6 +231,7 @@ final class HubManagedHostingService
                 'certificateDaysRemaining'=>is_array($liveDomain)?($liveDomain['certificateDaysRemaining']??null):null,'redirectHost'=>$redirect,
                 'url'=>$site['url']??($liveState!=='NOT_DETECTED'?(($liveTls?'https://':'http://').$liveHost.'/'):null),'source'=>$site['source']??null,'backupEnabled'=>($site['backupEnabled']??false)===true,
                 'databaseMode'=>$site['databaseMode']??null,'databaseState'=>$site['databaseState']??null,
+                'secretsState'=>$site['secretsState']??'UNAVAILABLE','secretsConfigured'=>$site['secretsConfigured']??null,
                 'currentReleaseId'=>$site['currentReleaseId']??null,'rollbackReleaseId'=>$site['rollbackReleaseId']??null,'lastEvent'=>$site['lastEvent']??null,'recentEvents'=>$site['recentEvents']??[],
             ];
         }
@@ -253,7 +260,11 @@ final class HubManagedHostingService
         $storage=is_array($server['storage']??null)?$server['storage']:[];
         $usedPercent=$storage['usedPercent']??null;$usedPercent=(is_int($usedPercent)||is_float($usedPercent))?(float)$usedPercent:null;
         $available=$storage['availableBytes']??null;$available=is_int($available)&&$available>=0?$available:null;
-        return ['sites'=>$sites,'domains'=>$domains,'meta'=>['state'=>(string)($telemetry['state']??'UNAVAILABLE'),'generatedAt'=>$telemetry['generatedAt']??null,'managedCount'=>$managedCount,'adoptedCount'=>$adoptedCount,'discoveredCount'=>$discoveredCount,'aliasCount'=>$aliasCount,'domainCount'=>count($domains),'storageUsedPercent'=>$usedPercent,'storageAvailableBytes'=>$available,'readOnlyDiscovery'=>true]];
+        $portUsed=[];foreach($managed as $site)if(($site['state']??null)!=='DISABLED'&&is_int($site['port']??null)&&$site['port']>=8400&&$site['port']<=8999)$portUsed[(int)$site['port']]=true;
+        $portTotal=600;$portUsedCount=count($portUsed);
+        $unroutedManaged=count(array_filter($sites,static fn(array $site):bool=>($site['ownership']??null)==='MANAGED'&&($site['liveState']??null)==='NOT_DETECTED'));
+        $tlsAttention=count(array_filter($domains,static fn(array $domain):bool=>($domain['tls']??false)!==true));
+        return ['sites'=>$sites,'domains'=>$domains,'meta'=>['state'=>(string)($telemetry['state']??'UNAVAILABLE'),'generatedAt'=>$telemetry['generatedAt']??null,'managedCount'=>$managedCount,'adoptedCount'=>$adoptedCount,'discoveredCount'=>$discoveredCount,'aliasCount'=>$aliasCount,'domainCount'=>count($domains),'unroutedManagedCount'=>$unroutedManaged,'tlsAttentionCount'=>$tlsAttention,'managedPortUsed'=>$portUsedCount,'managedPortTotal'=>$portTotal,'managedPortRemaining'=>$portTotal-$portUsedCount,'storageUsedPercent'=>$usedPercent,'storageAvailableBytes'=>$available,'readOnlyDiscovery'=>true]];
     }
 
     /** @return array<string,list<array<string,mixed>>> */

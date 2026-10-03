@@ -499,9 +499,9 @@ export async function updatePersonAccess(userId, role, projectIds) {
   return controlRequest(`/api/v1/auth/people/${userId}/access`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, role, projectIds }) });
 }
 export async function listManagedSites() { return controlRequest('/api/v1/control/hosting/sites'); }
-export async function createManagedSite({ name, slug, projectId, runtimeType = 'AUTO', databaseMode = 'AUTO', backupEnabled = true }) {
-  if (!UUID.test(projectId) || typeof name !== 'string' || !name.trim() || typeof slug !== 'string' || !/^[a-z0-9][a-z0-9-]{1,47}$/.test(slug)) throw new Error('ข้อมูลเว็บไซต์ไม่ถูกต้อง');
-  return controlRequest('/api/v1/control/hosting/sites', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, name: name.trim(), slug, projectId, environment: 'PRODUCTION', runtimeType, databaseMode, publicMode: 'IP_PORT', healthPath: '/', backupEnabled: Boolean(backupEnabled) }) });
+export async function createManagedSite({ name, slug, projectId, environment = 'PRODUCTION', runtimeType = 'AUTO', databaseMode = 'AUTO', backupEnabled = true }) {
+  if (!UUID.test(projectId) || typeof name !== 'string' || !name.trim() || typeof slug !== 'string' || !/^[a-z0-9][a-z0-9-]{1,47}$/.test(slug) || !['PRODUCTION','STAGING','PREVIEW'].includes(environment)) throw new Error('ข้อมูลเว็บไซต์ไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/hosting/sites', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, name: name.trim(), slug, projectId, environment, runtimeType, databaseMode, publicMode: 'IP_PORT', healthPath: '/', backupEnabled: Boolean(backupEnabled) }) });
 }
 export async function bindManagedSiteDomain(siteId, hostname) { if (!UUID.test(siteId) || typeof hostname !== 'string' || !hostname.trim()) throw new Error('โดเมนไม่ถูกต้อง'); return controlRequest(`/api/v1/control/hosting/sites/${siteId}/domain`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, hostname: hostname.trim().toLowerCase() }) }); }
 export async function observeHostingSite(hostname, projectId, action = 'ADOPT') {

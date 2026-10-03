@@ -43,7 +43,7 @@ $managed=[[
     'projectName'=>'School Website','name'=>'เว็บไซต์โรงเรียน','slug'=>'school','environment'=>'PRODUCTION',
     'state'=>'READY','runtimeType'=>'STATIC','domainHost'=>'school.kruart.online','primaryHost'=>'school.kruart.online',
     'port'=>null,'url'=>'https://school.kruart.online/','source'=>['ready'=>true],'backupEnabled'=>true,
-    'currentReleaseId'=>'release-school','rollbackReleaseId'=>null,'lastEvent'=>null,
+    'currentReleaseId'=>'release-school','rollbackReleaseId'=>null,'lastEvent'=>null,'secretsState'=>'READY','secretsConfigured'=>true,
 ]];
 $result=$method->invoke($service,$managed,$telemetry,'kruart.online');
 hc(($result['meta']['managedCount']??null)===1,'managed count');
@@ -52,8 +52,14 @@ hc(($result['meta']['aliasCount']??null)===1,'alias count');
 hc(($result['meta']['domainCount']??null)===3,'domain count');
 hc(($result['meta']['storageUsedPercent']??null)===40.0,'storage percent is summarized');
 hc(($result['meta']['storageAvailableBytes']??null)===600,'storage availability is summarized');
+hc(($result['meta']['managedPortUsed']??null)===0,'managed port usage is summarized');
+hc(($result['meta']['managedPortTotal']??null)===600,'managed port capacity is bounded');
+hc(($result['meta']['managedPortRemaining']??null)===600,'managed port remaining capacity is summarized');
+hc(($result['meta']['unroutedManagedCount']??null)===0,'managed route attention is summarized');
+hc(($result['meta']['tlsAttentionCount']??null)===0,'tls attention is summarized');
 $byHost=[]; foreach($result['sites'] as $row)$byHost[$row['primaryHost']]=$row;
 hc(($byHost['school.kruart.online']['ownership']??null)==='MANAGED','managed reconciliation');
+hc(($byHost['school.kruart.online']['secretsState']??null)==='READY'&&($byHost['school.kruart.online']['secretsConfigured']??null)===true,'secret configuration is summarized without values');
 hc(($byHost['legacy.kruart.online']['ownership']??null)==='DISCOVERED','legacy remains read only');
 hc(($byHost['legacy.kruart.online']['upstreamPort']??null)===9001,'safe upstream port detail');
 hc(($byHost['www.kruart.online']['ownership']??null)==='ALIAS','redirect classified as alias');
@@ -79,6 +85,16 @@ $managedByHost=[];foreach($reconciled['sites'] as $row)$managedByHost[$row['prim
 hc(($managedByHost['www.kruart.online']['managementState']??null)==='FAILED','management failure remains visible');
 hc(($managedByHost['www.kruart.online']['liveState']??null)==='ONLINE','live redirect target keeps website online');
 hc(($managedByHost['www.kruart.online']['liveHost']??null)==='school.kruart.online','live target is reconciled independently from managed record');
+
+$staging=[[
+    'siteId'=>'99999999-9999-4999-8999-999999999999','projectId'=>'12121212-1212-4212-8212-121212121212',
+    'projectName'=>'Portal','name'=>'Portal Staging','slug'=>'portal','environment'=>'STAGING','state'=>'QUEUED','runtimeType'=>'STATIC',
+    'domainHost'=>null,'primaryHost'=>null,'port'=>null,'url'=>null,'source'=>['ready'=>false],'backupEnabled'=>true,
+    'currentReleaseId'=>null,'rollbackReleaseId'=>null,'lastEvent'=>null,'recentEvents'=>[],
+]];
+$stagingInventory=$method->invoke($service,$staging,$telemetry,'kruart.online');
+hc(($stagingInventory['sites'][0]['primaryHost']??null)==='portal-staging.kruart.online','staging default hostname is isolated from production');
+hc(($stagingInventory['sites'][0]['environment']??null)==='STAGING','staging environment is preserved');
 
 $encoded=json_encode($adopted,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
 hc(!str_contains($encoded,'/var/www/')&&!str_contains($encoded,'/etc/nginx/'),'raw server paths are not exposed');
