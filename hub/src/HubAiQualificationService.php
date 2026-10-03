@@ -153,3 +153,60 @@ final class HubAiQualificationService
     private static function timestamp(string $value): string { if (strtotime($value)===false) throw new HubAiQualificationException('Qualification timestamp is invalid','AI_QUALIFICATION_INVALID'); return gmdate('c',strtotime($value)); }
     private static function uuid(): string { $b=random_bytes(16);$b[6]=chr((ord($b[6])&15)|64);$b[8]=chr((ord($b[8])&63)|128);return vsprintf('%s%s-%s-%s-%s-%s%s%s',str_split(bin2hex($b),4)); }
 }
+
+
+final class HubAiProviderHubException extends RuntimeException
+{
+    public function __construct(string $message, public readonly string $codeName = 'PROVIDER_HUB_FAILED') { parent::__construct($message); }
+}
+
+/** Registry projection for future provider adapters; canonical M16 tables remain source of truth. */
+final class HubAiProviderHubService
+{
+    public function __construct(private readonly PDO $pdo) {}
+    /** @param list<string> $runtimeProviderIds @return array<string,mixed> */
+    public function catalog(array $runtimeProviderIds): array
+    {
+        $runtime=array_fill_keys(array_map('strtolower',$runtimeProviderIds),true);
+        $rows=$this->pdo->query("SELECT e.provider_id,e.display_name,e.provider_kind,e.cost_class,e.priority,e.enabled,
+            p.lifecycle,p.current_availability,p.max_data_classification,p.free_quota_json,p.paid_quota_json,p.policy_version,p.updated_at,p.metadata_json
+            FROM control_execution_providers e JOIN control_ai_provider_profiles p ON p.provider_id=e.provider_id
+            WHERE e.provider_kind='API' ORDER BY e.priority DESC,e.provider_id")->fetchAll();
+        $providers=[];
+        foreach($rows as $row){
+            $id=strtolower((string)$row['provider_id']); if(!isset($runtime[$id]))continue;
+            $meta=self::json((string)$row['metadata_json']);
+            $providers[]=[
+                'providerId'=>$id,'displayName'=>(string)$row['display_name'],'providerKind'=>strtolower((string)$row['provider_kind']),
+                'costClass'=>strtolower((string)$row['cost_class']),'priority'=>(int)$row['priority'],'enabled'=>(bool)$row['enabled'],
+                'lifecycle'=>strtolower((string)$row['lifecycle']),'availability'=>strtolower((string)$row['current_availability']),
+                'maxDataClassification'=>strtolower((string)$row['max_data_classification']),'policyVersion'=>(string)$row['policy_version'],
+                'runtimeAvailable'=>true,'localInference'=>($meta['localInference']??false)===true,
+                'paidFallbackDefault'=>($meta['paidFallbackDefault']??false)===true,
+                'freeQuota'=>self::json((string)$row['free_quota_json']),'paidQuota'=>self::json((string)$row['paid_quota_json']),
+                'models'=>$this->models($id),'updatedAt'=>(string)$row['updated_at'],
+            ];
+        }
+        return ['schemaVersion'=>1,'routingPolicy'=>['mode'=>'FREE_FIRST','localInference'=>false,
+            'paidFallback'=>'OWNER_APPROVAL_REQUIRED','selection'=>'CAPABILITY_COST_HEALTH_QUALIFICATION'],'providers'=>$providers];
+    }
+    /** @return list<array<string,mixed>> */
+    private function models(string $providerId): array
+    {
+        $q=$this->pdo->prepare("SELECT model_id,display_name,lifecycle,tool_calling,structured_output,vision,audio,file_support,
+            coding_rank,reasoning_rank,latency_rank,capabilities_json,updated_at FROM control_ai_models
+            WHERE provider_id=:provider AND enabled=1 ORDER BY lifecycle='PRODUCTION' DESC,reasoning_rank DESC,model_id");
+        $q->execute(['provider'=>$providerId]);$out=[];
+        foreach($q->fetchAll() as $row)$out[]=['modelId'=>(string)$row['model_id'],'displayName'=>(string)$row['display_name'],
+            'lifecycle'=>strtolower((string)$row['lifecycle']),'capabilities'=>self::jsonList((string)$row['capabilities_json']),
+            'toolCalling'=>(bool)$row['tool_calling'],'structuredOutput'=>(bool)$row['structured_output'],'vision'=>(bool)$row['vision'],
+            'audio'=>(bool)$row['audio'],'fileSupport'=>(bool)$row['file_support'],
+            'ranks'=>['coding'=>(int)$row['coding_rank'],'reasoning'=>(int)$row['reasoning_rank'],'latency'=>(int)$row['latency_rank']],
+            'updatedAt'=>(string)$row['updated_at']];
+        return $out;
+    }
+    /** @return array<string,mixed> */
+    private static function json(string $value):array{try{$decoded=json_decode($value,true,32,JSON_THROW_ON_ERROR);return is_array($decoded)?$decoded:[];}catch(Throwable){return [];}}
+    /** @return list<string> */
+    private static function jsonList(string $value):array{return array_values(array_filter(self::json($value),'is_string'));}
+}

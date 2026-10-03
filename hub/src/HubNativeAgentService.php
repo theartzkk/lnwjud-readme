@@ -74,6 +74,12 @@ final class HubNativeAgentService
         return $this->statusForProvider($userId,$this->providerId,$now);
     }
 
+    /** @return list<string> */
+    public function runtimeProviderIds(): array
+    {
+        $ids=array_keys($this->runtimeAdapters); sort($ids,SORT_STRING); return $ids;
+    }
+
     public function statusByProvider(string $userId, string $providerId, ?string $now = null): array
     {
         $providerId = self::providerIdValue($providerId);
@@ -491,9 +497,8 @@ final class HubNativeAgentService
     /** @return array{0:string,1:string,2:string,3:?string} */
     private function modelForExecution(string $userId,string $projectId,string $request,array $policy,array $executionContext,string $at,int $maxOutputTokens): array
     {
-        // Paid providers remain fail-closed until a separate owner-authorized approval authority exists.
-        $allowPaidProviders = false;
-        $providers = $this->eligibleRuntimeProviders($userId,$at,$allowPaidProviders);
+        // Free providers are preferred. Metered providers require an enabled budget policy last approved by the canonical Owner.
+        $providers = $this->eligibleRuntimeProviders($userId,$at,true);
         if ($providers === []) throw new HubNativeAgentException('No eligible remote free provider is configured','PROVIDER_UNAVAILABLE',['operation'=>'route','category'=>'policy','retryable'=>false]);
         if ($this->governance===null || !is_string($executionContext['executionId']??null) || !is_string($executionContext['taskId']??null)) {
             $provider = $providers[0]; $selectedPolicy = $this->policy($userId,$at,$provider);
@@ -532,11 +537,22 @@ final class HubNativeAgentService
                 if (!is_array($row) || (int)$row['enabled']!==1) continue;
                 $kind=strtoupper((string)$row['provider_kind']); $cost=strtoupper((string)$row['cost_class']);
                 if (!in_array($kind,['API','BURST'],true) || $cost==='LOCAL_FREE') continue;
-                if (!$allowPaidProviders && $cost!=='INCLUDED') continue;
+                if ($cost!=='INCLUDED' && (!$allowPaidProviders || !$this->paidProviderOwnerApproved($userId,$provider))) continue;
                 $out[]=$provider;
             } catch(Throwable) {}
         }
-        return array_values(array_unique($out));
+        $out=array_values(array_unique($out));
+        usort($out,function(string $a,string $b):int{return $this->providerCostRank($a)<=>$this->providerCostRank($b)?:strcmp($a,$b);});
+        return $out;
+    }
+
+    private function paidProviderOwnerApproved(string $userId,string $providerId):bool
+    {
+        try{$owner=$this->pdo->query("SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1")->fetchColumn();if(!is_string($owner)||!hash_equals($owner,$userId))return false;$q=$this->pdo->prepare('SELECT enabled,monthly_budget_microunits,updated_by_user_id FROM control_provider_policies WHERE provider_id=:provider');$q->execute(['provider'=>$providerId]);$row=$q->fetch();return is_array($row)&&(int)$row['enabled']===1&&(int)$row['monthly_budget_microunits']>0&&is_string($row['updated_by_user_id'])&&hash_equals($owner,$row['updated_by_user_id']);}catch(Throwable){return false;}
+    }
+    private function providerCostRank(string $providerId):int
+    {
+        try{$q=$this->pdo->prepare('SELECT cost_class FROM control_execution_providers WHERE provider_id=:provider');$q->execute(['provider'=>$providerId]);return strtoupper((string)$q->fetchColumn())==='INCLUDED'?0:100;}catch(Throwable){return 1000;}
     }
 
     /** Fail over only before tool execution and only for explicitly retryable provider/network pressure. */

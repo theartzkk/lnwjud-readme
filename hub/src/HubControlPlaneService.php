@@ -22,6 +22,7 @@ require_once __DIR__ . '/HubCompletionAuthorityService.php';
 require_once __DIR__ . '/HubVerificationGate.php';
 require_once __DIR__ . '/HubVerificationIntelligence.php';
 require_once __DIR__ . '/HubNativeAgentService.php';
+require_once __DIR__ . '/HubAiQualificationService.php';
 require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubFoundingMemoryService.php';
 require_once __DIR__ . '/HubAutomationRegistryService.php';
@@ -2259,6 +2260,24 @@ final class HubControlPlaneService
         $session = $this->sessionRow($sessionToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);
         try { return ['schemaVersion' => 3, 'provider' => $this->agent->status((string) $session['user_id'], $now)]; }
         catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider status is unavailable', $error->codeName); }
+    }
+
+    public function providerHubStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now);$this->assertFinalReady();$this->assertOwner((string)$session['user_id']);
+        $catalog=(new HubAiProviderHubService($this->pdo))->catalog($this->agent->runtimeProviderIds());$statuses=[];
+        foreach($catalog['providers'] as $provider){$id=(string)$provider['providerId'];try{$statuses[$id]=$this->agent->statusByProvider((string)$session['user_id'],$id,$now);}catch(HubNativeAgentException){$statuses[$id]=null;}}
+        return ['schemaVersion'=>1,'hub'=>$catalog,'statuses'=>$statuses];
+    }
+    public function updateProviderHubCredential(string $sessionToken,string $csrfToken,string $providerId,array $payload,?string $now=null):array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now);self::exactKeys($payload,['action','schemaVersion','secret']);if(($payload['schemaVersion']??null)!==1||!is_string($payload['action']??null)||(!is_null($payload['secret']??null)&&!is_string($payload['secret'])))throw new HubControlPlaneException('Provider credential request is invalid','PROVIDER_CREDENTIAL_INVALID');
+        $this->assertSelfServiceReady();$userId=(string)$session['user_id'];$this->assertOwner($userId);try{if(HubTrustPolicy::requiresStepUp('provider.credential'))HubOwnerAuthService::assertRecentStepUpSession($session,$now);}catch(HubOwnerAuthException){throw new HubControlPlaneException('A recent password confirmation is required','STEP_UP_REQUIRED');}
+        try{$action=strtoupper((string)$payload['action']);if($action==='SET'&&is_string($payload['secret']))$provider=$this->agent->saveCredentialForProvider($userId,$providerId,$payload['secret'],$now);elseif($action==='REMOVE'&&$payload['secret']===null)$provider=$this->agent->removeCredentialForProvider($userId,$providerId,$now);else throw new HubNativeAgentException('Provider credential request is invalid','PROVIDER_CREDENTIAL_INVALID');return ['schemaVersion'=>1,'provider'=>$provider];}catch(HubNativeAgentException $error){throw new HubControlPlaneException('Provider credential could not be changed',$error->codeName);}
+    }
+    public function testProviderHubConnection(string $sessionToken,string $csrfToken,string $providerId,array $payload,?string $now=null):array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now);self::exactKeys($payload,['schemaVersion']);if(($payload['schemaVersion']??null)!==1)throw new HubControlPlaneException('Provider test request is invalid','PROVIDER_POLICY_INVALID');$this->assertSelfServiceReady();$userId=(string)$session['user_id'];$this->assertOwner($userId);try{return ['schemaVersion'=>1,'connection'=>$this->agent->testConnectionForProvider($userId,$providerId,$now)];}catch(HubNativeAgentException $error){throw new HubControlPlaneException('Provider connection test failed',$error->codeName,$error->diagnostic);}
     }
 
     public function groqProviderStatus(string $sessionToken, ?string $now = null): array
