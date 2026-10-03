@@ -175,6 +175,7 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(tempService, /User=root/);
   assert.match(tempService, /ReadWritePaths=.*\/var\/lib\/awh-hub/);
   assert.match(tempService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/operator-staging/);
+  assert.match(guardService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/worktrees/);
   assert.doesNotMatch(tempService, /\/usr\/local\/sbin\/awh-temp-cleanup/);
   assert.match(tempTimer, /OnActiveSec=30m/);
   assert.match(tempTimer, /OnUnitActiveSec=30m/);
