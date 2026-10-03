@@ -40,8 +40,9 @@ test('execution metadata is context-only rather than an AI behavior policy',asyn
   assert.equal(context.diagnosticAuthority.destructiveHostRepairFromConnectorOnlyEvidenceAllowed,false);
   assert.equal(context.diagnosticAuthority.classifyConnectorOnlyFilesystemObservationAs,'SANDBOX_VIEW');
   assert.ok(context.diagnosticAuthority.authoritativeHostSignals.includes('AWH_STORAGE_GUARD'));
-  assert.ok(context.integrity.sameProjectInterlocks.includes('CANONICAL:SOURCE<->CANONICAL:DEPLOY:*'));
+  assert.ok(!context.integrity.sameProjectInterlocks.includes('CANONICAL:SOURCE<->CANONICAL:DEPLOY:*'));
   assert.ok(context.integrity.sameProjectInterlocks.includes('RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY:*'));
+  assert.equal(context.integrity.exactShaSourcePromotionDuringDeploy,true);
   assert.equal(context.runtimeDefaults.deviceLeaseMinutes,45);
   assert.equal(context.blockerHandling.mode,'OWNER_ASSIST_FAST_LANE');
   assert.equal(context.blockerHandling.maxSameFailureRetries,2);

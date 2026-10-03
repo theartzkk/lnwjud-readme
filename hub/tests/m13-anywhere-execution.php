@@ -159,8 +159,8 @@ try {
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:SOURCE')===true,'same canonical resource conflicts');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:DEPLOY:AWH')===false,'raw resource comparison stays backwards-compatible');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANDIDATE','CANONICAL:SOURCE')===false,'isolated candidate work never blocks source promotion');
-    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE',$project,'CANONICAL:DEPLOY:AWH',$project)===true,'same-project source and deploy are interlocked');
-    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE',$project,'CANONICAL:DEPLOY:VPS_PLATFORM',$project2)===true,'host-global VPS Platform deploy interlocks canonical source across projects');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE',$project,'CANONICAL:DEPLOY:AWH',$project)===false,'exact-SHA same-project deploy does not block later source promotion');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE',$project,'CANONICAL:DEPLOY:VPS_PLATFORM',$project2)===false,'exact-SHA VPS Platform deploy does not block canonical source across projects');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANDIDATE',$project,'CANONICAL:DEPLOY:VPS_PLATFORM',$project2)===false,'candidate work stays isolated from host-global platform deployment');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY:AWH',$project,'CANONICAL:DEPLOY:BAY_ASSESSMENT',$project2)===false,'independent release tracks may deploy across projects');
 
@@ -180,7 +180,8 @@ try {
     $deployA=$registry->activateExecutionAuthority($arb['deploy-a'][1],$leaseUntil,$now);
     m13_assert(($deployA['granted']??false)===true,'first project owns shared deploy lane');
     $sourceA=$registry->activateExecutionAuthority($arb['source-a'][1],$leaseUntil,$now);
-    m13_assert(($sourceA['granted']??true)===false&&($sourceA['blockingProjectId']??null)===$project,'same-project source promotion waits for active deploy');
+    m13_assert(($sourceA['granted']??false)===true,'same-project source promotion remains independent after exact-SHA deploy authority is established');
+    $registry->updateEnvelopeState($arb['source-a'][1],'RELEASED',null,$now);
     $sourceB=$registry->activateExecutionAuthority($arb['source-b'][1],$leaseUntil,$now);
     m13_assert(($sourceB['granted']??false)===true,'another project source promotion remains independent from deploy');
     $registry->updateEnvelopeState($arb['source-b'][1],'RELEASED',null,$now);

@@ -72,7 +72,8 @@ try{
     m25_assert($maintenance->mutationAllowed($platform,'CANONICAL:DEPLOY:VPS_PLATFORM')===true,'VPS Platform deploy remains available');
     m25_assert($maintenance->mutationAllowed($platform,'CANONICAL:DEPLOY:AWH')===false,'AWH deploy cannot move Production during PLATFORM_ONLY');
     m25_assert($maintenance->mutationAllowed($platform,'CANONICAL:SOURCE','vps-platform')===true,'VPS Platform source promotion remains available');
-    m25_assert($maintenance->mutationAllowed($platform,'CANONICAL:SOURCE','awh')===false,'AWH source promotion cannot move main during PLATFORM_ONLY');
+    m25_assert($maintenance->mutationAllowed($platform,'CANONICAL:SOURCE','awh')===true,'exact-SHA PLATFORM_ONLY does not block later AWH source promotion');
+    m25_assert($maintenance->mutationAllowed($product,'CANONICAL:SOURCE','bay-product')===true,'exact-SHA PLATFORM_ONLY allows independent product source progress');
 
     $insert=function(string $project,string $capability,string $state='QUEUED')use($pdo,$now):string{
         $task=m25_uuid();$execution=m25_uuid();

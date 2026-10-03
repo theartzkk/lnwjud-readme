@@ -32,20 +32,18 @@ final class HubPlatformMaintenanceService
         if($resource==='READ')return true;
         $state=$this->state();
         if(($state['active']??false)!==true)return true;
+        // Source promotion is fast-forward only and every release request is
+        // bound to one immutable exact SHA before dispatch. PLATFORM_ONLY must
+        // therefore freeze shared host deploy/stage mutations, not unrelated
+        // source progress that cannot alter the already-approved snapshot.
+        if($resource==='CANONICAL:SOURCE'||str_starts_with($resource,'CANONICAL:SOURCE:'))return true;
         $platform=$state['platformProjectId']??null;
         if(!is_string($platform)||$platform===''||!hash_equals(strtolower($platform),strtolower(trim($projectId))))return false;
 
         // PLATFORM_ONLY is a release-track freeze, not merely a project-id allowlist.
-        // AWH Core and VPS Platform intentionally share one project/repository, so
-        // allowing every mutation from the platform project lets unrelated AWH
-        // source/deploy work move canonical main while closure is being verified.
+        // AWH Core and VPS Platform intentionally share one project/repository.
         if(in_array($resource,['CANDIDATE','WORKSPACE','RESOURCE:HOSTING'],true))return true;
         if($resource==='CANONICAL:DEPLOY:VPS_PLATFORM')return true;
-        if($resource==='CANONICAL:SOURCE'){
-            $track=strtolower(trim((string)$releaseTrack));
-            return $track==='vps-platform';
-        }
-        if(str_starts_with($resource,'CANONICAL:SOURCE:'))return str_ends_with($resource,':VPS_PLATFORM');
         return false;
     }
 

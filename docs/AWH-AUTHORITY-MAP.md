@@ -27,8 +27,8 @@ When two documents disagree, do not create a third rule file. Reconcile the lowe
 - `CANONICAL:SOURCE` is project-local. Two writers to the same project's canonical source serialize.
 - Release deploy ownership is track-scoped: `CANONICAL:DEPLOY:AWH`, `CANONICAL:DEPLOY:AWH_AGENT`, `CANONICAL:DEPLOY:BAY_LEARNLAB`, `CANONICAL:DEPLOY:BAY_ASSESSMENT` and project-scoped deploy resources do not block unrelated tracks.
 - `CANONICAL:DEPLOY:VPS_PLATFORM` is host-global because VPS Platform can mutate shared Ubuntu/runtime, Nginx/PHP, systemd, backup/restore, build isolation, Operator Bridge/CLI and infrastructure hardening. While active it fences every other Production deploy.
-- A project's `CANONICAL:SOURCE` interlocks with any deploy resource for that project so canonical source cannot move during its Production activation.
-- A project's `RESOURCE:RELEASE_STAGE` interlocks with any deploy resource for that project so staging cannot race the consuming deploy.
+- Release requests are bound to one immutable exact SHA before dispatch. After that binding, `CANONICAL:SOURCE` may fast-forward while the older exact-SHA release runs; the detached release snapshot cannot change underneath Production activation.
+- A project's `RESOURCE:RELEASE_STAGE` still interlocks with any deploy resource for that project so staging cannot race the consuming deploy.
 - `CANONICAL:PROJECT` is an umbrella project-local writer and conflicts with other mutations in that project.
 
 A second conflicting chat/worker must wait, join or resume the existing authority. It must not acquire a competing writer. Device-local `remote-mission-state` files are transport/device leases only and cannot authorize project/source/release mutation.

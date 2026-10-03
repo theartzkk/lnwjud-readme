@@ -16,9 +16,9 @@
       "CANONICAL:DEPLOY:VPS_PLATFORM"
     ],
     "sameProjectInterlocks": [
-      "CANONICAL:SOURCE<->CANONICAL:DEPLOY:*",
       "RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY:*"
     ],
+    "exactShaSourcePromotionDuringDeploy": true,
     "localMissionAuthorityClass": "DEVICE_TRANSPORT_LEASE",
     "parallelLockAuthorityAllowed": false,
     "releaseTrackAuthority": "HubUpdateTargetRegistry::releaseTracks",
