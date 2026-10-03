@@ -476,6 +476,47 @@ function technicalDetails(item){
   return details;
 }
 
+const TACTILE_SELECTOR='.primary-button,.secondary-button,.text-button,.filter-chip,.awh-back-link,.update-technical summary,.release-notes>summary,.target-history>summary,.updates-secondary-panel>summary,.infrastructure-details>summary';
+function tactileControl(target){return target instanceof Element?target.closest(TACTILE_SELECTOR):null;}
+function rippleControl(control,event){
+  if(!(control instanceof HTMLElement)||control.matches(':disabled,[aria-disabled="true"]'))return;
+  const previous=control.querySelector(':scope > .update-tap-ripple');if(previous)previous.remove();
+  const rect=control.getBoundingClientRect();
+  const ripple=document.createElement('span');ripple.className='update-tap-ripple';ripple.setAttribute('aria-hidden','true');
+  const x=Number.isFinite(event?.clientX)&&event.clientX>0?event.clientX-rect.left:rect.width/2;
+  const y=Number.isFinite(event?.clientY)&&event.clientY>0?event.clientY-rect.top:rect.height/2;
+  ripple.style.left=Math.max(0,Math.min(rect.width,x))+'px';ripple.style.top=Math.max(0,Math.min(rect.height,y))+'px';
+  control.append(ripple);window.setTimeout(()=>ripple.remove(),520);
+}
+function flashControlAck(control,text='✓',tone='good'){
+  if(!(control instanceof HTMLElement))return;
+  const previous=control.querySelector(':scope > .control-ack');if(previous)previous.remove();
+  const ack=document.createElement('span');ack.className='control-ack';ack.dataset.tone=tone;ack.textContent=text;ack.setAttribute('aria-hidden','true');
+  control.append(ack);window.setTimeout(()=>ack.remove(),980);
+}
+function pulseFeedbackCard(targetKey){
+  if(!targetKey)return;
+  for(const card of document.querySelectorAll('.update-card')){
+    if(card.dataset.key!==targetKey)continue;
+    card.dataset.feedbackPulse='true';window.setTimeout(()=>delete card.dataset.feedbackPulse,560);
+  }
+}
+function installTactileFeedback(){
+  document.addEventListener('pointerdown',(event)=>{
+    const control=tactileControl(event.target);if(!control||control.matches(':disabled,[aria-disabled="true"]'))return;
+    control.classList.add('is-pointer-down');rippleControl(control,event);
+  },{capture:true,passive:true});
+  const release=(event)=>{const control=tactileControl(event.target);if(control)control.classList.remove('is-pointer-down');};
+  document.addEventListener('pointerup',release,{capture:true,passive:true});
+  document.addEventListener('pointercancel',release,{capture:true,passive:true});
+  document.addEventListener('pointerleave',release,{capture:true,passive:true});
+  document.addEventListener('keydown',(event)=>{
+    if(event.key!=='Enter'&&event.key!==' ')return;
+    const control=tactileControl(event.target);if(!control||control.matches(':disabled,[aria-disabled="true"]'))return;
+    rippleControl(control,{clientX:0,clientY:0});
+  },true);
+}
+
 function paintTargetFeedback(targetKey){
   if(!targetKey)return;
   const stored=targetFeedback.get(targetKey);if(!stored)return;
@@ -494,7 +535,7 @@ function paintTargetFeedback(targetKey){
 }
 function actionFeedback(button,text,tone='info',targetKey=null){
   const key=targetKey||button?.dataset?.targetKey||null;
-  if(key)targetFeedback.set(key,{text,tone});
+  if(key){targetFeedback.set(key,{text,tone});pulseFeedbackCard(key);}
   const actions=button?.closest?.('.update-actions');
   if(actions){
     let feedback=actions.querySelector('.update-action-feedback');
@@ -522,16 +563,16 @@ function actionButton(text,handler,className='primary-button',targetKey=null,suc
     try{
       const result=await handler();
       const feedback=typeof result?.feedback==='string'?result.feedback:successText;
-      actionFeedback(button,feedback,result?.tone||'good',targetKey);
+      actionFeedback(button,feedback,result?.tone||'good',targetKey);flashControlAck(button,'✓ รับแล้ว',result?.tone==='bad'?'bad':'good');
     }
     catch(error){
       const outcomeUnknown=error?.outcomeUnknown===true||String(error?.code||'').toUpperCase()==='UPDATE_OUTCOME_UNKNOWN';
       if(outcomeUnknown){
         const text='ส่งคำสั่งแล้วแต่การตอบกลับขาดหาย · กำลังตรวจ task เดิมก่อนเปิดให้กดใหม่';
-        message(text,'info');actionFeedback(button,text,'info',targetKey);void refresh();
+        message(text,'info');actionFeedback(button,text,'info',targetKey);flashControlAck(button,'กำลังตรวจ','info');void refresh();
       }else{
         clearPinnedOperation(targetKey);if(localOperation?.key===targetKey)localOperation=null;
-        const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad',targetKey);syncLiveStream();renderProgress();
+        const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad',targetKey);flashControlAck(button,'ตรวจสอบ','bad');syncLiveStream();renderProgress();
       }
     }
     finally{
@@ -1288,7 +1329,9 @@ function scheduleRefresh(){
 async function refresh(options={}){
   if(refreshing)return;
   const manual=options?.manual===true;const initial=options?.initial===true;
-  refreshing=true;$('updates-refresh').disabled=true;
+  const refreshButton=$('updates-refresh');
+  refreshing=true;refreshButton.disabled=true;refreshButton.dataset.busy='true';refreshButton.setAttribute('aria-busy','true');
+  if(manual)refreshButton.textContent='กำลังตรวจ…';
   if(!center||manual||initial)$('updates-freshness').textContent=manual?'กำลังตรวจสถานะล่าสุด…':'กำลังตรวจทุกระบบ…';
   try{
     await loadAuthSession();
@@ -1309,7 +1352,9 @@ async function refresh(options={}){
       message(friendly(error));$('updates-overall').textContent='ตรวจไม่สำเร็จ';$('updates-overall').dataset.tone='bad';
     }
   }finally{
-    refreshing=false;$('updates-refresh').disabled=false;summary();renderProgress();scheduleRefresh();
+    refreshing=false;refreshButton.disabled=false;delete refreshButton.dataset.busy;refreshButton.removeAttribute('aria-busy');refreshButton.textContent='ตรวจอีกครั้ง';
+    if(manual&&center)flashControlAck(refreshButton,'✓ ล่าสุด','good');
+    summary();renderProgress();scheduleRefresh();
   }
 }
 
@@ -1322,14 +1367,17 @@ window.addEventListener('resize',syncStickyOffset,{passive:true});
 window.addEventListener('orientationchange',()=>setTimeout(syncStickyOffset,0));
 syncStickyOffset();
 
+installTactileFeedback();
+document.querySelectorAll('.filter-chip').forEach((chip)=>chip.setAttribute('aria-pressed',chip.classList.contains('is-active')?'true':'false'));
+
 $('updates-refresh').addEventListener('click',()=>void refresh({manual:true}));
 $('show-attention').addEventListener('click',()=>{
   attentionOnly=!attentionOnly;
   $('show-attention').textContent=attentionOnly?'แสดงทุกระบบ':'แสดงเฉพาะที่ต้องจัดการ';
-  render();
+  flashControlAck($('show-attention'),'✓','info');render();
 });
 $('runtime-health-details').addEventListener('click',()=>{
-  $('advanced-diagnostics').open=true;
+  $('advanced-diagnostics').open=true;flashControlAck($('runtime-health-details'),'เปิดแล้ว','info');
   $('advanced-diagnostics').scrollIntoView({behavior:'smooth',block:'start'});
 });
 $('update-search').addEventListener('input',(event)=>{
@@ -1337,8 +1385,8 @@ $('update-search').addEventListener('input',(event)=>{
 });
 document.querySelectorAll('.filter-chip').forEach((button)=>button.addEventListener('click',()=>{
   filterMode=button.dataset.filter||'ALL';
-  document.querySelectorAll('.filter-chip').forEach((chip)=>chip.classList.toggle('is-active',chip===button));
-  render();
+  document.querySelectorAll('.filter-chip').forEach((chip)=>{const active=chip===button;chip.classList.toggle('is-active',active);chip.setAttribute('aria-pressed',active?'true':'false');});
+  flashControlAck(button,'✓','info');render();
 }));
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopLiveStream();return;}void refresh();});
 window.__AWH_UPDATE_CENTER_BOOT_OK__=true;

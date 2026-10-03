@@ -576,6 +576,32 @@ test('Update Center owner actions keep target-scoped feedback and expose only sa
   assert.match(nginx,/return 308 \/updates\.html/);
 });
 
+test('Update Center gives every owner tap immediate tactile and visible feedback', async()=>{
+  const [script,css,page]=await Promise.all([
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.css'),'utf8'),
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+  ]);
+  assert.match(page,/interaction-feedback\.js\?release=__AWH_WEB_RELEASE_ID__/);
+  assert.match(script,/const TACTILE_SELECTOR=/);
+  assert.match(script,/function rippleControl\(control,event\)/);
+  assert.match(script,/function flashControlAck\(control,text='✓',tone='good'\)/);
+  assert.match(script,/function installTactileFeedback\(\)/);
+  assert.match(script,/document\.addEventListener\('pointerdown'/);
+  assert.match(script,/control\.classList\.add\('is-pointer-down'\)/);
+  assert.match(script,/flashControlAck\(button,'✓ รับแล้ว'/);
+  assert.match(script,/refreshButton\.dataset\.busy='true'/);
+  assert.match(script,/refreshButton\.textContent='กำลังตรวจ…'/);
+  assert.match(script,/flashControlAck\(refreshButton,'✓ ล่าสุด','good'\)/);
+  assert.match(script,/chip\.setAttribute\('aria-pressed'/);
+  assert.match(css,/\.update-tap-ripple/);
+  assert.match(css,/\.control-ack/);
+  assert.match(css,/\.is-pointer-down:not\(:disabled\)/);
+  assert.match(css,/transform:translateY\(1px\) scale\(\.965\)/);
+  assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
+  assert.match(css,/details-marker/);
+});
+
 test('Update Center streams canonical release progress in real time with bounded fallback', async()=>{
   const [service,entry,adapter,page,script,css,authority,cli,remote]=await Promise.all([
     readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),

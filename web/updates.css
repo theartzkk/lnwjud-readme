@@ -42,3 +42,60 @@ html,body{min-height:100%;background:var(--update-bg)!important}body{margin:0;co
 @media(max-width:760px){.operation-progress:not([hidden]){position:sticky;top:calc(var(--updates-header-height,64px) + 8px);z-index:24;max-height:calc(100dvh - var(--updates-header-height,64px) - max(24px,env(safe-area-inset-bottom)));overflow:auto;overscroll-behavior:contain;box-shadow:0 12px 34px rgba(24,55,91,.13)}.operation-progress-head{align-items:center}.operation-progress h2{font-size:1rem}.operation-progress-head>strong{font-size:1.15rem}.operation-progress .eyebrow,.operation-progress .operation-steps{display:none}.operation-progress>p{margin-top:9px}.operation-progress-live{margin-top:5px}}
 
 .updates-hero-hint{max-width:290px;color:var(--update-muted);font-size:.73rem;line-height:1.45;text-align:right}@media(max-width:760px){.updates-hero-hint{text-align:left;max-width:none}}
+
+
+/* Update Center tactile interaction layer — every tap gets an immediate, visible response. */
+:where(.updates-main,.updates-header) :where(button,a.awh-back-link,.filter-chip,summary){
+  -webkit-tap-highlight-color:transparent;
+}
+:where(.updates-main,.updates-header) :where(.primary-button,.secondary-button,.text-button,.filter-chip,.awh-back-link,.update-technical summary,.release-notes>summary,.target-history>summary,.updates-secondary-panel>summary,.infrastructure-details>summary){
+  position:relative;overflow:hidden;isolation:isolate;
+  transition:transform .14s cubic-bezier(.2,.8,.2,1),box-shadow .18s ease,background-color .18s ease,border-color .18s ease,color .18s ease,opacity .18s ease;
+  touch-action:manipulation;
+}
+:where(.updates-main,.updates-header) :where(.primary-button,.secondary-button,.text-button,.filter-chip,.awh-back-link,.update-technical summary,.release-notes>summary,.target-history>summary,.updates-secondary-panel>summary,.infrastructure-details>summary).is-pointer-down:not(:disabled),
+:where(.updates-main,.updates-header) :where(.primary-button,.secondary-button,.text-button,.filter-chip,.awh-back-link):active:not(:disabled){
+  transform:translateY(1px) scale(.965)!important;
+  box-shadow:0 2px 7px rgba(20,61,117,.08)!important;
+  filter:saturate(.96) brightness(.985);
+}
+@media(hover:hover) and (pointer:fine){
+  :where(.updates-main,.updates-header) :where(.primary-button,.secondary-button,.filter-chip,.awh-back-link):hover:not(:disabled){
+    transform:translateY(-2px);
+    box-shadow:0 10px 24px rgba(20,61,117,.12)!important;
+  }
+  .update-card:hover{border-color:#c9dced;box-shadow:0 13px 32px rgba(24,55,91,.075)}
+}
+.update-tap-ripple{
+  position:absolute;z-index:-1;width:14px;height:14px;border-radius:50%;pointer-events:none;
+  background:color-mix(in srgb,currentColor 18%,transparent);
+  transform:translate(-50%,-50%) scale(.25);opacity:.72;
+  animation:update-tap-ripple .46s cubic-bezier(.2,.75,.25,1) forwards;
+}
+@keyframes update-tap-ripple{to{transform:translate(-50%,-50%) scale(13);opacity:0}}
+.control-ack{
+  position:absolute;z-index:4;right:7px;top:6px;display:grid;place-items:center;min-width:25px;height:25px;padding:0 7px;
+  border-radius:999px;background:#fff;color:var(--update-good);border:1px solid #cce6d7;
+  box-shadow:0 6px 16px rgba(24,55,91,.14);font-size:.68rem;font-weight:900;pointer-events:none;
+  transform:translateY(3px) scale(.78);opacity:0;animation:update-control-ack .9s cubic-bezier(.2,.8,.2,1) forwards;
+}
+.control-ack[data-tone="bad"]{color:var(--update-bad);border-color:#efcfcb;background:#fff7f5}
+.control-ack[data-tone="info"]{color:var(--update-info);border-color:#cfe0f4;background:#f7fbff}
+@keyframes update-control-ack{0%{opacity:0;transform:translateY(3px) scale(.78)}18%,68%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-4px) scale(.94)}}
+.update-action-feedback{animation:update-feedback-in .26s cubic-bezier(.2,.8,.2,1)}
+@keyframes update-feedback-in{from{opacity:0;transform:translateY(-5px) scale(.985)}to{opacity:1;transform:none}}
+.update-card{transition:border-color .2s ease,box-shadow .2s ease,background-color .2s ease,transform .2s ease}
+.update-card[data-feedback-pulse="true"]{animation:update-card-pulse .5s ease}
+@keyframes update-card-pulse{0%,100%{box-shadow:0 8px 24px rgba(24,55,91,.035)}45%{box-shadow:0 0 0 4px rgba(23,109,229,.09),0 14px 32px rgba(24,55,91,.08)}}
+.filter-chip.is-active{transform:translateY(-1px);box-shadow:0 5px 14px rgba(20,61,117,.08)}
+:where(.update-technical,.release-notes,.target-history,.updates-secondary-panel,.infrastructure-details)>summary{display:flex;align-items:center;gap:8px;list-style:none}
+:where(.update-technical,.release-notes,.target-history,.updates-secondary-panel,.infrastructure-details)>summary::-webkit-details-marker{display:none}
+:where(.update-technical,.release-notes,.target-history,.updates-secondary-panel,.infrastructure-details)>summary::after{content:'›';margin-left:auto;font-size:1rem;font-weight:900;line-height:1;transition:transform .18s ease,color .18s ease}
+:where(.update-technical,.release-notes,.target-history,.updates-secondary-panel,.infrastructure-details)[open]>summary::after{transform:rotate(90deg);color:var(--update-primary)}
+#updates-refresh[data-busy="true"]{cursor:progress;opacity:.88}
+#updates-refresh[data-busy="true"]::before{content:'';display:inline-block;width:12px;height:12px;margin-right:7px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:update-action-spin .7s linear infinite}
+@media(prefers-reduced-motion:reduce){
+  :where(.updates-main,.updates-header) :where(.primary-button,.secondary-button,.text-button,.filter-chip,.awh-back-link,.update-technical summary,.release-notes>summary,.target-history>summary,.updates-secondary-panel>summary,.infrastructure-details>summary),.update-card{transition:none!important}
+  .update-tap-ripple,.control-ack,.update-action-feedback,.update-card[data-feedback-pulse="true"]{animation:none!important}
+  .update-tap-ripple{display:none}.control-ack{opacity:1;transform:none}
+}
