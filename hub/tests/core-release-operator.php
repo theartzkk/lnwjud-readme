@@ -270,6 +270,23 @@ try{
     $next=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$nextSha,'cleanupTopology'=>false],'2026-09-23T01:10:00+00:00');
     cr_assert(($next['state']??null)==='WAITING_FOR_WORKER'&&($next['releaseSha']??null)===$nextSha,'replacement release is immediately dispatchable after source-driven supersession');
 
+    // Strict source-promotion reconciliation must never swallow a database
+    // failure after canonical Git has moved. Force the stale-release update to
+    // abort and prove the helper fails closed while preserving the queued row.
+    $strictTask='aa3b45c0-23e1-408d-ae0f-ac5eca7f6900';$strictExecution='bb3b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $strictCheckpoint=(string)$pdo->query("SELECT checkpoint_json FROM control_task_executions WHERE execution_id=".$pdo->quote((string)$stale['executionId']))->fetchColumn();
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Strict supersede failure fixture','WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,'strict-supersede-failure',NULL,:at,:at,NULL)")
+        ->execute(['task'=>$strictTask,'user'=>$owner,'project'=>$project,'at'=>'2026-09-23T01:10:05+00:00']);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','system.core.release','QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")
+        ->execute(['execution'=>$strictExecution,'task'=>$strictTask,'project'=>$project,'checkpoint'=>$strictCheckpoint,'at'=>'2026-09-23T01:10:05+00:00']);
+    $pdo->exec("CREATE TEMP TRIGGER strict_supersede_abort BEFORE UPDATE OF state ON control_task_executions WHEN OLD.execution_id='$strictExecution' AND NEW.state='CANCELLED' BEGIN SELECT RAISE(ABORT,'strict supersede fixture'); END");
+    $strictCode=null;
+    try{HubCoreReleaseService::supersedeQueuedForSourcePromotion($pdo,'awh',$nextSha,'2026-09-23T01:10:06+00:00',true);}
+    catch(HubCoreReleaseException $error){$strictCode=$error->codeName;}
+    $pdo->exec('DROP TRIGGER strict_supersede_abort');
+    cr_assert($strictCode==='CORE_RELEASE_SUPERSEDE_FAILED','strict source-promotion reconciliation surfaces database failure instead of silently continuing');
+    cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($strictExecution))->fetchColumn()==='QUEUED','strict reconciliation rollback preserves the stale queued execution for a safe retry');
+
     $legacyPlatformSha=str_repeat('f',40);
     $legacyPlatformTask='c13b45c0-23e1-408d-ae0f-ac5eca7f6900';
     $legacyPlatformExecution='d13b45c0-23e1-408d-ae0f-ac5eca7f6900';

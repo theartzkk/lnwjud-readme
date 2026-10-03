@@ -212,6 +212,8 @@ try{
  $bayPreflight=$service->handle(['schemaVersion'=>1,'action'=>'flow.preflight','project'=>'BAY EXCUSE X','releaseTrack'=>'bay-excuse-x'],$now);
  ob_assert(($bayPreflight['authority']['state']??null)==='READY'&&($bayPreflight['authority']['executorId']??null)==='operator-bridge','BAY typed PackageManager authority is not falsely degraded by an unrelated worker heartbeat');
  ob_code('OPERATOR_ACTION_FORBIDDEN',fn()=>$service->handle(['schemaVersion'=>1,'action'=>'shell.exec','command'=>'id'],$now));
+ $bridgeSource=(string)file_get_contents(dirname(__DIR__).'/src/HubOperatorBridgeService.php');
+ ob_assert(str_contains($bridgeSource,'$target,$at,true')&&str_contains($bridgeSource,'OPERATOR_SOURCE_ROLLBACK_FAILED')&&substr_count($bridgeSource,"['update-ref','refs/heads/main'")>=2,'source promotion uses strict release-queue reconciliation and compensating canonical-main rollback');
  $socket=(string)file_get_contents(dirname(__DIR__,2).'/deploy/systemd/awh-operator-bridge.socket');$unit=(string)file_get_contents(dirname(__DIR__,2).'/deploy/systemd/awh-operator-bridge@.service');$client=(string)file_get_contents(dirname(__DIR__,2).'/deploy/operator-bridge/awh-operator');$handler=(string)file_get_contents(dirname(__DIR__).'/bin/awh-operator-bridge.php');
  ob_assert(str_contains($socket,'SocketMode=0660')&&str_contains($socket,'SocketGroup=awh-operator')&&str_contains($socket,'SocketUser=awh-remote')&&str_contains($socket,'Accept=yes'),'socket is limited to authorized operator callers');
  ob_assert(str_contains($handler,'serviceExit=0')&&str_contains($handler,'serviceExit=70')&&str_contains($handler,'exit($serviceExit)'),'handled bridge rejection stays an application error without poisoning systemd health');

@@ -1019,11 +1019,19 @@ final class HubOperatorBridgeService
             $before=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($before)))throw new HubOperatorBridgeException('Canonical main moved during source promotion','OPERATOR_SOURCE_BASE_MOVED');
             $this->runGit($repoReal,['update-ref','refs/heads/main',$target,$expected]);
             $after=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($target,self::gitSha($after)))throw new HubOperatorBridgeException('Canonical main did not reach target revision','OPERATOR_SOURCE_PROMOTE_FAILED');
-            // A queued release is immutable to its approved SHA. As soon as
-            // canonical source advances, retire older not-started requests on
-            // the same release track so Update Center never advertises stale
-            // work that still needs an Owner cancel/retry.
-            $supersededReleaseCount=HubCoreReleaseService::supersedeQueuedForSourcePromotion($this->pdo,(string)$releaseNotes['releaseTrack'],$target,$at);
+            // A queued release is immutable to its approved SHA. Source and
+            // release-queue reconciliation must converge as one fail-closed
+            // operation: if SQLite cannot retire stale queued releases, restore
+            // canonical main before returning an error.
+            try{
+                $supersededReleaseCount=HubCoreReleaseService::supersedeQueuedForSourcePromotion($this->pdo,(string)$releaseNotes['releaseTrack'],$target,$at,true);
+            }catch(Throwable $error){
+                $rollback=$this->runGitResult($repoReal,['update-ref','refs/heads/main',$expected,$target]);
+                $restored=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));
+                if(($rollback['code']??1)!==0||!hash_equals($expected,self::gitSha($restored)))
+                    throw new HubOperatorBridgeException('Canonical main could not be restored after release queue reconciliation failed','OPERATOR_SOURCE_ROLLBACK_FAILED');
+                throw new HubOperatorBridgeException('Release queue reconciliation failed; canonical main was restored','OPERATOR_SOURCE_PROMOTE_FAILED');
+            }
             $expectedHead='refs/heads/'.$defaultBranch;
             if(!hash_equals($headBefore,$expectedHead)){
                 try{$this->runGit($repoReal,['symbolic-ref','HEAD',$expectedHead]);$headChanged=true;$headAfter=trim($this->runGit($repoReal,['symbolic-ref','HEAD']));if(!hash_equals($headAfter,$expectedHead))throw new HubOperatorBridgeException('Repository default HEAD did not converge','OPERATOR_SOURCE_PROMOTE_FAILED');}

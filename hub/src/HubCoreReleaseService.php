@@ -219,7 +219,7 @@ final class HubCoreReleaseService
         $q->execute(['capability'=>$this->capability,'at'=>$at]);return $q->fetchColumn()!==false;
     }
 
-    public static function supersedeQueuedForSourcePromotion(PDO $pdo,string $releaseTrack,string $targetSha,string $at): int
+    public static function supersedeQueuedForSourcePromotion(PDO $pdo,string $releaseTrack,string $targetSha,string $at,bool $strict=false): int
     {
         $track=strtolower(trim($releaseTrack));$target=strtolower(trim($targetSha));
         if(preg_match('/^[0-9a-f]{40}$/',$target)!==1)return 0;
@@ -228,10 +228,10 @@ final class HubCoreReleaseService
             'vps-platform'=>self::platformFromPdo($pdo),
             default=>null,
         };
-        return $service instanceof self?$service->supersedeQueuedReleaseIfTargetMoved($target,$at):0;
+        return $service instanceof self?$service->supersedeQueuedReleaseIfTargetMoved($target,$at,$strict):0;
     }
 
-    private function supersedeQueuedReleaseIfTargetMoved(string $targetSha,string $at): int
+    private function supersedeQueuedReleaseIfTargetMoved(string $targetSha,string $at,bool $strict=false): int
     {
         $count=0;
         $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.state AS execution_state,e.lease_owner,e.checkpoint_json,t.state AS task_state,a.approval_id,a.status AS approval_status
@@ -261,7 +261,10 @@ final class HubCoreReleaseService
                 $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'CANCELLED',0,:message,:at)")
                     ->execute(['event'=>self::uuid(),'task'=>$row['task_id'],'message'=>$summary.' · CORE_RELEASE_SUPERSEDED · latest '.substr($targetSha,0,12),'at'=>$at]);
                 $this->pdo->exec('COMMIT');$count++;
-            }catch(Throwable){$this->rollback();}
+            }catch(Throwable $error){
+                $this->rollback();
+                if($strict)throw new HubCoreReleaseException('Queued release reconciliation failed','CORE_RELEASE_SUPERSEDE_FAILED');
+            }
         }
         return $count;
     }
