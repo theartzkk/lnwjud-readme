@@ -8,14 +8,13 @@ Type=oneshot
 User=root
 Group=root
 Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
-ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/deploy/awh-hosting/awh-hosting-identity.php %i
+ExecStart=+/usr/bin/php /opt/awh-hub/control-plane-current/deploy/awh-hosting/awh-hosting-identity.php %i
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
 PrivateNetwork=true
 ProtectHome=true
 ProtectSystem=full
-BindPaths=/etc:/etc
 RestrictAddressFamilies=AF_UNIX
 ProtectKernelTunables=true
 ProtectKernelModules=true
