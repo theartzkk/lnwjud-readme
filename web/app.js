@@ -1462,16 +1462,31 @@ import {
 
   async function routeOwnerCommand(value) {
     const command = typeof value === 'string' ? value.trim() : '';
-    if (!command || !state.control?.authenticated) return;
+    if (!command) return false;
+    if (!state.control?.authenticated) { openLoginSurface(); return false; }
     openAwhWorkspace('work');
-    if (!state.conversationAvailable) await refreshConversation(false);
+    if (!state.conversationAvailable) {
+      message('goal-message', 'กำลังเตรียมพื้นที่คุย…');
+      await refreshConversation(false);
+    }
     const input = $('goal-input');
-    if (!(input instanceof HTMLTextAreaElement)) return;
+    const form = $('goal-form');
+    if (!(input instanceof HTMLTextAreaElement) || !(form instanceof HTMLFormElement)) return false;
     input.value = command;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     resizeGoalInput();
-    input.focus();
-    if (state.conversationAvailable) $('goal-form')?.requestSubmit();
+    input.focus({ preventScroll: true });
+    if (!state.conversationAvailable) {
+      message('goal-message', 'ข้อความยังอยู่ กรุณากดส่งอีกครั้งเมื่อ AWH พร้อม');
+      return false;
+    }
+    if (sendingMessage) {
+      message('goal-message', 'กำลังส่งคำสั่งก่อนหน้า ข้อความใหม่นี้ยังอยู่');
+      return false;
+    }
+    message('goal-message', 'กำลังส่ง…');
+    form.requestSubmit();
+    return true;
   }
 
   const isAwhProduct = (project) => project?.id === 'awh';
@@ -1861,7 +1876,27 @@ import {
     event.preventDefault();
     openSystemsDirectory({ focusSearch: true });
   });
-  $('ecosystem-command-form')?.addEventListener('submit', (event) => { event.preventDefault(); const field=$('ecosystem-command-input'); const value=field?.value || ''; if(field) field.value=''; void routeOwnerCommand(value); });
+  let ownerCommandRouting = false;
+  $('ecosystem-command-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (ownerCommandRouting) return;
+    const form = event.currentTarget instanceof HTMLFormElement ? event.currentTarget : $('ecosystem-command-form');
+    const field = $('ecosystem-command-input');
+    const button = form?.querySelector('button[type="submit"]');
+    const value = field?.value?.trim() || '';
+    if (!value) { field?.focus({ preventScroll: true }); return; }
+    ownerCommandRouting = true;
+    if (button instanceof HTMLButtonElement) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
+    try {
+      const handedOff = await routeOwnerCommand(value);
+      if (handedOff && field) field.value = '';
+    } catch (error) {
+      message('goal-message', error instanceof Error ? error.message : 'AWH ยังเปิดพื้นที่คุยไม่ได้');
+    } finally {
+      ownerCommandRouting = false;
+      if (button instanceof HTMLButtonElement) { button.disabled = false; button.removeAttribute('aria-busy'); }
+    }
+  });
   document.querySelectorAll('[data-owner-command]').forEach((button)=>button.addEventListener('click',()=>routeOwnerCommand(button.dataset.ownerCommand||'')));
   window.addEventListener('awh:return-root-hub', () => showEcosystemHome());
   window.addEventListener('popstate', () => {
