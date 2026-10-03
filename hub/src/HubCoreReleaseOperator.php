@@ -66,29 +66,42 @@ final class HubCoreReleaseOperator
     {
         // The execution envelope is the canonical single-writer authority. It must
         // cover the whole bounded release window, not only the dispatcher claim.
+        //
+        // Scan a bounded prefix instead of looking at only the oldest release.
+        // PLATFORM_ONLY intentionally pauses AWH Core, but a paused AWH release must
+        // never head-of-line block an eligible VPS Platform release behind it.
         $lease=gmdate('c',strtotime($at)+self::LEASE_SECONDS);
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             $q=$this->pdo->prepare("SELECT e.*,t.goal FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id
                 WHERE e.executor_kind='VPS' AND e.required_capability IN (:core,:platform) AND e.state='QUEUED'
+                  AND e.attempt_count<3
                   AND t.state='WAITING_FOR_WORKER'
                   AND EXISTS(SELECT 1 FROM control_approvals a WHERE a.task_id=e.task_id AND a.action='deployment.approve' AND a.status='APPROVED')
-                ORDER BY e.created_at,e.execution_id LIMIT 1");
-            $q->execute(['core'=>HubCoreReleaseService::CAPABILITY,'platform'=>HubCoreReleaseService::PLATFORM_CAPABILITY]);$row=$q->fetch();
-            if(!is_array($row)){$this->pdo->exec('COMMIT');return null;}
-            HubCoreReleaseService::checkpoint((string)$row['checkpoint_json']);
-            $authority=(new HubCapabilityRegistryService($this->pdo))->activateExecutionAuthority((string)$row['execution_id'],$lease,$at,true);
-            if(($authority['granted']??false)!==true){$this->pdo->exec('COMMIT');return null;}
-            $u=$this->pdo->prepare("UPDATE control_task_executions SET state='LEASED',lease_owner=:owner,lease_expires_at=:lease,attempt_count=attempt_count+1,updated_at=:at WHERE execution_id=:execution AND state='QUEUED' AND attempt_count<3");
-            $u->execute(['owner'=>self::DISPATCHER,'lease'=>$lease,'at'=>$at,'execution'=>$row['execution_id']]);
-            if($u->rowCount()!==1){$this->pdo->exec('ROLLBACK');return null;}
-            $this->pdo->prepare("UPDATE control_tasks SET state='RUNNING',progress=5,failure_code=NULL,updated_at=:at WHERE task_id=:task AND state='WAITING_FOR_WORKER'")->execute(['at'=>$at,'task'=>$row['task_id']]);
-            $this->event((string)$row['task_id'],'RUNNING',5,'Owner อนุมัติแล้ว AWH กำลังจอง VPS release authority',$at);
-            $this->pdo->exec('COMMIT');return $row;
+                ORDER BY e.created_at,e.execution_id LIMIT 25");
+            $q->execute(['core'=>HubCoreReleaseService::CAPABILITY,'platform'=>HubCoreReleaseService::PLATFORM_CAPABILITY]);
+            $registry=new HubCapabilityRegistryService($this->pdo);
+            foreach($q->fetchAll() as $row){
+                if(!is_array($row))continue;
+                HubCoreReleaseService::checkpoint((string)$row['checkpoint_json']);
+                try{
+                    $authority=$registry->activateExecutionAuthority((string)$row['execution_id'],$lease,$at,true);
+                }catch(HubCapabilityRegistryException $error){
+                    if($error->codeName==='PLATFORM_MAINTENANCE_FREEZE')continue;
+                    throw $error;
+                }
+                if(($authority['granted']??false)!==true)continue;
+                $u=$this->pdo->prepare("UPDATE control_task_executions SET state='LEASED',lease_owner=:owner,lease_expires_at=:lease,attempt_count=attempt_count+1,updated_at=:at WHERE execution_id=:execution AND state='QUEUED' AND attempt_count<3");
+                $u->execute(['owner'=>self::DISPATCHER,'lease'=>$lease,'at'=>$at,'execution'=>$row['execution_id']]);
+                if($u->rowCount()!==1){$this->pdo->exec('ROLLBACK');return null;}
+                $this->pdo->prepare("UPDATE control_tasks SET state='RUNNING',progress=5,failure_code=NULL,updated_at=:at WHERE task_id=:task AND state='WAITING_FOR_WORKER'")->execute(['at'=>$at,'task'=>$row['task_id']]);
+                $this->event((string)$row['task_id'],'RUNNING',5,'Owner อนุมัติแล้ว AWH กำลังจอง VPS release authority',$at);
+                $this->pdo->exec('COMMIT');return $row;
+            }
+            $this->pdo->exec('COMMIT');return null;
         }catch(Throwable $error){
             $this->rollback();
             if($error instanceof HubCoreReleaseException)throw new HubCoreReleaseOperatorException('Core release checkpoint is invalid',$error->codeName);
-            if($error instanceof HubCapabilityRegistryException&&$error->codeName==='PLATFORM_MAINTENANCE_FREEZE')return null;
             throw new HubCoreReleaseOperatorException('Core release could not be claimed','CORE_RELEASE_CLAIM_FAILED');
         }
     }

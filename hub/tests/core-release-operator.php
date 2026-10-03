@@ -201,6 +201,43 @@ try{
     $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,updated_at=:at WHERE task_id=:task")->execute(['at'=>'2026-09-23T01:00:06+00:00','task'=>$queuedBTask]);
     file_put_contents($canonicalGit.'/refs/heads/platform/production',$platformSha."\n");
 
+    // Regression: PLATFORM_ONLY may pause an older AWH release, but that paused
+    // queue head must not starve an eligible VPS Platform release behind it.
+    $holAwhTask='f33b45c0-23e1-408d-ae0f-ac5eca7f6900';$holAwhExecution='e33b45c0-23e1-408d-ae0f-ac5eca7f6900';$holAwhApproval='d33b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $holPlatformTask='a43b45c0-23e1-408d-ae0f-ac5eca7f6900';$holPlatformExecution='b43b45c0-23e1-408d-ae0f-ac5eca7f6900';$holPlatformApproval='c43b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $holAwhCheckpoint=json_encode(['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>str_repeat('6',40),'releaseMode'=>'AWH_CORE','releaseTrack'=>'awh','cleanupTopology'=>false,'transport'=>'LOCAL','releaseNotesSha256'=>str_repeat('6',64)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+    $holPlatformCheckpoint=json_encode(['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>str_repeat('7',40),'releaseMode'=>'PLATFORM_HARDENING','releaseTrack'=>'vps-platform','cleanupTopology'=>false,'transport'=>'LOCAL','releaseNotesSha256'=>str_repeat('7',64)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+    foreach([
+        [$holAwhTask,$holAwhExecution,$holAwhApproval,HubCoreReleaseService::CAPABILITY,$holAwhCheckpoint,'2026-09-23T01:00:18+00:00','hol-awh'],
+        [$holPlatformTask,$holPlatformExecution,$holPlatformApproval,HubCoreReleaseService::PLATFORM_CAPABILITY,$holPlatformCheckpoint,'2026-09-23T01:00:19+00:00','hol-platform'],
+    ] as [$holTask,$holExecution,$holApproval,$holCapability,$holCheckpoint,$holAt,$holKey]){
+        $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Head-of-line release fixture','WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")
+            ->execute(['task'=>$holTask,'user'=>$owner,'project'=>$project,'key'=>$holKey,'at'=>$holAt]);
+        $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS',:capability,'QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")
+            ->execute(['execution'=>$holExecution,'task'=>$holTask,'project'=>$project,'capability'=>$holCapability,'checkpoint'=>$holCheckpoint,'at'=>$holAt]);
+        (new HubCapabilityRegistryService($pdo))->ensureExecutionEnvelope($holExecution,$holAt);
+        $pdo->prepare("INSERT INTO control_approvals(approval_id,task_id,action,scope_json,status,expires_at,decided_at) VALUES(:approval,:task,'deployment.approve','{}','APPROVED','2026-09-23T02:00:00+00:00',:at)")
+            ->execute(['approval'=>$holApproval,'task'=>$holTask,'at'=>$holAt]);
+    }
+    $pdo->prepare("UPDATE control_platform_maintenance SET mode='PLATFORM_ONLY',platform_project_id=:project,reason='head-of-line freeze regression',enabled_at=:at,updated_at=:at,updated_by='test' WHERE singleton_id=1")
+        ->execute(['project'=>$project,'at'=>'2026-09-23T01:00:20+00:00']);
+    $calls=[];
+    $holDispatch=$operator->tick('2026-09-23T01:00:20+00:00');
+    cr_assert(($holDispatch['state']??null)==='DISPATCHED'&&($holDispatch['executionId']??null)===$holPlatformExecution,'dispatcher skips frozen AWH queue head and dispatches eligible VPS Platform release in the same bounded tick');
+    cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($holAwhExecution))->fetchColumn()==='QUEUED','frozen AWH release remains queued without consuming an attempt');
+    cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($holPlatformExecution))->fetchColumn()==='RUNNING','eligible VPS Platform release is not starved behind frozen AWH work');
+    $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>'2026-09-23T01:00:21+00:00','execution'=>$holPlatformExecution]);
+    $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,updated_at=:at WHERE task_id=:task")->execute(['at'=>'2026-09-23T01:00:21+00:00','task'=>$holPlatformTask]);
+    (new HubCapabilityRegistryService($pdo))->updateEnvelopeState($holPlatformExecution,'RELEASED',null,'2026-09-23T01:00:21+00:00');
+    $pdo->prepare("UPDATE control_platform_maintenance SET mode='NORMAL',platform_project_id=NULL,reason='head-of-line regression complete',enabled_at=NULL,updated_at=:at,updated_by='test' WHERE singleton_id=1")
+        ->execute(['at'=>'2026-09-23T01:00:21+00:00']);
+    $calls=[];
+    $holAwhDispatch=$operator->tick('2026-09-23T01:00:22+00:00');
+    cr_assert(($holAwhDispatch['state']??null)==='DISPATCHED'&&($holAwhDispatch['executionId']??null)===$holAwhExecution,'paused AWH release resumes automatically after PLATFORM_ONLY clears');
+    $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>'2026-09-23T01:00:23+00:00','execution'=>$holAwhExecution]);
+    $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,updated_at=:at WHERE task_id=:task")->execute(['at'=>'2026-09-23T01:00:23+00:00','task'=>$holAwhTask]);
+    (new HubCapabilityRegistryService($pdo))->updateEnvelopeState($holAwhExecution,'RELEASED',null,'2026-09-23T01:00:23+00:00');
+
     // Finish the fixture execution, then simulate an approved release stranded while the dispatcher heartbeat expires.
     $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>'2026-09-23T01:01:00+00:00','execution'=>$execution]);
     $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,updated_at=:at WHERE task_id=:task")->execute(['at'=>'2026-09-23T01:01:00+00:00','task'=>$task]);
@@ -208,7 +245,12 @@ try{
 ");
     $completedDuplicate=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$sha,'cleanupTopology'=>false],'2026-09-23T01:01:01+00:00');
     cr_assert(($completedDuplicate['idempotent']??false)===true&&$completedDuplicate['taskId']===$task&&$completedDuplicate['executionId']===$execution&&($completedDuplicate['state']??null)==='COMPLETED','same already-running production release is a verified no-op and reuses the completed operation');
-    cr_assert((int)$pdo->query("SELECT count(*) FROM control_task_executions WHERE required_capability='system.core.release'")->fetchColumn()===1,'completed duplicate action never creates a second core release execution');
+    $sameShaReleaseCount=0;
+    foreach($pdo->query("SELECT checkpoint_json FROM control_task_executions WHERE required_capability='system.core.release'")->fetchAll(PDO::FETCH_COLUMN) as $coreCheckpoint){
+        try{$decoded=HubCoreReleaseService::checkpoint((string)$coreCheckpoint,false);}catch(Throwable){$decoded=[];}
+        if(is_array($decoded)&&is_string($decoded['releaseSha']??null)&&hash_equals((string)$decoded['releaseSha'],$sha))$sameShaReleaseCount++;
+    }
+    cr_assert($sameShaReleaseCount===1,'completed duplicate action never creates a second execution for the same core release SHA');
     $firstKey=(string)$pdo->query("SELECT idempotency_key FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn();
     cr_assert(str_starts_with($firstKey,$project.'.awh.release.'.substr($sha,0,12).'.'.substr(str_repeat('d',64),0,16).'.cleanup0.attempt'),'release idempotency key is deterministic by project, track, candidate, artifact and operation shape rather than task UUID');
     $staleSha=str_repeat('d',40);$nextSha=str_repeat('e',40);
