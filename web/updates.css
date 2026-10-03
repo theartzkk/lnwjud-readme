@@ -269,3 +269,28 @@ dialog.updates-dialog .updates-dialog-actions button{min-height:46px}
   dialog.updates-dialog .updates-dialog-actions{display:grid;grid-template-columns:1fr;gap:8px}
   dialog.updates-dialog .updates-dialog-actions button{width:100%;min-height:48px}
 }
+
+
+/* Final AX polish: avoid noisy announcements, preserve contrast, and make in-flight actions read as status. */
+.updates-main .eyebrow{color:#b85000!important}
+.update-search input::placeholder{color:#68778d!important;opacity:1}
+.updates-breadcrumb a{display:inline-flex;align-items:center;min-height:32px;padding-inline:2px;border-radius:7px}
+.update-actions button.primary-button[data-operation-state="starting"],
+.update-actions button.primary-button[data-operation-state="queueing"],
+.update-actions button.primary-button[data-operation-state="active"],
+.update-actions button.primary-button[data-operation-state="checking"]{
+  background:linear-gradient(135deg,#eaf3ff,#f7fbff)!important;
+  border:1px solid #bcd5f0!important;color:#245f9d!important;
+  box-shadow:0 0 0 3px rgba(52,119,191,.07),0 8px 20px rgba(36,95,157,.08)!important;
+}
+.update-actions button.primary-button[data-operation-state="accepted"],
+.update-actions button.primary-button[data-operation-state="queued"]{
+  background:linear-gradient(135deg,#eaf3ff,#f7fbff)!important;
+  border:1px solid #bcd5f0!important;color:#245f9d!important;
+  box-shadow:0 0 0 3px rgba(52,119,191,.07),0 8px 20px rgba(36,95,157,.08)!important;
+}
+.update-actions button.primary-button[data-operation-state="error"]{
+  background:#fff7f5!important;border:1px solid #d9a9a3!important;color:#8e2f2f!important;
+  box-shadow:none!important;
+}
+@media(pointer:coarse){.updates-breadcrumb a{min-height:44px;padding-inline:4px}}

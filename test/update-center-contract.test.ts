@@ -620,6 +620,7 @@ test('Update Center accessibility contract keeps live regions bounded and contro
   assert.match(page,/aria-current="page"/);
   assert.match(page,/id="operation-progress-meter"[^>]*role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"/);
   assert.match(page,/id="update-announcer"[^>]*role="status"[^>]*aria-live="polite"[^>]*aria-atomic="true"/);
+  assert.doesNotMatch(page,/id="updates-freshness"[^>]*aria-live=/);
   assert.match(page,/id="filter-result-summary"[^>]*role="status"/);
   assert.match(page,/id="show-attention"[^>]*aria-controls="update-list"[^>]*aria-pressed="false"/);
   assert.match(page,/id="update-search"[^>]*aria-controls="update-list"/);
@@ -645,6 +646,10 @@ test('Update Center accessibility contract keeps live regions bounded and contro
   assert.match(css,/@media\(forced-colors:active\)/);
   assert.match(css,/summary:focus-visible/);
   assert.match(css,/env\(safe-area-inset-top\)/);
+  assert.match(css,/\.updates-main \.eyebrow\{color:#b85000!important\}/);
+  assert.match(css,/\.update-search input::placeholder\{color:#68778d!important/);
+  assert.match(css,/button\.primary-button\[data-operation-state=\"active\"\]/);
+  assert.match(css,/background:linear-gradient\(135deg,#eaf3ff,#f7fbff\)!important/);
 });
 
 test('Update Center streams canonical release progress in real time with bounded fallback', async()=>{
