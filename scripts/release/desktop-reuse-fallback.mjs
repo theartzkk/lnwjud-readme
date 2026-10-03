@@ -59,11 +59,21 @@ export async function prepareDesktopReuseFallbacks({ input, baseManifest, releas
   if (paths.length === 0) return [];
 
   const resolvedWebRoot = resolve(webRoot);
-  const releasesRoot = resolve(resolvedWebRoot, "releases");
-  const sourceRoot = resolve(releasesRoot, baseManifest.releaseId);
-  if (!sourceRoot.startsWith(`${releasesRoot}${sep}`)) throw new Error("Verified desktop recovery release path is invalid");
+  const releasesRoot = await realpath(join(resolvedWebRoot, "releases"));
   const currentRoot = await realpath(join(resolvedWebRoot, "current"));
-  if (currentRoot !== sourceRoot) throw new Error("Verified desktop recovery release is no longer current");
+  if (!currentRoot.startsWith(`${releasesRoot}${sep}`)) throw new Error("Verified desktop recovery release path is invalid");
+  let currentManifest;
+  try { currentManifest = JSON.parse(await readFile(join(currentRoot, "release.json"), "utf8")); }
+  catch { throw new Error("Verified desktop recovery release manifest is unavailable"); }
+  const identityMatches =
+    currentManifest?.schemaVersion === baseManifest.schemaVersion &&
+    currentManifest?.releaseId === baseManifest.releaseId &&
+    currentManifest?.sourceSha === baseManifest.sourceSha &&
+    currentManifest?.sourceState === baseManifest.sourceState &&
+    currentManifest?.product === baseManifest.product &&
+    (!SHA64.test(baseManifest.webBundleSha256 ?? "") || currentManifest?.webBundleSha256 === baseManifest.webBundleSha256);
+  if (!identityMatches) throw new Error("Verified desktop recovery release is no longer current");
+  const sourceRoot = currentRoot;
   const storeRoot = resolve(resolvedWebRoot, "desktop-artifacts");
   const outputRoot = resolve(input);
   const fallback = [];
