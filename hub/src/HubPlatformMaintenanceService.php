@@ -26,14 +26,27 @@ final class HubPlatformMaintenanceService
         return ['mode'=>$mode,'active'=>$mode==='PLATFORM_ONLY','platformProjectId'=>$row['platform_project_id']===null?null:(string)$row['platform_project_id'],'reason'=>(string)$row['reason'],'enabledAt'=>$row['enabled_at']===null?null:(string)$row['enabled_at'],'updatedAt'=>(string)$row['updated_at'],'updatedBy'=>(string)$row['updated_by']];
     }
 
-    public function mutationAllowed(string $projectId,string $resource): bool
+    public function mutationAllowed(string $projectId,string $resource,?string $releaseTrack=null): bool
     {
         $resource=strtoupper(trim($resource));
         if($resource==='READ')return true;
         $state=$this->state();
         if(($state['active']??false)!==true)return true;
         $platform=$state['platformProjectId']??null;
-        return is_string($platform)&&$platform!==''&&hash_equals(strtolower($platform),strtolower(trim($projectId)));
+        if(!is_string($platform)||$platform===''||!hash_equals(strtolower($platform),strtolower(trim($projectId))))return false;
+
+        // PLATFORM_ONLY is a release-track freeze, not merely a project-id allowlist.
+        // AWH Core and VPS Platform intentionally share one project/repository, so
+        // allowing every mutation from the platform project lets unrelated AWH
+        // source/deploy work move canonical main while closure is being verified.
+        if(in_array($resource,['CANDIDATE','WORKSPACE','RESOURCE:HOSTING'],true))return true;
+        if($resource==='CANONICAL:DEPLOY:VPS_PLATFORM')return true;
+        if($resource==='CANONICAL:SOURCE'){
+            $track=strtolower(trim((string)$releaseTrack));
+            return $track==='vps-platform';
+        }
+        if(str_starts_with($resource,'CANONICAL:SOURCE:'))return str_ends_with($resource,':VPS_PLATFORM');
+        return false;
     }
 
     public function enable(string $platformProjectId,string $reason,string $actor,string $at): array

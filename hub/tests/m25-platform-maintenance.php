@@ -51,7 +51,7 @@ try{
     $pdo->exec("CREATE TABLE control_execution_providers(provider_id TEXT PRIMARY KEY,provider_kind TEXT,display_name TEXT,availability_mode TEXT,cost_class TEXT,priority INTEGER,enabled INTEGER,observed_at TEXT,expires_at TEXT,metadata_json TEXT)");
     $pdo->exec("CREATE TABLE control_execution_provider_capabilities(provider_id TEXT,capability TEXT,cost_rank INTEGER,quality_rank INTEGER,latency_rank INTEGER,enabled INTEGER,expires_at TEXT,PRIMARY KEY(provider_id,capability))");
     $pdo->exec("CREATE TABLE control_tasks(task_id TEXT PRIMARY KEY,project_id TEXT NOT NULL,state TEXT NOT NULL,conversation_id TEXT,goal TEXT)");
-    $pdo->exec("CREATE TABLE control_task_executions(execution_id TEXT PRIMARY KEY,task_id TEXT NOT NULL,project_id TEXT NOT NULL,vault_revision_id TEXT,executor_kind TEXT NOT NULL,required_capability TEXT NOT NULL,state TEXT NOT NULL,updated_at TEXT NOT NULL)");
+    $pdo->exec("CREATE TABLE control_task_executions(execution_id TEXT PRIMARY KEY,task_id TEXT NOT NULL,project_id TEXT NOT NULL,vault_revision_id TEXT,executor_kind TEXT NOT NULL,required_capability TEXT NOT NULL,state TEXT NOT NULL,checkpoint_json TEXT NOT NULL DEFAULT '{}',updated_at TEXT NOT NULL)");
     $pdo->exec("CREATE TABLE control_execution_envelopes(envelope_id TEXT PRIMARY KEY,execution_id TEXT UNIQUE,task_id TEXT,project_id TEXT,conversation_id TEXT,base_revision_id TEXT,session_key TEXT,mutation_scope TEXT,state TEXT,provider_id TEXT,lease_expires_at TEXT,created_at TEXT,updated_at TEXT)");
 
     $m25=$base.'/migrations/024_platform_maintenance.sql';
@@ -67,7 +67,12 @@ try{
     m25_assert(($state['active']??false)===true&&($state['platformProjectId']??null)===$platform,'PLATFORM_ONLY freeze binds to platform project');
     m25_assert($maintenance->mutationAllowed($product,'READ')===true,'product READ remains available');
     m25_assert($maintenance->mutationAllowed($product,'CANDIDATE')===false,'product candidate mutation is blocked');
-    m25_assert($maintenance->mutationAllowed($platform,'CANDIDATE')===true,'platform mutation remains available');
+    m25_assert($maintenance->mutationAllowed($platform,'CANDIDATE')===true,'platform candidate mutation remains available');
+    m25_assert($maintenance->mutationAllowed($platform,'RESOURCE:HOSTING')===true,'platform hosting self-heal remains available');
+    m25_assert($maintenance->mutationAllowed($platform,'CANONICAL:DEPLOY:VPS_PLATFORM')===true,'VPS Platform deploy remains available');
+    m25_assert($maintenance->mutationAllowed($platform,'CANONICAL:DEPLOY:AWH')===false,'AWH deploy cannot move Production during PLATFORM_ONLY');
+    m25_assert($maintenance->mutationAllowed($platform,'CANONICAL:SOURCE','vps-platform')===true,'VPS Platform source promotion remains available');
+    m25_assert($maintenance->mutationAllowed($platform,'CANONICAL:SOURCE','awh')===false,'AWH source promotion cannot move main during PLATFORM_ONLY');
 
     $insert=function(string $project,string $capability,string $state='QUEUED')use($pdo,$now):string{
         $task=m25_uuid();$execution=m25_uuid();
@@ -76,6 +81,11 @@ try{
         return $execution;
     };
     $registry=new HubCapabilityRegistryService($pdo);
+    $missionTask=m25_uuid();$missionExecution=m25_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id,project_id,state,conversation_id,goal) VALUES(:task,:project,'WAITING_FOR_WORKER',NULL,'platform mission fixture')")->execute(['task'=>$missionTask,'project'=>$platform]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,checkpoint_json,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','operator.project_mission','RUNNING',:checkpoint,:at)")->execute(['execution'=>$missionExecution,'task'=>$missionTask,'project'=>$platform,'checkpoint'=>json_encode(['scopeEnvelope'=>['releaseTrack'=>'vps-platform']],JSON_THROW_ON_ERROR),'at'=>$now]);
+    $trackResolver=new ReflectionMethod(HubCapabilityRegistryService::class,'maintenanceReleaseTrack');$trackResolver->setAccessible(true);
+    m25_assert($trackResolver->invoke($registry,'source.promote',json_encode(['missionExecutionId'=>$missionExecution],JSON_THROW_ON_ERROR))==='vps-platform','source writer inherits VPS Platform release track from its durable Mission scope');
     $blockedExecution=$insert($product,'project.mutate.assisted');
     $blocked=false;
     try{$registry->activateExecutionAuthority($blockedExecution,null,$now);}
@@ -89,6 +99,16 @@ try{
     $platformExecution=$insert($platform,'project.mutate.assisted');
     $allowed=$registry->activateExecutionAuthority($platformExecution,null,$now);
     m25_assert(($allowed['granted']??false)===true&&($allowed['mutationResource']??null)==='CANDIDATE','execution gate allows platform maintenance mutation');
+
+    $awhRelease=$insert($platform,'system.core.release');
+    $awhReleaseBlocked=false;
+    try{$registry->activateExecutionAuthority($awhRelease,null,$now);}
+    catch(HubCapabilityRegistryException $error){$awhReleaseBlocked=$error->codeName==='PLATFORM_MAINTENANCE_FREEZE';}
+    m25_assert($awhReleaseBlocked,'execution gate blocks AWH Production release while PLATFORM_ONLY is active');
+
+    $platformRelease=$insert($platform,'system.platform.release');
+    $platformReleaseAuthority=$registry->activateExecutionAuthority($platformRelease,null,$now);
+    m25_assert(($platformReleaseAuthority['granted']??false)===true&&($platformReleaseAuthority['mutationResource']??null)==='CANONICAL:DEPLOY:VPS_PLATFORM','execution gate keeps VPS Platform Production release available');
 
     $normal=$maintenance->disable('Platform closure complete','test',gmdate('c',strtotime($now)+60));
     m25_assert(($normal['active']??true)===false,'freeze can return explicitly to NORMAL');

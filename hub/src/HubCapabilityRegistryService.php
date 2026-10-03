@@ -192,6 +192,23 @@ final class HubCapabilityRegistryService
         return null;
     }
 
+    private function maintenanceReleaseTrack(string $capability, ?string $checkpointJson): ?string
+    {
+        $direct=self::releaseTrackFromCheckpoint($checkpointJson);
+        if($direct!==null)return $direct;
+        if($capability!=='source.promote'||!is_string($checkpointJson)||trim($checkpointJson)==='')return null;
+        try{$checkpoint=json_decode($checkpointJson,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){return null;}
+        $mission=is_array($checkpoint)&&is_string($checkpoint['missionExecutionId']??null)?strtolower(trim((string)$checkpoint['missionExecutionId'])):'';
+        if(preg_match('/^[0-9a-f-]{36}$/',$mission)!==1)return null;
+        $q=$this->pdo->prepare("SELECT checkpoint_json FROM control_task_executions WHERE execution_id=:execution AND required_capability='operator.project_mission' LIMIT 1");
+        $q->execute(['execution'=>$mission]);$raw=$q->fetchColumn();
+        if(!is_string($raw))return null;
+        try{$missionCheckpoint=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){return null;}
+        $scope=is_array($missionCheckpoint)?($missionCheckpoint['scopeEnvelope']??null):null;
+        $track=is_array($scope)&&is_string($scope['releaseTrack']??null)?strtolower(trim((string)$scope['releaseTrack'])):'';
+        return preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$track)===1?$track:null;
+    }
+
     /** Serialize only executions whose derived resources actually conflict. */
     public static function mutationResourcesConflict(string $left, string $right): bool
     {
@@ -323,14 +340,16 @@ final class HubCapabilityRegistryService
             $meta->execute(['execution'=>$executionId]); $metaRow=$meta->fetch();
             if(!is_array($metaRow))throw new HubCapabilityRegistryException('Execution metadata is unavailable','EXECUTION_NOT_FOUND');
             $capability=(string)$metaRow['required_capability'];
-            $resource=self::mutationResourceForExecution($capability,(string)$metaRow['executor_kind'],is_string($metaRow['checkpoint_json']??null)?(string)$metaRow['checkpoint_json']:null);
+            $checkpointJson=is_string($metaRow['checkpoint_json']??null)?(string)$metaRow['checkpoint_json']:null;
+            $resource=self::mutationResourceForExecution($capability,(string)$metaRow['executor_kind'],$checkpointJson);
+            $maintenanceReleaseTrack=$this->maintenanceReleaseTrack($capability,$checkpointJson);
             if($resource!=='READ'&&$capability!=='operator.project_mission'&&!$this->projectSourceReady($project)){
                 $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','CONFLICT','ACTIVE')")->execute(['at'=>$at,'execution'=>$executionId]);
                 if($ownTransaction)$this->pdo->exec('COMMIT');
                 throw new HubCapabilityRegistryException('Project mutation requires a verified canonical source authority','PROJECT_SOURCE_NOT_READY');
             }
             $maintenance=new HubPlatformMaintenanceService($this->pdo);
-            if(!$maintenance->mutationAllowed($project,$resource)){
+            if(!$maintenance->mutationAllowed($project,$resource,$maintenanceReleaseTrack)){
                 $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','CONFLICT','ACTIVE')")->execute(['at'=>$at,'execution'=>$executionId]);
                 if($ownTransaction)$this->pdo->exec('COMMIT');
                 throw new HubCapabilityRegistryException('Product mutation is frozen while VPS Platform maintenance is active','PLATFORM_MAINTENANCE_FREEZE');

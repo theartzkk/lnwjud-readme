@@ -204,7 +204,15 @@ final class HubOperatorBridgeService
         $vaultReady=$authority!=='AWH_VAULT'||$sync==='SYNCED';
         $maintenanceService=new HubPlatformMaintenanceService($this->pdo);
         $maintenance=$maintenanceService->state();
-        $maintenanceAllowed=$maintenanceService->mutationAllowed($id,$requestedResource);
+        $maintenanceReleaseTrack=null;
+        if($requestedResource==='CANONICAL:SOURCE'&&is_string($excludeExecutionId)&&self::uuidValid($excludeExecutionId)){
+            try{
+                $scope=(new HubScopeAuthorizer($this->pdo))->forMission($excludeExecutionId);
+                $track=$scope['releaseTrack']??null;
+                if(is_string($track))$maintenanceReleaseTrack=strtolower(trim($track));
+            }catch(HubScopeAuthorizerException){}
+        }
+        $maintenanceAllowed=$maintenanceService->mutationAllowed($id,$requestedResource,$maintenanceReleaseTrack);
         $checks=[
             ['key'=>'platform_maintenance','ok'=>$maintenanceAllowed,'value'=>($maintenance['mode']??'NORMAL'),'blocking'=>true],
             ['key'=>'database','ok'=>$quick==='ok','value'=>$quick,'blocking'=>true],
