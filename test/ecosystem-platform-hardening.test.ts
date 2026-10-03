@@ -155,6 +155,17 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(bounded, /MISSION_DEPENDENCIES=ISOLATED_QA/);
   assert.match(bounded, /MISSION_CANONICAL_MAIN_MOVED/);
   assert.match(deploy, /PLATFORM_HARDENING_MIGRATION_VERIFIED/);
+  const platformStart=deploy.indexOf('if test "$PLATFORM_HARDENING" = 1; then\n  stage WORKSPACE_PRESERVED');
+  const platformEnd=deploy.indexOf('elif test "$IDENTITY_CONVERGENCE" = 1; then',platformStart);
+  const platformBlock=deploy.slice(platformStart,platformEnd);
+  assert.ok(platformStart>=0&&platformEnd>platformStart,'VPS Platform deploy branch is present');
+  assert.match(deploy,/validate_live_service_unit\(\)/);
+  assert.match(deploy,/validate_live_timer_unit\(\)/);
+  assert.match(deploy,/backup_live_unit\(\)/);
+  assert.match(platformBlock,/validate_live_service_unit "\$EXECUTOR_SERVICE_UNIT".*awh-native-executor\.php.*strict/);
+  assert.match(platformBlock,/validate_live_service_unit "\$HOSTING_SERVICE_UNIT".*awh-hosting-operator\.php.*full/);
+  assert.match(platformBlock,/backup_live_unit "\$HOSTING_SERVICE_UNIT" "\$HOSTING_SERVICE_BACKUP"/);
+  assert.doesNotMatch(platformBlock,/cmp -s "\$HOSTING_SERVICE_UNIT" "\$PREVIOUS_TARGET\/deploy\/systemd\/awh-hosting-operator\.service"/);
   assert.match(deploy, /PLATFORM_RUNTIME_READY/);
   assert.match(deploy, /platform_attempt=1[\s\S]*platform_attempt=\$\(\(platform_attempt \+ 1\)\)/);
   assert.match(deployOrchestrator, /EXTENSION_MODE_COUNT=\$\(\(AWH_CORE \+ ASSISTANT_WORKSTREAM/);

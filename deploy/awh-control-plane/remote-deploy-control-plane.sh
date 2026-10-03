@@ -456,6 +456,25 @@ deduplicate_control_release_desktop_artifacts() {
 }
 verify_web_access() { sudo -n -u www-data test -x /var; sudo -n -u www-data test -x /var/www; sudo -n -u www-data test -x /var/www/awh-web; sudo -n -u www-data test -x /var/www/awh-web/releases; sudo -n -u www-data test -x "$WEB_RELEASE"; sudo -n -u www-data test -r "$WEB_RELEASE/index.html"; sudo -n -u www-data test -r "$WEB_RELEASE/awh-design-system.css"; sudo -n -u www-data test -r "$WEB_RELEASE/awh-light-system.css"; sudo -n -u www-data test -r "$WEB_RELEASE/responsive-layout.css"; sudo -n -u www-data test -r "$WEB_RELEASE/navigation.js"; sudo grep -q -- '--awh-font-sans' "$WEB_RELEASE/awh-design-system.css"; sudo grep -qi -- 'color-scheme:light' "$WEB_RELEASE/awh-light-system.css"; sudo grep -q -- 'Shared responsive-width contract' "$WEB_RELEASE/responsive-layout.css"; sudo -n -u www-data test -r "$WEB_RELEASE/database.html"; sudo -n -u www-data test -r "$WEB_RELEASE/database.css"; sudo -n -u www-data test -r "$WEB_RELEASE/database.js"; sudo -n -u www-data test -r "$WEB_RELEASE/hosting.html"; sudo -n -u www-data test -r "$WEB_RELEASE/hosting.css"; sudo -n -u www-data test -r "$WEB_RELEASE/hosting.js"; sudo grep -q '"mode": "CONTROL"' "$WEB_RELEASE/web-config.json"; sudo grep -q '"mode": "CONTROL"' "$WEB_RELEASE/data.json"; ! sudo grep -q 'Remote Preview\|Preview only\|static build' "$WEB_RELEASE/data.json"; sudo grep -q "awh-shell-$RELEASE_ID" "$WEB_RELEASE/sw.js"; }
 pointer_capture() { PREVIOUS_POINTER=ABSENT; PREVIOUS_TARGET=; if test -L "$POINTER"; then PREVIOUS_TARGET=$(readlink "$POINTER"); case "$PREVIOUS_TARGET" in /opt/awh-hub/control-releases/*) test -d "$PREVIOUS_TARGET" || return 1 ;; *) return 1 ;; esac; PREVIOUS_POINTER=PRESENT; elif test -e "$POINTER"; then return 1; fi; }
+validate_live_service_unit() (
+  unit=$1; expected_exec=$2; expected_protect=$3
+  sudo test -f "$unit"; sudo test ! -L "$unit"
+  sudo grep -Fxq "ExecStart=$expected_exec" "$unit"
+  sudo grep -Fxq 'NoNewPrivileges=true' "$unit"
+  sudo grep -Fxq "ProtectSystem=$expected_protect" "$unit"
+)
+validate_live_timer_unit() (
+  unit=$1; expected_service=$2
+  sudo test -f "$unit"; sudo test ! -L "$unit"
+  sudo grep -Fxq "Unit=$expected_service" "$unit"
+  sudo grep -Fxq 'Persistent=true' "$unit"
+)
+backup_live_unit() (
+  source=$1; backup=$2
+  sudo cp -p "$source" "$backup"
+  sudo chown root:root "$backup"; sudo chmod 0600 "$backup"
+  sudo cmp -s "$source" "$backup"
+)
 pointer_restore() { if test "$PREVIOUS_POINTER" = ABSENT; then sudo rm -f "$POINTER"; test ! -e "$POINTER" && test ! -L "$POINTER"; else sudo rm -f "$POINTER"; sudo ln -s "$PREVIOUS_TARGET" "$POINTER"; test "$(readlink "$POINTER")" = "$PREVIOUS_TARGET"; fi; }
 restore_previous_control_include() {
   test "$PREVIOUS_POINTER" = PRESENT || return 0
@@ -789,13 +808,17 @@ if test "$PLATFORM_HARDENING" = 1; then
   if test "$PLATFORM_START_VERSION" = 23 || test "$PLATFORM_START_VERSION" = 24 || test "$PLATFORM_START_VERSION" = 25; then M23_REFRESH=1; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm23-platform-hardening' AND schema_version = 23;")" = 1; fi
   if test "$PLATFORM_START_VERSION" = 24 || test "$PLATFORM_START_VERSION" = 25; then test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm24-conversation-delegates' AND schema_version = 24;")" = 1; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='control_ai_delegates';")" = 1; fi
   if test "$PLATFORM_START_VERSION" = 25; then test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm25-platform-maintenance-authority' AND schema_version = 25;")" = 1; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='control_platform_maintenance';")" = 1; fi
-  test -f "$EXECUTOR_SERVICE_UNIT" && test -f "$EXECUTOR_TIMER_UNIT" && test -f "$HOSTING_SERVICE_UNIT" && test -f "$HOSTING_TIMER_UNIT"; test "$PREVIOUS_POINTER" = PRESENT
-  sudo cmp -s "$EXECUTOR_SERVICE_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.service"; sudo cmp -s "$EXECUTOR_TIMER_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.timer"
-  sudo cmp -s "$HOSTING_SERVICE_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-hosting-operator.service"; sudo cmp -s "$HOSTING_TIMER_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-hosting-operator.timer"
+  test "$PREVIOUS_POINTER" = PRESENT
+  validate_live_service_unit "$EXECUTOR_SERVICE_UNIT" '/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/awh-native-executor.php' strict
+  validate_live_timer_unit "$EXECUTOR_TIMER_UNIT" awh-native-executor.service
+  validate_live_service_unit "$HOSTING_SERVICE_UNIT" '/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/awh-hosting-operator.php' full
+  validate_live_timer_unit "$HOSTING_TIMER_UNIT" awh-hosting-operator.service
   sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"
   sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"; sudo test ! -e "$HOSTING_SERVICE_BACKUP"; sudo test ! -e "$HOSTING_TIMER_BACKUP"
-  sudo cp -p "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"; sudo cp -p "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"; sudo cp -p "$HOSTING_SERVICE_UNIT" "$HOSTING_SERVICE_BACKUP"; sudo cp -p "$HOSTING_TIMER_UNIT" "$HOSTING_TIMER_BACKUP"
-  sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"
+  backup_live_unit "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"
+  backup_live_unit "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"
+  backup_live_unit "$HOSTING_SERVICE_UNIT" "$HOSTING_SERVICE_BACKUP"
+  backup_live_unit "$HOSTING_TIMER_UNIT" "$HOSTING_TIMER_BACKUP"
   sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1; EXECUTOR_UNITS_PREEXISTING=1
   sudo systemctl stop awh-hosting-operator.timer; sudo systemctl stop awh-hosting-operator.service >/dev/null 2>&1 || true; HOSTING_UNITS_PREEXISTING=1
   verify_deploy_authority; stage NATIVE_EXECUTOR_QUIESCED; stage HOSTING_OPERATOR_QUIESCED
