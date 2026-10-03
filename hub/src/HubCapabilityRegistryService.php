@@ -248,8 +248,11 @@ final class HubCapabilityRegistryService
         $leftDeploy=self::mutationResourceIsDeploy($left);
         $rightDeploy=self::mutationResourceIsDeploy($right);
         if(($leftDeploy&&self::mutationResourceIsGlobal($left))||($rightDeploy&&self::mutationResourceIsGlobal($right))){
-            // Host-global VPS Platform deployment freezes canonical host mutations.
-            // Candidate/workspace/read lanes were already excluded above.
+            // The Platform release is exact-SHA pinned before dispatch. A later
+            // canonical-source fast-forward cannot alter that immutable target,
+            // so source work may continue. Host deploy/stage mutations remain
+            // globally serialized because they can change shared runtime state.
+            if($left==='CANONICAL:SOURCE'||$right==='CANONICAL:SOURCE')return false;
             return true;
         }
 
@@ -260,7 +263,11 @@ final class HubCapabilityRegistryService
         }
 
         if($left==='CANONICAL:PROJECT'||$right==='CANONICAL:PROJECT')return true;
-        if(($leftDeploy&&$right==='CANONICAL:SOURCE')||($rightDeploy&&$left==='CANONICAL:SOURCE'))return true;
+        // Non-platform releases are exact-SHA pinned before execution. Once a
+        // release intent exists, moving canonical source forward cannot change
+        // the detached release snapshot, so source promotion must not be held
+        // for the full QA/deploy window. VPS Platform remains host-global above.
+        if(($leftDeploy&&$right==='CANONICAL:SOURCE')||($rightDeploy&&$left==='CANONICAL:SOURCE'))return false;
         if(($leftDeploy&&$right==='RESOURCE:RELEASE_STAGE')||($rightDeploy&&$left==='RESOURCE:RELEASE_STAGE'))return true;
         if($leftDeploy&&$rightDeploy){
             if($left==='CANONICAL:DEPLOY:PROJECT'||$right==='CANONICAL:DEPLOY:PROJECT')return true;

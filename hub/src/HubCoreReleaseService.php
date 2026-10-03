@@ -219,8 +219,21 @@ final class HubCoreReleaseService
         $q->execute(['capability'=>$this->capability,'at'=>$at]);return $q->fetchColumn()!==false;
     }
 
-    private function supersedeQueuedReleaseIfTargetMoved(string $targetSha,string $at): void
+    public static function supersedeQueuedForSourcePromotion(PDO $pdo,string $releaseTrack,string $targetSha,string $at): int
     {
+        $track=strtolower(trim($releaseTrack));$target=strtolower(trim($targetSha));
+        if(preg_match('/^[0-9a-f]{40}$/',$target)!==1)return 0;
+        $service=match($track){
+            'awh'=>self::fromPdo($pdo),
+            'vps-platform'=>self::platformFromPdo($pdo),
+            default=>null,
+        };
+        return $service instanceof self?$service->supersedeQueuedReleaseIfTargetMoved($target,$at):0;
+    }
+
+    private function supersedeQueuedReleaseIfTargetMoved(string $targetSha,string $at): int
+    {
+        $count=0;
         $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.state AS execution_state,e.lease_owner,e.checkpoint_json,t.state AS task_state,a.approval_id,a.status AS approval_status
             FROM control_task_executions e
             JOIN control_tasks t ON t.task_id=e.task_id
@@ -247,9 +260,10 @@ final class HubCoreReleaseService
                     $this->pdo->prepare("UPDATE control_approvals SET status='EXPIRED' WHERE approval_id=:approval AND status='PENDING'")->execute(['approval'=>$row['approval_id']]);
                 $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'CANCELLED',0,:message,:at)")
                     ->execute(['event'=>self::uuid(),'task'=>$row['task_id'],'message'=>$summary.' · CORE_RELEASE_SUPERSEDED · latest '.substr($targetSha,0,12),'at'=>$at]);
-                $this->pdo->exec('COMMIT');
+                $this->pdo->exec('COMMIT');$count++;
             }catch(Throwable){$this->rollback();}
         }
+        return $count;
     }
 
     private function resumeLegacyPendingRelease(array $existing,string $ownerUser,string $at): array

@@ -6,6 +6,7 @@ require_once __DIR__.'/HubUpdateTargetRegistry.php';
 
 require_once __DIR__ . '/HubBayRemoteUpdateService.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
+require_once __DIR__ . '/HubCoreReleaseService.php';
 require_once __DIR__ . '/HubExecutionLifecycleService.php';
 require_once __DIR__ . '/HubPlatformMaintenanceService.php';
 require_once __DIR__ . '/HubProjectVault.php';
@@ -424,6 +425,26 @@ final class HubOperatorBridgeService
         }
         $normalizedGuardState=match($guardState){'NORMAL'=>'OK',default=>$guardState};
         $guardDisagreesWithLive=$liveReady&&$guardFresh&&($guardReleaseBlocked!==$diskBlocked||($normalizedGuardState!=='UNKNOWN'&&!hash_equals($normalizedGuardState,$state)));
+        $inventoryPath='/var/lib/awh-hub/storage-inventory.json';$inventory=null;$inventoryFresh=false;
+        if(is_file($inventoryPath)&&is_readable($inventoryPath)&&!is_link($inventoryPath)){
+            $inventoryRaw=@file_get_contents($inventoryPath);
+            if(is_string($inventoryRaw)&&strlen($inventoryRaw)<=131072){
+                try{$inventoryDoc=json_decode($inventoryRaw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){$inventoryDoc=null;}
+                if(is_array($inventoryDoc)&&($inventoryDoc['schemaVersion']??null)===1){
+                    $inventoryAt=is_string($inventoryDoc['checkedAt']??null)?strtotime((string)$inventoryDoc['checkedAt']):false;
+                    $inventoryFresh=$inventoryAt!==false&&abs(strtotime($at)-$inventoryAt)<=7200;
+                    $inventory=[
+                        'checkedAt'=>$inventoryDoc['checkedAt']??null,
+                        'fresh'=>$inventoryFresh,
+                        'attributedBytes'=>is_int($inventoryDoc['attributedBytes']??null)?$inventoryDoc['attributedBytes']:null,
+                        'unattributedBytes'=>is_int($inventoryDoc['unattributedBytes']??null)?$inventoryDoc['unattributedBytes']:null,
+                        'inventoryComplete'=>($inventoryDoc['inventoryComplete']??false)===true,
+                        'categories'=>is_array($inventoryDoc['categories']??null)?$inventoryDoc['categories']:[],
+                        'awhRemoteBreakdown'=>is_array($inventoryDoc['awhRemoteBreakdown']??null)?$inventoryDoc['awhRemoteBreakdown']:[],
+                    ];
+                }
+            }
+        }
         return [
             'state'=>$state,'authority'=>'AWH_STORAGE_GUARD+LIVE_DISK',
             'freeBytes'=>$freeBytes,'totalBytes'=>$totalBytes,'usedPercent'=>$usedPercent,
@@ -433,6 +454,7 @@ final class HubOperatorBridgeService
             'releaseBlocked'=>$diskBlocked,
             'guardState'=>$guardState,'guardFresh'=>$guardFresh,'guardCheckedAt'=>$guardCheckedAt,
             'guardReleaseBlocked'=>$guardReleaseBlocked,'guardFallbackUsed'=>$guardFallbackUsed,'guardDisagreesWithLive'=>$guardDisagreesWithLive,
+            'inventory'=>$inventory,'inventoryFresh'=>$inventoryFresh,
             'selfHealAuthority'=>'awh-storage-guard.timer',
         ];
     }
@@ -997,13 +1019,18 @@ final class HubOperatorBridgeService
             $before=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($before)))throw new HubOperatorBridgeException('Canonical main moved during source promotion','OPERATOR_SOURCE_BASE_MOVED');
             $this->runGit($repoReal,['update-ref','refs/heads/main',$target,$expected]);
             $after=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($target,self::gitSha($after)))throw new HubOperatorBridgeException('Canonical main did not reach target revision','OPERATOR_SOURCE_PROMOTE_FAILED');
+            // A queued release is immutable to its approved SHA. As soon as
+            // canonical source advances, retire older not-started requests on
+            // the same release track so Update Center never advertises stale
+            // work that still needs an Owner cancel/retry.
+            $supersededReleaseCount=HubCoreReleaseService::supersedeQueuedForSourcePromotion($this->pdo,(string)$releaseNotes['releaseTrack'],$target,$at);
             $expectedHead='refs/heads/'.$defaultBranch;
             if(!hash_equals($headBefore,$expectedHead)){
                 try{$this->runGit($repoReal,['symbolic-ref','HEAD',$expectedHead]);$headChanged=true;$headAfter=trim($this->runGit($repoReal,['symbolic-ref','HEAD']));if(!hash_equals($headAfter,$expectedHead))throw new HubOperatorBridgeException('Repository default HEAD did not converge','OPERATOR_SOURCE_PROMOTE_FAILED');}
                 catch(Throwable $error){$this->runGitResult($repoReal,['update-ref','refs/heads/main',$expected,$target]);if($headChanged)$this->runGitResult($repoReal,['symbolic-ref','HEAD',$headBefore]);throw $error instanceof HubOperatorBridgeException?$error:new HubOperatorBridgeException('Repository default HEAD could not be reconciled','OPERATOR_SOURCE_PROMOTE_FAILED');}
             }
             $audit=['executionId'=>(string)$authority['executionId'],'taskId'=>(string)$authority['taskId']];
-            $success=true;return ['schemaVersion'=>2,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt'],'missionReused'=>false,'missionResumed'=>$missionResumed,'missionExecutionId'=>$missionId,'writerType'=>'SOURCE_PROMOTE'],'audit'=>$audit,'releaseNotes'=>$releaseNotes,'observedAt'=>$at];
+            $success=true;return ['schemaVersion'=>2,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt'],'missionReused'=>false,'missionResumed'=>$missionResumed,'missionExecutionId'=>$missionId,'writerType'=>'SOURCE_PROMOTE'],'audit'=>$audit,'releaseNotes'=>$releaseNotes,'supersededReleaseCount'=>$supersededReleaseCount,'observedAt'=>$at];
         }finally{$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
     }
 

@@ -4,6 +4,8 @@ STATE_DIR=/var/lib/awh-hub
 STATE_FILE="$STATE_DIR/storage-guard.state"
 JSON_FILE="$STATE_DIR/storage-guard.json"
 EVENT_FILE="$STATE_DIR/storage-guard-events.log"
+INVENTORY_FILE="$STATE_DIR/storage-inventory.json"
+INVENTORY_TOOL=/opt/awh-hub/control-plane-current/deploy/awh-storage/awh-storage-inventory.py
 WARN=75
 BLOCK=90
 CRIT=95
@@ -14,6 +16,9 @@ BLOCK_FREE=3221225472
 CRIT_FREE=1610612736
 
 mkdir -p "$STATE_DIR"
+if [[ -x "$INVENTORY_TOOL" || -f "$INVENTORY_TOOL" ]]; then
+  /usr/bin/python3 "$INVENTORY_TOOL" --output "$INVENTORY_FILE" --max-age-seconds 3600 >/dev/null 2>&1 || logger -t awh-storage-guard "storage_inventory_failed"
+fi
 used=$(df -P / | awk 'NR==2{gsub(/%/,"",$5);print $5}')
 avail=$(df -B1 --output=avail / | tail -1 | tr -d ' ')
 total=$(df -B1 --output=size / | tail -1 | tr -d ' ')

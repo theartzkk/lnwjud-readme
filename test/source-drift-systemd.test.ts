@@ -128,12 +128,13 @@ test('project source authority ships a persistent least-privilege drift monitor'
 
 
 test('VPS Platform storage safety is proactive, project-aware and durable', async () => {
-  const [janitor,temp,tempService,tempTimer,guard,guardService,guardTimer,databaseTimer,deploy,remote,operatorBridge,agents,operations] = await Promise.all([
+  const [janitor,temp,tempService,tempTimer,guard,inventory,guardService,guardTimer,databaseTimer,deploy,remote,operatorBridge,agents,operations] = await Promise.all([
     readFile(join(root, 'deploy/awh-storage/awh-temp-workspace-janitor.py'), 'utf8'),
     readFile(join(root, 'deploy/awh-storage/awh-temp-cleanup'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-temp-cleanup.service'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-temp-cleanup.timer'), 'utf8'),
     readFile(join(root, 'deploy/awh-storage/awh-storage-guard'), 'utf8'),
+    readFile(join(root, 'deploy/awh-storage/awh-storage-inventory.py'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-storage-guard.service'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-storage-guard.timer'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-database-inventory.timer'), 'utf8'),
@@ -187,6 +188,15 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(guard, /WARN_FREE=17179869184/);
   assert.match(guard, /AWH_STORAGE_PRESSURE=1/);
   assert.match(guard, /AWH_TMP_KEEP_NEWEST_PER_REPO=1/);
+  assert.match(guard, /awh-storage-inventory\.py/);
+  assert.match(guard, /--max-age-seconds 3600/);
+  assert.match(inventory, /unattributedMeaning/);
+  assert.match(inventory, /\/var\/lib\/awh-hub/);
+  assert.match(inventory, /\/srv\/awh-sites/);
+  assert.match(inventory, /awhRemoteBreakdown/);
+  assert.match(deploy, /awh-storage-inventory\.py/);
+  assert.match(operatorBridge, /storage-inventory\.json/);
+  assert.match(operatorBridge, /'inventoryFresh'=>\$inventoryFresh/);
   assert.match(temp, /AWH_PRESSURE_OPERATOR_STAGE_MAX_AGE_MINUTES:-60/);
   assert.match(temp, /AWH_REMOTE_TRANSIENT_MAX_AGE_MINUTES:-720/);
   assert.match(temp, /AWH_PRESSURE_REMOTE_TRANSIENT_MAX_AGE_MINUTES:-60/);
