@@ -26,6 +26,7 @@ final class HubCoreReleaseService
     public const CAPABILITY='system.core.release';
     public const PLATFORM_CAPABILITY='system.platform.release';
     private const CANONICAL_GIT_REPO='/srv/awh-git/awh.git';
+    private const SOURCE_PROMOTION_CHAIN_LIMIT=400;
 
     private function __construct(private readonly PDO $pdo, private readonly HubOwnerAuthService $auth, private readonly string $capability, private readonly string $releaseMode, private readonly string $releaseTrack, private readonly string $productionBranch, private readonly string $displayName) {}
     public static function fromPdo(PDO $pdo): self { return new self($pdo,HubOwnerAuthService::fromPdo($pdo),self::CAPABILITY,'AWH_CORE','awh','production','AWH'); }
@@ -336,7 +337,7 @@ final class HubCoreReleaseService
     private function latestSourcePromotion(): ?array
     {
         $audit=null;
-        $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT 80");
+        $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT ".self::SOURCE_PROMOTION_CHAIN_LIMIT);
         $q->execute(['project'=>self::PROJECT_ID]);
         foreach($q->fetchAll() as $row){
             try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
@@ -413,7 +414,7 @@ final class HubCoreReleaseService
 
         $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions
             WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED'
-            ORDER BY updated_at DESC,execution_id DESC LIMIT 80");
+            ORDER BY updated_at DESC,execution_id DESC LIMIT ".self::SOURCE_PROMOTION_CHAIN_LIMIT);
         $q->execute(['project'=>self::PROJECT_ID]);
         $byTarget=[];
         foreach($q->fetchAll() as $row){
@@ -427,7 +428,7 @@ final class HubCoreReleaseService
         }
 
         $cursor=$releaseTarget;$segments=[];$seen=[];
-        for($i=0;$i<40&&!hash_equals($cursor,$production);$i++){
+        for($i=0;$i<self::SOURCE_PROMOTION_CHAIN_LIMIT&&!hash_equals($cursor,$production);$i++){
             if(isset($seen[$cursor])||!isset($byTarget[$cursor]))return $this->incompleteDeploymentReleaseNotes($production,$releaseTarget);
             $seen[$cursor]=true;$segment=$byTarget[$cursor];$segments[]=$segment;$cursor=(string)$segment['base'];
         }

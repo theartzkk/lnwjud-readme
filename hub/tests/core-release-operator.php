@@ -87,6 +87,31 @@ try{
     $sourceStatus=$service->status($session['sessionToken']);
     cr_assert(($sourceStatus['sourcePromotion']['sha']??null)===$promoteTarget&&($sourceStatus['sourcePromotion']['previousSha']??null)===$promoteBase&&($sourceStatus['sourcePromotion']['authority']??null)==='CANONICAL_GIT_MAIN_VERIFIED','core release status verifies the successful source-promotion audit against canonical Git main');
     cr_assert(($sourceStatus['releaseDetailsReady']??null)===true&&array_key_exists('releaseBlocker',$sourceStatus)&&$sourceStatus['releaseBlocker']===null,'core release status exposes release metadata readiness before mutation');
+
+    // Regression: a healthy shared-repository source chain can legitimately exceed 40
+    // promotion segments. Release metadata must stay bounded, complete, and track-aware.
+    $longChainTasks=[];$longChainExecutions=[];$longChainTarget=$promoteTarget;
+    for($i=0;$i<48;$i++){
+        $segmentBase=$longChainTarget;$longChainTarget=sha1('core-release-long-chain-'.$i);
+        $track=$i%2===0?'vps-platform':'awh';
+        $taskHex=hash('sha256','core-release-long-task-'.$i);$executionHex=hash('sha256','core-release-long-execution-'.$i);
+        $taskId=substr($taskHex,0,8).'-'.substr($taskHex,8,4).'-4'.substr($taskHex,13,3).'-8'.substr($taskHex,16,3).'-'.substr($taskHex,19,12);
+        $executionId=substr($executionHex,0,8).'-'.substr($executionHex,8,4).'-4'.substr($executionHex,13,3).'-8'.substr($executionHex,16,3).'-'.substr($executionHex,19,12);
+        $at=sprintf('2026-09-23T01:02:%02d+00:00',$i);
+        $notes=cr_release_notes($segmentBase,$longChainTarget,$track);
+        $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Long source chain fixture','COMPLETED',NULL,NULL,100,'Guarded operator mutation completed',NULL,:key,NULL,:at,:at,NULL)")
+            ->execute(['task'=>$taskId,'user'=>$owner,'project'=>$project,'key'=>'core-release-long-chain-'.$i,'at'=>$at]);
+        $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")
+            ->execute(['execution'=>$executionId,'task'=>$taskId,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$segmentBase,'targetSha'=>$longChainTarget,'bundleSha256'=>hash('sha256','core-release-long-bundle-'.$i),'missionExecutionId'=>$track==='awh'?$awhMissionExecution:$platformMissionExecution,'releaseNotes'=>$notes],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
+        $longChainTasks[]=$taskId;$longChainExecutions[]=$executionId;
+    }
+    file_put_contents($canonicalGit.'/refs/heads/main',$longChainTarget."\n");
+    $longChainStatus=$service->status($session['sessionToken']);
+    cr_assert(($longChainStatus['releaseDetailsReady']??null)===true&&($longChainStatus['releaseBlocker']??null)===null,'source promotion chain beyond forty segments remains release-ready');
+    cr_assert(($longChainStatus['releaseNotes']['chainSegmentCount']??null)===49&&($longChainStatus['releaseNotes']['promotionCount']??null)===25,'long mixed-track source chain is reconstructed completely while only AWH segments contribute release details');
+    foreach($longChainExecutions as $id)$pdo->prepare('DELETE FROM control_task_executions WHERE execution_id=:execution')->execute(['execution'=>$id]);
+    foreach($longChainTasks as $id)$pdo->prepare('DELETE FROM control_tasks WHERE task_id=:task')->execute(['task'=>$id]);
+    file_put_contents($canonicalGit.'/refs/heads/main',$promoteTarget."\n");
     $pdo->prepare('UPDATE control_sessions SET step_up_at=NULL WHERE session_hash=:hash')->execute(['hash'=>hash('sha256',$session['sessionToken'])]);
 
     $request=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$sha,'cleanupTopology'=>false],$now);
