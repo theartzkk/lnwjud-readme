@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "authority": "AWH_EXISTING_CONTROL_PLANE",
+  "purpose": "Evaluate replaceable agent technologies without creating a second authority, registry, queue, memory, credential store or release path.",
+  "baselines": {
+    "decision": "AWH deterministic routing + Jev advisory",
+    "sandbox": "AWH execution and approval boundaries",
+    "browser": "AWH browser.playwright/browser.automation capabilities",
+    "observability": "AWH OpenTelemetry pipeline",
+    "design": "KRUART design governance + visual review pipeline"
+  },
+  "promotionGates": [
+    "exact-source-pin-and-license",
+    "representative-AWH-eval-dataset",
+    "baseline-comparison",
+    "no-authority-bypass",
+    "no-secret-or-data-boundary-regression",
+    "deterministic-native-fallback",
+    "bounded-cost-and-resource-profile",
+    "rollback-proven",
+    "exact-candidate-QA",
+    "owner-approval-before-production"
+  ],
+  "candidates": [
+    { "id": "nvidia-openshell", "category": "sandbox", "state": "REGISTERED_EVALUATION", "baseline": "AWH execution security", "productionEnabled": false },
+    { "id": "opendecider", "category": "system-one", "state": "REGISTERED_EVALUATION", "baseline": "Jev advisory", "productionEnabled": false },
+    { "id": "cloudflare-forge", "category": "build-tool", "state": "REGISTERED_EVALUATION", "baseline": "existing API/tooling workflow", "productionEnabled": false },
+    { "id": "cloudflare-cf", "category": "cloud-cli", "state": "RESEARCH_ONLY", "baseline": "existing Cloudflare/API path", "productionEnabled": false, "note": "Beta; evaluate only behind existing approval and credential boundaries." },
+    { "id": "kitesurf-webmcp", "category": "browser", "state": "RESEARCH_ONLY", "baseline": "Playwright/browser automation", "productionEnabled": false, "note": "Experimental WebMCP/browser path; preserve native browser fallback and HITL." },
+    { "id": "holo4", "category": "computer-use-model", "state": "RESEARCH_ONLY", "baseline": "current model + AWH device capabilities", "productionEnabled": false, "note": "Model provider candidate only; never becomes AWH execution authority." }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "authority": "design/UX-ACCEPTANCE.md",
+  "purpose": "Prevent page-by-page cosmetic drift by requiring a shared product-level design convergence review.",
+  "dimensions": [
+    { "id": "hierarchy", "evidence": ["primary-action-obvious", "information-priority-clear", "owner-vocabulary-hidden-from-normal-ux"] },
+    { "id": "density", "evidence": ["no-dashboard-card-sprawl", "progressive-disclosure-used", "mobile-primary-navigation-budget"] },
+    { "id": "interaction", "evidence": ["pressed-visible", "busy-visible", "success-visible", "error-recoverable", "disabled-explained"] },
+    { "id": "continuity", "evidence": ["back-preserves-context", "draft-preserved-on-failure", "resume-state-visible", "no-unexpected-reset"] },
+    { "id": "mobile", "evidence": ["keyboard-safe", "safe-area-clear", "touch-target-44px", "horizontal-overflow-zero"] },
+    { "id": "thai", "evidence": ["thai-not-clipped", "readable-line-height", "no-backend-jargon", "natural-copy"] },
+    { "id": "identity", "evidence": ["canonical-assets-only", "shared-tokens-used", "overlay-respected", "light-kruart-family"] },
+    { "id": "accessibility", "evidence": ["contrast-pass", "focus-visible", "semantic-controls", "status-announced"] }
+  ],
+  "releaseRule": {
+    "sourceInspectionAloneCanPass": false,
+    "exactRevisionBrowserEvidenceRequired": true,
+    "requiredViewports": ["mobile-390", "mobile-430", "tablet-820", "desktop-1366", "desktop-1440"],
+    "ownerAcceptanceForMaterialRedesign": true
+  }
+}

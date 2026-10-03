@@ -9,8 +9,9 @@ These rules apply to Codex and any AI/automation that changes KRUART/AWH/BAY pre
 3. Current task acceptance criteria.
 4. `design/DESIGN.md` for shared visual/interaction language.
 5. The matching file in `design/overlays/` for product-specific expression.
-6. `config/kruart-visual-assets.json` for semantic image/logo slots.
-7. Current implementation CSS/components when they do not conflict with the authorities above.
+6. `design/qa/convergence-rubric.json` for product-level hierarchy, density, interaction and continuity review.
+7. `config/kruart-visual-assets.json` for semantic image/logo slots.
+8. Current implementation CSS/components when they do not conflict with the authorities above.
 
 Never treat a screenshot, old branch, generated mockup, reference-only asset or model opinion as a higher authority than this chain.
 
