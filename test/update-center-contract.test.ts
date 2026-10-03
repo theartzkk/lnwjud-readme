@@ -589,7 +589,8 @@ test('Update Center gives every owner tap immediate tactile and visible feedback
   assert.match(script,/function installTactileFeedback\(\)/);
   assert.match(script,/document\.addEventListener\('pointerdown'/);
   assert.match(script,/control\.classList\.add\('is-pointer-down'\)/);
-  assert.match(script,/flashControlAck\(button,'✓ รับแล้ว'/);
+  assert.match(script,/button\.textContent=result\?\.queued\?'✓ เข้าคิวแล้ว':'✓ เริ่มอัปเดตแล้ว'/);
+  assert.match(script,/flashControlAck\(button,result\?\.queued\?'✓ เข้าคิว':'✓ เริ่มแล้ว'/);
   assert.match(script,/refreshButton\.dataset\.busy='true'/);
   assert.match(script,/refreshButton\.textContent='กำลังตรวจ…'/);
   assert.match(script,/flashControlAck\(refreshButton,'✓ ล่าสุด','good'\)/);
@@ -600,6 +601,13 @@ test('Update Center gives every owner tap immediate tactile and visible feedback
   assert.match(css,/transform:translateY\(1px\) scale\(\.965\)/);
   assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
   assert.match(css,/details-marker/);
+  assert.match(script,/button\.dataset\.operationState=queuedHint\?'queueing':'starting'/);
+  assert.match(script,/button\.setAttribute\('aria-disabled','true'\)/);
+  assert.match(script,/กำลังดำเนินการอยู่ · สถานะจะอัปเดตให้อัตโนมัติ/);
+  assert.match(script,/function scheduleActionRefresh/);
+  assert.match(css,/button\[data-operation-state=\"accepted\"\]/);
+  assert.match(css,/update-feedback-dot/);
+  assert.doesNotMatch(script,/ห้ามกดซ้ำ|ไม่ต้องกดซ้ำ|ไม่สร้างงานซ้ำ|ห้ามติดตั้งซ้ำ/);
 });
 
 test('Update Center streams canonical release progress in real time with bounded fallback', async()=>{
@@ -795,10 +803,10 @@ test('Update Center owner flow is per-target, queue-aware, exact-target pinned, 
   assert.match(script,/function actionLabel\(item,normalLabel\)/);
   assert.match(script,/return 'เข้าคิว VPS'/);
   assert.match(script,/return 'เข้าคิว AWH'/);
-  assert.match(script,/รอคิว · จะเริ่มอัตโนมัติเมื่อ release writer ว่าง/);
+  assert.match(script,/รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ/);
   assert.match(script,/submitPinnedUpdate/);
   assert.match(script,/UPDATE_OUTCOME_UNKNOWN/);
-  assert.match(script,/กำลังตรวจ task เดิมก่อนเปิดให้กดใหม่/);
+  assert.match(script,/กำลังยืนยันงานเดิมให้อัตโนมัติ/);
   assert.match(script,/queuedPinnedOperations/);
   assert.match(script,/new Set\(\[\.\.\.queued\.map/);
   assert.match(script,/item\?\.activeReleaseSha&&itemQueued\(item\)/);

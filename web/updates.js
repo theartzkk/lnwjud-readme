@@ -97,14 +97,14 @@ function pinAcceptedOperation(item,name,request,progress,messageText,queuedHint=
   const operation={...previous,key,name,target:previous.target||operationTarget(item)||null,taskId:request?.taskId||previous.taskId||null,executionId:request?.executionId||previous.executionId||null,acceptedAt:Number(previous.acceptedAt||Date.now()),status:queued?'QUEUED':'ACCEPTED'};
   pinnedOperations.set(key,operation);persistPinnedOperations();
   if(!queued)localOperation={key,name,progress,message:messageText};
-  targetFeedback.set(key,{text:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อ release writer ว่าง':'รับคำสั่งแล้ว · ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ',tone:'info'});
+  targetFeedback.set(key,{text:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':'เริ่มอัปเดตแล้ว · ระบบกำลังทำงานและตรวจผลให้อัตโนมัติ',tone:'info'});
   return queued;
 }
 function markPinnedOutcomeUnknown(item,name){
   const key=String(item?.key||'');if(!key)return;
   const previous=pinnedOperations.get(key)||{key,name,target:operationTarget(item)||null,acceptedAt:Date.now()};
   pinnedOperations.set(key,{...previous,key,name,status:'OUTCOME_UNKNOWN',outcomeUnknownAt:Date.now()});persistPinnedOperations();
-  targetFeedback.set(key,{text:'การตอบกลับขาดหายหลังส่งคำสั่ง · กำลังตรวจ task เดิมก่อนเปิดให้กดใหม่',tone:'info'});
+  targetFeedback.set(key,{text:'การตอบกลับขาดหายหลังส่งคำสั่ง · กำลังยืนยันงานเดิมให้อัตโนมัติ',tone:'info'});
 }
 function queuedPinnedOperations(){return [...pinnedOperations.values()].filter((operation)=>operation?.status==='QUEUED');}
 function reconcilePinnedOperations(){
@@ -122,7 +122,7 @@ function reconcilePinnedOperations(){
       operation.status=queued?'QUEUED':'ACTIVE';
       if(serverTask)operation.taskId=serverTask;
       pinnedOperations.set(key,operation);changed=true;
-      targetFeedback.set(key,{text:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อ release writer ว่าง':ownerProgressMessage(item,item.progressEvent,item.state==='WAITING_FOR_APPROVAL'),tone:'info'});
+      targetFeedback.set(key,{text:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':ownerProgressMessage(item,item.progressEvent,item.state==='WAITING_FOR_APPROVAL'),tone:'info'});
       if(!queued&&(!localOperation||localOperation.key===key))localOperation={key,name:operation.name||item.name,progress:Math.max(8,Number(item?.progressEvent?.progress??item?.progress??8)),message:ownerProgressMessage(item,item.progressEvent,item.state==='WAITING_FOR_APPROVAL')};
       continue;
     }
@@ -136,8 +136,8 @@ function reconcilePinnedOperations(){
     }
     if(item.state==='UPDATE_AVAILABLE'&&!item.taskId&&!item.approvalId){
       const uncertain=operation.status==='OUTCOME_UNKNOWN'&&Date.now()-Number(operation.outcomeUnknownAt||operation.acceptedAt||0)<OWNER_OPERATION_OUTCOME_PROBE_MS;
-      if(uncertain){targetFeedback.set(key,{text:'กำลังตรวจว่าคำสั่งรอบก่อนถูกบันทึกหรือไม่ · ยังไม่ต้องกดซ้ำ',tone:'info'});continue;}
-      targetFeedback.set(key,{text:operation.status==='OUTCOME_UNKNOWN'?'ไม่พบ task จากคำสั่งรอบก่อน · สามารถลองใหม่ได้':'งานรอบก่อนสิ้นสุดแล้ว · มีรุ่นใหม่พร้อมอัปเดต',tone:'info'});
+      if(uncertain){targetFeedback.set(key,{text:'กำลังยืนยันคำสั่งล่าสุด · สถานะจะอัปเดตให้อัตโนมัติ',tone:'info'});continue;}
+      targetFeedback.set(key,{text:operation.status==='OUTCOME_UNKNOWN'?'ไม่พบงานจากคำสั่งรอบก่อน · พร้อมให้ลองอีกครั้ง':'งานรอบก่อนสิ้นสุดแล้ว · มีรุ่นใหม่พร้อมอัปเดต',tone:'info'});
       pinnedOperations.delete(key);if(localOperation?.key===key)localOperation=null;changed=true;continue;
     }
   }
@@ -169,12 +169,12 @@ const friendly=(error)=>{
   return ({
     STEP_UP_REQUIRED:'ต้องยืนยันสิทธิ์เจ้าของระบบก่อนทำรายการนี้',
     STEP_UP_CANCELLED:'ยกเลิกการยืนยันสิทธิ์แล้ว',
-    CORE_RELEASE_CONFLICT:'มีการอัปเดต AWH อื่นกำลังทำอยู่ ระบบจะไม่สร้างงานซ้ำ',
+    CORE_RELEASE_CONFLICT:'AWH กำลังอัปเดตอยู่แล้ว · ระบบกำลังติดตามงานเดิมให้อัตโนมัติ',
     CORE_RELEASE_NOT_READY:'AWH ยังไม่พร้อมอัปเดต เพราะ release authority ยังไม่พร้อม',
     CORE_RELEASE_TARGET_MOVED:'มีรุ่นใหม่กว่าเข้ามาแล้ว ระบบยกเลิกรุ่นเก่าอย่างปลอดภัย กรุณาตรวจอีกครั้ง',
     PLATFORM_RELEASE_NOT_READY:'VPS Platform release authority ยังไม่พร้อม',
     LEARNLAB_RELEASE_TARGET_MOVED:'LearnLab มีรุ่นใหม่กว่าเข้ามาแล้ว กรุณาตรวจอีกครั้ง',
-    ASSESSMENT_RELEASE_CONFLICT:'มีการอัปเดต Assessment อื่นกำลังทำอยู่ ระบบจะไม่สร้างงานซ้ำ',
+    ASSESSMENT_RELEASE_CONFLICT:'Assessment กำลังอัปเดตอยู่แล้ว · ระบบกำลังติดตามงานเดิมให้อัตโนมัติ',
     ASSESSMENT_RELEASE_TARGET_MOVED:'Assessment มี candidate ใหม่กว่า ระบบหยุดรุ่นเก่าอย่างปลอดภัย',
     ASSESSMENT_RELEASE_NOT_READY:'Assessment ยังไม่พร้อมอัปเดต',
     PROJECT_SOURCE_NOT_READY:'Source ของระบบนี้ยังไม่พร้อมติดตั้ง',
@@ -437,7 +437,7 @@ function summary(){
 function releaseText(item){
   const pinned=pinnedOperationFor(item?.key);
   if(pinned?.status==='QUEUED')return 'รับคำสั่งแล้ว · รอคิว · รุ่นที่อนุมัติ '+short(pinned.target);
-  if(pinned?.status==='OUTCOME_UNKNOWN')return 'ส่งคำสั่งแล้ว · กำลังยืนยัน task เดิม';
+  if(pinned?.status==='OUTCOME_UNKNOWN')return 'ส่งคำสั่งแล้ว · กำลังยืนยันงานเดิม';
   if(pinned)return 'รับคำสั่งแล้ว · กำลังยืนยันสถานะล่าสุด';
   if(item?.activeReleaseSha&&itemQueued(item))return 'รอคิว · รุ่นที่อนุมัติ '+short(item.activeReleaseSha);
   if(item.current&&item.candidate&&!hash(item.current)&&!hash(item.candidate)&&item.current!==item.candidate)return item.current+' → '+item.candidate;
@@ -552,32 +552,46 @@ function actionErrorText(error,button){
   }
   return friendly(error);
 }
-function actionButton(text,handler,className='primary-button',targetKey=null,successText='รับคำสั่งแล้ว · ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ',allowDuringOperation=false){
+function actionButton(text,handler,className='primary-button',targetKey=null,successText='เริ่มอัปเดตแล้ว · ระบบกำลังทำงานและตรวจผลให้อัตโนมัติ',allowDuringOperation=false){
   const button=document.createElement('button');button.type='button';button.className=className;button.textContent=text;if(targetKey)button.dataset.targetKey=targetKey;
-  if(!allowDuringOperation&&ownerActionLocked(targetKey)){button.disabled=true;button.title='ระบบนี้มีคำสั่งอัปเดตอยู่แล้ว · ไม่สร้างงานซ้ำ';}
-  button.addEventListener('click',async()=>{
-    if(!allowDuringOperation&&ownerActionLocked(targetKey)){actionFeedback(button,'ระบบนี้มีคำสั่งอัปเดตอยู่แล้ว · ไม่ต้องกดซ้ำ','info',targetKey);return;}
+  if(!allowDuringOperation&&ownerActionLocked(targetKey)){
+    button.dataset.operationState='active';button.setAttribute('aria-disabled','true');button.title='กำลังดำเนินการอยู่ · สถานะจะอัปเดตให้อัตโนมัติ';
+    button.textContent='กำลังดำเนินการ…';
+  }
+  button.addEventListener('click',async(event)=>{
+    if(!allowDuringOperation&&ownerActionLocked(targetKey)){
+      rippleControl(button,event);actionFeedback(button,'กำลังดำเนินการอยู่ · สถานะจะอัปเดตให้อัตโนมัติ','info',targetKey);flashControlAck(button,'กำลังทำงาน','info');return;
+    }
     const initialText=button.textContent;
-    if(targetKey)actionInFlightTargets.add(targetKey);button.disabled=true;button.dataset.busy='true';button.setAttribute('aria-busy','true');button.textContent='กำลังรับคำสั่ง…';
-    actionFeedback(button,operationWillQueue(targetKey)?'กำลังส่งคำขอเข้าคิวและตรึงรุ่นที่เลือก':'กำลังตรวจความพร้อมและตรึงรุ่นที่จะอัปเดต','info',targetKey);
+    const queuedHint=operationWillQueue(targetKey);
+    if(targetKey)actionInFlightTargets.add(targetKey);
+    button.disabled=true;button.dataset.busy='true';button.dataset.operationState=queuedHint?'queueing':'starting';button.setAttribute('aria-busy','true');
+    button.textContent=queuedHint?'กำลังเข้าคิว…':'กำลังเริ่มอัปเดต…';
+    actionFeedback(button,queuedHint?'กำลังจัดคิวให้อัตโนมัติ · รุ่นที่เลือกถูกตรึงไว้แล้ว':'กำลังเตรียมการอัปเดต · ระบบกำลังตรวจความพร้อม','info',targetKey);
     try{
       const result=await handler();
       const feedback=typeof result?.feedback==='string'?result.feedback:successText;
-      actionFeedback(button,feedback,result?.tone||'good',targetKey);flashControlAck(button,'✓ รับแล้ว',result?.tone==='bad'?'bad':'good');
+      button.dataset.operationState=result?.queued?'queued':'accepted';
+      button.textContent=result?.queued?'✓ เข้าคิวแล้ว':'✓ เริ่มอัปเดตแล้ว';
+      actionFeedback(button,feedback,result?.tone||'good',targetKey);flashControlAck(button,result?.queued?'✓ เข้าคิว':'✓ เริ่มแล้ว',result?.tone==='bad'?'bad':'good');
     }
     catch(error){
       const outcomeUnknown=error?.outcomeUnknown===true||String(error?.code||'').toUpperCase()==='UPDATE_OUTCOME_UNKNOWN';
       if(outcomeUnknown){
-        const text='ส่งคำสั่งแล้วแต่การตอบกลับขาดหาย · กำลังตรวจ task เดิมก่อนเปิดให้กดใหม่';
+        const text='ส่งคำสั่งแล้ว · กำลังยืนยันสถานะงานให้อัตโนมัติ';
+        button.dataset.operationState='checking';button.textContent='กำลังยืนยันสถานะ…';
         message(text,'info');actionFeedback(button,text,'info',targetKey);flashControlAck(button,'กำลังตรวจ','info');void refresh();
       }else{
         clearPinnedOperation(targetKey);if(localOperation?.key===targetKey)localOperation=null;
+        button.dataset.operationState='error';button.textContent='ตรวจสอบสถานะ';
         const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad',targetKey);flashControlAck(button,'ตรวจสอบ','bad');syncLiveStream();renderProgress();
       }
     }
     finally{
-      if(targetKey)actionInFlightTargets.delete(targetKey);button.removeAttribute('data-busy');button.removeAttribute('aria-busy');button.textContent=initialText;
-      button.disabled=!allowDuringOperation&&ownerActionLocked(targetKey);
+      if(targetKey)actionInFlightTargets.delete(targetKey);button.removeAttribute('data-busy');button.removeAttribute('aria-busy');
+      const locked=!allowDuringOperation&&ownerActionLocked(targetKey);
+      if(locked){button.disabled=false;button.setAttribute('aria-disabled','true');button.dataset.operationState=button.dataset.operationState||'active';}
+      else{button.disabled=false;button.removeAttribute('aria-disabled');delete button.dataset.operationState;button.textContent=initialText;}
     }
   });
   return button;
@@ -585,15 +599,15 @@ function actionButton(text,handler,className='primary-button',targetKey=null,suc
 function ownerFacingReason(item){
   if(!item)return 'ระบบที่เกี่ยวข้องยังไม่พร้อม';
   const pinned=pinnedOperationFor(item?.key);
-  if(pinned?.status==='QUEUED')return 'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติเมื่อ release writer ว่าง';
-  if(pinned?.status==='OUTCOME_UNKNOWN')return 'ส่งคำสั่งแล้ว · กำลังตรวจ task เดิมก่อนอนุญาตให้ลองใหม่';
-  if(pinned)return 'รับคำสั่งแล้ว · ระบบกำลังทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ';
+  if(pinned?.status==='QUEUED')return 'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ';
+  if(pinned?.status==='OUTCOME_UNKNOWN')return 'ส่งคำสั่งแล้ว · กำลังยืนยันงานเดิมให้อัตโนมัติ';
+  if(pinned)return 'เริ่มอัปเดตแล้ว · ระบบกำลังทำงานและตรวจผลให้อัตโนมัติ';
   const reason=String(item.reason||'').trim();
-  if(itemQueued(item))return 'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติเมื่อ writer ว่าง';
+  if(itemQueued(item))return 'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ';
   if(item.state==='CURRENT')return 'ระบบนี้เป็นรุ่นล่าสุด';
   if(item.state==='UPDATE_AVAILABLE')return 'มีรุ่นใหม่พร้อมอัปเดต';
   if(item.state==='UPDATING')return 'ระบบกำลังอัปเดตและตรวจสอบผล';
-  if(item.state==='WAITING_FOR_APPROVAL')return 'พบงานอัปเดตเดิมที่ยังไม่เริ่ม Production · กดทำต่อได้โดยไม่สร้างงานซ้ำ';
+  if(item.state==='WAITING_FOR_APPROVAL')return 'พบงานอัปเดตเดิมที่ยังไม่เริ่ม Production · กดทำต่อจากงานเดิมได้ทันที';
   if(item.state==='REMOTE_CHECK_REQUIRED')return 'กำลังตรวจสถานะล่าสุด';
   if(item.state==='INTERNAL_MANAGED')return 'ระบบนี้ดูแลการอัปเดตให้อัตโนมัติ';
   if(/storage/i.test(reason))return 'พื้นที่สำหรับอัปเดตยังไม่เพียงพอ ระบบจะไม่เริ่มจนกว่าจะปลอดภัย';
@@ -1004,7 +1018,7 @@ function renderProgress(){
   $('operation-progress-bar').style.width=progress+'%';
   const event=item?.progressEvent||null;
   const eventFresh=liveConnected&&progressEventFresh(event);
-  $('operation-progress-message').textContent=queuedOnly?'รับคำสั่งแล้ว · จะเริ่มอัตโนมัติเมื่อ release writer ว่าง':ownerProgressMessage(item,event,waiting);
+  $('operation-progress-message').textContent=queuedOnly?'รับคำสั่งแล้ว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':ownerProgressMessage(item,event,waiting);
   $('operation-progress-live').textContent=(eventFresh?'● สด · ':(liveConnected?'● เชื่อมต่ออยู่ · ':'สำรอง · '))+relativeLiveTime(event?.occurredAt||null);
   if(queueHost){
     const names=[...new Set([...queued.map((row)=>row.name),...queuedPins.map((operation)=>operation.name)].filter(Boolean))];
@@ -1026,7 +1040,7 @@ async function submitPinnedUpdate(item,name,progress,messageText,requestFn){
   try{
     const request=await requestFn();
     const queued=pinAcceptedOperation(item,name,request,progress,messageText,queuedHint);
-    return {request,queued,feedback:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อ release writer ว่าง':'รับคำสั่งแล้ว · ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ',tone:'info'};
+    return {request,queued,feedback:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':'เริ่มอัปเดตแล้ว · ระบบกำลังทำงานและตรวจผลให้อัตโนมัติ',tone:'info'};
   }catch(error){
     if(typeof error?.code==='string'&&error.code!==''){
       clearPinnedOperation(item.key);if(localOperation?.key===item.key)localOperation=null;throw error;
@@ -1037,37 +1051,41 @@ async function submitPinnedUpdate(item,name,progress,messageText,requestFn){
   }
 }
 
+function scheduleActionRefresh(refreshFn=refresh,delay=520){
+  window.setTimeout(()=>{void refreshFn();},delay);
+}
+
 async function updatePlatform(item){
-  const result=await submitPinnedUpdate(item,'VPS Platform',8,'รับคำสั่งแล้ว · ระบบกำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify · ไม่ต้องกดซ้ำ',()=>requestPlatformRelease(item.candidate,false));
-  message(result.queued?'VPS Platform เข้าคิวแล้ว · จะเริ่มเองเมื่อ AWH/งานก่อนหน้าจบ Verify':'VPS Platform รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ','info');
-  await refresh();
+  const result=await submitPinnedUpdate(item,'VPS Platform',8,'เริ่มอัปเดตแล้ว · กำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify',()=>requestPlatformRelease(item.candidate,false));
+  message(result.queued?'VPS Platform เข้าคิวแล้ว · จะเริ่มเองเมื่อ AWH/งานก่อนหน้าจบ Verify':'VPS Platform เริ่มอัปเดตแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ','info');
+  scheduleActionRefresh();
   return result;
 }
 
 async function updateAwh(item){
-  const result=await submitPinnedUpdate(item,'AWH',8,'รับคำสั่งแล้ว · ระบบกำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify · ไม่ต้องกดซ้ำ',()=>requestCoreRelease(item.candidate,false));
-  message(result.queued?'AWH เข้าคิวแล้ว · จะเริ่มเองเมื่อ release writer ว่าง':'AWH รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ','info');
-  await refresh();
+  const result=await submitPinnedUpdate(item,'AWH',8,'เริ่มอัปเดตแล้ว · กำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify',()=>requestCoreRelease(item.candidate,false));
+  message(result.queued?'AWH เข้าคิวแล้ว · จะเริ่มเองเมื่อรายการก่อนหน้าจบ':'AWH เริ่มอัปเดตแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ','info');
+  scheduleActionRefresh();
   return result;
 }
 async function resumeLearnLab(item){
-  const result=await submitPinnedUpdate(item,'LearnLab',8,'รับคำสั่งแล้ว · กำลังทำงานเดิมต่อและตรวจผล · ไม่ต้องกดซ้ำ',()=>requestLearnLabRelease(item.candidateReleaseSha,item.candidateVersion));
-  message(result.queued?'LearnLab เข้าคิวแล้ว · จะเริ่มเองเมื่อ release writer ว่าง':'LearnLab รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ','info');
-  await refresh();
+  const result=await submitPinnedUpdate(item,'LearnLab',8,'เริ่มทำงานต่อแล้ว · กำลังดำเนินการและตรวจผลให้อัตโนมัติ',()=>requestLearnLabRelease(item.candidateReleaseSha,item.candidateVersion));
+  message(result.queued?'LearnLab เข้าคิวแล้ว · จะเริ่มเองเมื่อรายการก่อนหน้าจบ':'LearnLab เริ่มทำงานแล้ว · ระบบจะดำเนินการและตรวจผลให้อัตโนมัติ','info');
+  scheduleActionRefresh();
   return result;
 }
 
 async function updateAssessment(item){
-  const result=await submitPinnedUpdate(item,'Assessment',10,'รับคำสั่งแล้ว · กำลังเตรียม Staging และตรวจผล · ไม่ต้องกดซ้ำ',()=>requestAssessmentRelease(item.candidate,item.candidateVersion));
-  message(result.queued?'Assessment เข้าคิวแล้ว · จะเริ่มเองเมื่อ release writer ว่าง':'Assessment รับคำสั่งแล้ว · ระบบกำลังดำเนินการแบบ staging-first ไม่ต้องกดซ้ำ','info');
-  await refresh();
+  const result=await submitPinnedUpdate(item,'Assessment',10,'เริ่มอัปเดตแล้ว · กำลังเตรียม Staging และตรวจผล',()=>requestAssessmentRelease(item.candidate,item.candidateVersion));
+  message(result.queued?'Assessment เข้าคิวแล้ว · จะเริ่มเองเมื่อรายการก่อนหน้าจบ':'Assessment เริ่มอัปเดตแล้ว · กำลังดำเนินการแบบ staging-first','info');
+  scheduleActionRefresh();
   return result;
 }
 
 async function updateHosting(item){
-  const result=await submitPinnedUpdate(item,item.name,8,'รับคำสั่งแล้ว · Managed Hosting กำลังติดตั้งและตรวจ health · ไม่ต้องกดซ้ำ',()=>managedSiteAction(item.siteId,'deploy'));
-  message(result.queued?item.name+' เข้าคิวแล้ว · จะเริ่มเองเมื่อ writer ว่าง':item.name+' รับคำสั่งแล้ว · ระบบจะติดตั้งและตรวจ health ให้อัตโนมัติ','info');
-  await refresh();
+  const result=await submitPinnedUpdate(item,item.name,8,'เริ่มอัปเดตแล้ว · Managed Hosting กำลังติดตั้งและตรวจ health',()=>managedSiteAction(item.siteId,'deploy'));
+  message(result.queued?item.name+' เข้าคิวแล้ว · จะเริ่มเองเมื่อรายการก่อนหน้าจบ':item.name+' รับคำสั่งแล้ว · ระบบจะติดตั้งและตรวจ health ให้อัตโนมัติ','info');
+  scheduleActionRefresh();
   return result;
 }
 
@@ -1076,17 +1094,18 @@ async function updateBay(item){
   const relay=await createBayRemoteInstallRelay({targetVersion:release.version,targetSha:release.sourceSha,packageSha256:release.packageSha256});
   try{
     const request=await relayBayRemoteCommand(relay.endpoint,relay.relay);
-    pinAcceptedOperation(item,item.name,request,8,'รับคำสั่งแล้ว · BAY กำลังติดตั้งและตรวจ version/source · ไม่ต้องกดซ้ำ');
-    message(item.name+' รับคำสั่งติดตั้งแล้ว · ระบบกำลังตรวจสถานะใหม่ ไม่ต้องกดซ้ำ');
+    pinAcceptedOperation(item,item.name,request,8,'เริ่มอัปเดตแล้ว · BAY กำลังติดตั้งและตรวจ version/source');
+    message(item.name+' เริ่มติดตั้งแล้ว · ระบบกำลังตรวจสถานะให้อัตโนมัติ');
   }catch(error){
     if(error?.code==='BAY_INSTALL_OUTCOME_UNKNOWN'){
       beginPinnedOperation(item,item.name,operationWillQueue(item.key));markPinnedOutcomeUnknown(item,item.name);
-      localOperation={key:item.key,name:item.name,progress:8,message:'ส่งคำสั่งแล้วแต่การเชื่อมต่อขาด · กำลังตรวจผลก่อน ห้ามติดตั้งซ้ำ'};
-      message(friendly(error));await refreshBay();return {feedback:'ส่งคำสั่งแล้ว · กำลังยืนยันผลก่อนเปิดให้กดใหม่',tone:'info'};
+      localOperation={key:item.key,name:item.name,progress:8,message:'ส่งคำสั่งแล้ว · กำลังยืนยันผลและติดตามงานเดิมให้อัตโนมัติ'};
+      message(friendly(error));scheduleActionRefresh(refreshBay,420);return {feedback:'ส่งคำสั่งแล้ว · กำลังยืนยันสถานะงานให้อัตโนมัติ',tone:'info'};
     }
     throw error;
   }
-  await refreshBay();
+  scheduleActionRefresh(refreshBay);
+  return {queued:false,feedback:'เริ่มติดตั้งแล้ว · ระบบกำลังติดตามสถานะให้อัตโนมัติ',tone:'info'};
 }
 
 const bayCompatTargets=[

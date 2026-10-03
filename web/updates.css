@@ -99,3 +99,59 @@ html,body{min-height:100%;background:var(--update-bg)!important}body{margin:0;co
   .update-tap-ripple,.control-ack,.update-action-feedback,.update-card[data-feedback-pulse="true"]{animation:none!important}
   .update-tap-ripple{display:none}.control-ack{opacity:1;transform:none}
 }
+
+/* Positive update acknowledgement: show progress, not warnings about repeat taps. */
+.update-actions button[data-operation-state]{
+  min-width:150px;
+  opacity:1;
+}
+.update-actions button[data-operation-state="starting"],
+.update-actions button[data-operation-state="queueing"],
+.update-actions button[data-operation-state="active"],
+.update-actions button[data-operation-state="checking"]{
+  background:linear-gradient(135deg,#eaf3ff,#f7fbff);
+  border-color:#bcd5f0;
+  color:#245f9d;
+  box-shadow:0 0 0 3px rgba(52,119,191,.08),0 8px 20px rgba(36,95,157,.09);
+}
+.update-actions button[data-operation-state="accepted"],
+.update-actions button[data-operation-state="queued"]{
+  background:linear-gradient(135deg,#eaf8f0,#f7fcf9);
+  border-color:#b9dec9;
+  color:#18794e;
+  box-shadow:0 0 0 3px rgba(24,121,78,.07),0 8px 20px rgba(24,121,78,.08);
+}
+.update-actions button[data-operation-state="error"]{
+  background:#fff7f5;
+  border-color:#efcfcb;
+  color:var(--update-bad);
+}
+.update-actions button[aria-disabled="true"]{
+  cursor:progress;
+  opacity:1;
+}
+.update-actions button[data-operation-state="active"]::before,
+.update-actions button[data-operation-state="checking"]::before{
+  content:"";
+  display:inline-block;
+  width:12px;height:12px;margin-right:7px;vertical-align:-1px;
+  border:2px solid currentColor;border-right-color:transparent;border-radius:50%;
+  animation:update-action-spin .8s linear infinite;
+}
+.update-action-feedback[data-tone="info"]{
+  display:flex;align-items:flex-start;gap:8px;
+  border-color:#cfe0f4;
+  background:linear-gradient(135deg,#f6faff,#fbfdff);
+  color:#3b5e82;
+}
+.update-action-feedback[data-tone="info"]::before{
+  content:"";flex:0 0 8px;width:8px;height:8px;margin-top:4px;border-radius:50%;
+  background:#3f83c5;box-shadow:0 0 0 4px rgba(63,131,197,.1);
+  animation:update-feedback-dot 1.35s ease-in-out infinite;
+}
+@keyframes update-feedback-dot{0%,100%{transform:scale(.82);opacity:.65}50%{transform:scale(1.08);opacity:1}}
+@media(prefers-reduced-motion:reduce){
+  .update-actions button[data-operation-state="active"]::before,
+  .update-actions button[data-operation-state="checking"]::before,
+  .update-action-feedback[data-tone="info"]::before{animation:none}
+}
