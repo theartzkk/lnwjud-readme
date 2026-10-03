@@ -167,6 +167,12 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(platformBlock,/backup_live_unit "\$HOSTING_SERVICE_UNIT" "\$HOSTING_SERVICE_BACKUP"/);
   assert.doesNotMatch(platformBlock,/cmp -s "\$HOSTING_SERVICE_UNIT" "\$PREVIOUS_TARGET\/deploy\/systemd\/awh-hosting-operator\.service"/);
   assert.match(deploy, /PLATFORM_RUNTIME_READY/);
+  assert.match(deploy, /OPERATOR_BRIDGE_RECONCILE/);
+  assert.match(deploy, /sudo env AWH_RELEASE_ROOT="\$RELEASE" "\$RELEASE\/deploy\/operator-bridge\/install\.sh"/);
+  assert.match(deploy, /sudo -u bayadmin test -w \/var\/lib\/awh-remote\/operator-staging/);
+  assert.match(deploy, /OPERATOR_BRIDGE_READY/);
+  assert.ok(deploy.indexOf('stage OPERATOR_BRIDGE_RECONCILE')>deploy.indexOf('stage SOURCE_DRIFT_VERIFIED'),'operator bridge reconciliation follows source-drift verification');
+  assert.ok(deploy.indexOf('stage OPERATOR_BRIDGE_READY')<deploy.indexOf('stage EXECUTION_AUTHORITY_RELEASE'),'operator bridge reconciliation completes before the release authority is relinquished');
   assert.match(deploy, /platform_attempt=1[\s\S]*platform_attempt=\$\(\(platform_attempt \+ 1\)\)/);
   assert.match(deployOrchestrator, /EXTENSION_MODE_COUNT=\$\(\(AWH_CORE \+ ASSISTANT_WORKSTREAM/);
   assert.match(deployOrchestrator, /if test "\$EXTENSION_MODE_COUNT" -eq 0; then OWNER_LOGIN_PROOF_REQUIRED=1; fi/);
