@@ -8,11 +8,13 @@ const execFileAsync=promisify(execFile);
 const root=process.cwd();
 
 test('Hosting Center exposes reconciled read-only server inventory without a second deployment authority',async()=>{
-  const [html,js,css,service,telemetry,infrastructure]=await Promise.all([
+  const [html,js,css,service,adapter,router,telemetry,infrastructure]=await Promise.all([
     readFile(new URL('../web/hosting.html',import.meta.url),'utf8'),
     readFile(new URL('../web/hosting.js',import.meta.url),'utf8'),
     readFile(new URL('../web/hosting.css',import.meta.url),'utf8'),
     readFile(new URL('../hub/src/HubManagedHostingService.php',import.meta.url),'utf8'),
+    readFile(new URL('../web/control-plane-adapter.js',import.meta.url),'utf8'),
+    readFile(new URL('../hub/src/HubControlPlaneRouter.php',import.meta.url),'utf8'),
     readFile(new URL('../hub/bin/system-telemetry.php',import.meta.url),'utf8'),
     readFile(new URL('../hub/src/HubInfrastructureService.php',import.meta.url),'utf8'),
   ]);
@@ -25,8 +27,19 @@ test('Hosting Center exposes reconciled read-only server inventory without a sec
   assert.match(js,/ตรวจพบจาก Nginx/);
   assert.match(js,/readOnly|อ่านอย่างเดียว/);
   assert.match(css,/ownership-discovered/);
+  assert.match(css,/ownership-adopted/);
+  assert.match(js,/observeHostingSite/);
+  assert.match(js,/Observe-only/);
+  assert.match(js,/เว็บจริงยังออนไลน์/);
   assert.match(service,/'inventory'=>\$inventory\['sites'\]/);
   assert.match(service,/'readOnlyDiscovery'=>true/);
+  assert.match(service,/HOSTING_OBSERVE_ADOPTION/);
+  assert.match(service,/'observationOnly'=>true/);
+  assert.match(service,/recentSiteEvents/);
+  assert.match(adapter,/hosting\/adoptions/);
+  assert.match(router,/hosting\/adoptions/);
+  assert.match(service,/ownerMutation\(\$token,\$csrf,'hosting\.site\.create',\$now\)/);
+  assert.doesNotMatch(service,/ownerMutation\(\$token,\$csrf,'hosting\.site\.observe_adopt'/);
   assert.match(telemetry,/function telemetryNginxSites/);
   assert.match(telemetry,/'sites' => telemetryNginxSites\(\)/);
   assert.match(infrastructure,/'sites' => array_slice\(\$sites, 0, 200\)/);

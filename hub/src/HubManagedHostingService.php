@@ -39,10 +39,13 @@ final class HubManagedHostingService
     public function sites(string $token): array
     {
         $owner=$this->ownerSession($token); $q=$this->pdo->prepare("SELECT s.*,p.name AS project_name,b.binding_kind,b.host AS binding_host,b.port AS binding_port,b.tls_mode,b.state AS binding_state,d.engine AS db_engine,d.state AS db_state,(SELECT host FROM control_site_bindings x WHERE x.site_id=s.site_id AND x.binding_kind='DOMAIN' AND x.state<>'DISABLED' ORDER BY x.updated_at DESC LIMIT 1) AS domain_host,(SELECT state FROM control_site_bindings x WHERE x.site_id=s.site_id AND x.binding_kind='DOMAIN' AND x.state<>'DISABLED' ORDER BY x.updated_at DESC LIMIT 1) AS domain_state,(SELECT event_name FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_name,(SELECT state FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_state,(SELECT message FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_message,(SELECT occurred_at FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_at,(SELECT e.task_id FROM control_site_events e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_task_executions x ON x.task_id=t.task_id WHERE e.site_id=s.site_id AND x.required_capability='hosting.site.deploy' AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY e.occurred_at DESC LIMIT 1) AS active_deploy_task_id,(SELECT t.state FROM control_site_events e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_task_executions x ON x.task_id=t.task_id WHERE e.site_id=s.site_id AND x.required_capability='hosting.site.deploy' AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY e.occurred_at DESC LIMIT 1) AS active_deploy_task_state,v.active_revision_id AS source_revision_id,COALESCE(v.sync_state,'EMPTY') AS source_sync_state,(SELECT e.last_error_code FROM control_task_executions e WHERE e.project_id=s.project_id AND e.required_capability IN ('hosting.site.provision','hosting.site.deploy') AND e.state IN ('WAITING_FOR_CAPABILITY','FAILED') ORDER BY e.updated_at DESC LIMIT 1) AS source_blocker_code,(SELECT r.vault_revision_id FROM control_site_releases r WHERE r.release_id=s.current_release_id AND r.site_id=s.site_id LIMIT 1) AS current_release_revision_id FROM control_managed_sites s JOIN projects p ON p.project_id=s.project_id LEFT JOIN control_site_bindings b ON b.site_id=s.site_id AND b.is_primary=1 AND b.state<>'DISABLED' LEFT JOIN control_site_database_bindings d ON d.site_id=s.site_id LEFT JOIN control_project_vaults v ON v.project_id=s.project_id WHERE s.created_by_user_id=:owner ORDER BY CASE s.state WHEN 'READY' THEN 0 WHEN 'PROVISIONING' THEN 1 WHEN 'QUEUED' THEN 2 ELSE 3 END,s.updated_at DESC LIMIT 200");
-        $q->execute(['owner'=>$owner['user_id']]); $rows=array_map([self::class,'siteRow'],$q->fetchAll()); $root=strtolower(trim((string)(getenv('AWH_ROOT_DOMAIN')?:'kruart.online'))); $now=gmdate('c');
+        $q->execute(['owner'=>$owner['user_id']]); $rows=array_map([self::class,'siteRow'],$q->fetchAll());
+        $recent=$this->recentSiteEvents((string)$owner['user_id']);foreach($rows as &$row)$row['recentEvents']=$recent[$row['siteId']]??[];unset($row);
+        $root=strtolower(trim((string)(getenv('AWH_ROOT_DOMAIN')?:'kruart.online'))); $now=gmdate('c');
         try{$telemetry=HubInfrastructureService::fromEnvironment()->status($now);}catch(Throwable){$telemetry=['state'=>'UNAVAILABLE','generatedAt'=>null,'server'=>null];}
-        $inventory=$this->hostingInventory($rows,$telemetry,$root);
-        return ['schemaVersion'=>1,'sites'=>$rows,'inventory'=>$inventory['sites'],'inventoryMeta'=>$inventory['meta'],'domains'=>$inventory['domains'],'dns'=>HubDnsProviderAdapter::plan($root),'ecosystem'=>$this->ecosystemStatus($now),'policy'=>HubTrustPolicy::catalog(['hosting.site.create','hosting.site.deploy','hosting.site.rollback','hosting.site.disable','hosting.site.bind_domain'])];
+        $adoptions=$this->adoptionState((string)$owner['user_id']);
+        $inventory=$this->hostingInventory($rows,$telemetry,$root,$adoptions);
+        return ['schemaVersion'=>1,'sites'=>$rows,'inventory'=>$inventory['sites'],'inventoryMeta'=>$inventory['meta'],'domains'=>$inventory['domains'],'projectsWithoutHosting'=>$this->projectsWithoutHosting((string)$owner['user_id'],$rows,$adoptions),'dns'=>HubDnsProviderAdapter::plan($root),'ecosystem'=>$this->ecosystemStatus($now),'policy'=>HubTrustPolicy::catalog(['hosting.site.create','hosting.site.deploy','hosting.site.rollback','hosting.site.disable','hosting.site.bind_domain'])];
     }
 
     public function siteSecrets(string $token,string $siteId): array
@@ -124,12 +127,67 @@ final class HubManagedHostingService
         return ['siteId'=>$site['site_id'],'bindingId'=>$binding,'taskId'=>$task,'hostname'=>$hostname,'state'=>'REQUESTED','dnsPlan'=>HubDnsProviderAdapter::plan($hostname)];
     }
 
+    public function observeAdoption(string $token,string $csrf,array $payload,?string $now=null): array
+    {
+        // Observe-only adoption changes metadata/audit only and intentionally reuses
+        // the existing low-risk hosting.site.create trust boundary. It does not
+        // acquire deploy/route/filesystem authority.
+        $owner=$this->ownerMutation($token,$csrf,'hosting.site.create',$now);
+        self::keys($payload,['action','hostname','projectId','schemaVersion']);
+        if(($payload['schemaVersion']??null)!==1)throw new HubManagedHostingException('Hosting adoption request is invalid','HOSTING_INVALID');
+        $action=self::enum($payload['action']??'ADOPT',['ADOPT','RELEASE']);
+        $hostname=self::domainHost((string)($payload['hostname']??''));
+        $project=self::uuid((string)($payload['projectId']??''));
+        $this->assertOwnerProject((string)$owner['user_id'],$project);
+        $current=$this->adoptionState((string)$owner['user_id']);
+        $active=$current[$hostname]??null;
+
+        if($action==='ADOPT'){
+            if(is_array($active)){
+                if(hash_equals((string)$active['projectId'],$project))return ['schemaVersion'=>1,'hostname'=>$hostname,'projectId'=>$project,'state'=>'ADOPTED','mode'=>'OBSERVE_ONLY','idempotent'=>true];
+                throw new HubManagedHostingException('เว็บไซต์นี้เชื่อมกับ Project อื่นอยู่ ให้ยกเลิกการเชื่อมเดิมก่อน','HOSTING_ADOPTION_CONFLICT');
+            }
+            $managed=$this->pdo->prepare("SELECT s.site_id FROM control_managed_sites s WHERE s.state<>'DISABLED' AND (lower(COALESCE(s.primary_host,''))=:host OR EXISTS(SELECT 1 FROM control_site_bindings b WHERE b.site_id=s.site_id AND lower(b.host)=:host AND b.state<>'DISABLED')) LIMIT 1");
+            $managed->execute(['host'=>$hostname]);
+            if($managed->fetchColumn()!==false)throw new HubManagedHostingException('เว็บไซต์นี้อยู่ภายใต้ Managed Hosting แล้ว','HOSTING_ALREADY_MANAGED');
+            try{$telemetry=HubInfrastructureService::fromEnvironment()->status($now??gmdate('c'));}catch(Throwable){$telemetry=['server'=>null];}
+            $routes=is_array($telemetry['server']['sites']??null)?$telemetry['server']['sites']:[];
+            $route=null;foreach($routes as $candidate)if(is_array($candidate)&&strcasecmp((string)($candidate['primaryHost']??''),$hostname)===0){$route=$candidate;break;}
+            if(!is_array($route))throw new HubManagedHostingException('ยังไม่พบเว็บไซต์นี้จากเส้นทางจริงบนเซิร์ฟเวอร์','HOSTING_DISCOVERY_NOT_FOUND');
+            if(($route['routeType']??null)==='REDIRECT')throw new HubManagedHostingException('ชื่อนี้เป็น Redirect ให้เชื่อมเว็บไซต์ปลายทางแทน','HOSTING_ADOPTION_ALIAS_TARGET_REQUIRED');
+        }else{
+            if(!is_array($active))return ['schemaVersion'=>1,'hostname'=>$hostname,'projectId'=>$project,'state'=>'RELEASED','mode'=>'OBSERVE_ONLY','idempotent'=>true];
+            if(!hash_equals((string)$active['projectId'],$project))throw new HubManagedHostingException('Project ไม่ตรงกับการเชื่อมปัจจุบัน','HOSTING_ADOPTION_CONFLICT');
+        }
+
+        $at=self::time($now??gmdate('c'));$task=self::uuid();$execution=self::uuid();
+        $checkpoint=['schemaVersion'=>1,'mode'=>'HOSTING_OBSERVE_ADOPTION','action'=>$action,'hostname'=>$hostname,'projectId'=>$project,'observationOnly'=>true];
+        $goal=($action==='ADOPT'?'เชื่อมเว็บไซต์เดิม ':'ยกเลิกการเชื่อมเว็บไซต์เดิม ').$hostname.' กับ Project แบบสังเกตการณ์';
+        $summary=$action==='ADOPT'?'เชื่อมเว็บไซต์กับ Project แบบอ่านอย่างเดียวแล้ว โดยไม่เปลี่ยน Nginx หรือไฟล์ Production':'ยกเลิกการเชื่อมแบบสังเกตการณ์แล้ว โดยไม่เปลี่ยนเว็บไซต์ Production';
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $key='hosting-observe-'.substr(hash('sha256',$task),0,48);
+            $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'COMPLETED',NULL,NULL,100,:summary,NULL,:key,NULL,:at,:at,NULL)")
+                ->execute(['task'=>$task,'user'=>$owner['user_id'],'project'=>$project,'goal'=>$goal,'summary'=>$summary,'key'=>$key,'at'=>$at]);
+            $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','hosting.site.observe_adopt','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")
+                ->execute(['execution'=>$execution,'task'=>$task,'project'=>$project,'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
+            $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'COMPLETED',100,:message,:at)")
+                ->execute(['id'=>self::uuid(),'task'=>$task,'message'=>$summary,'at'=>$at]);
+            $this->pdo->exec('COMMIT');
+        }catch(Throwable $error){
+            $this->rollback();
+            if($error instanceof HubManagedHostingException)throw $error;
+            throw new HubManagedHostingException('Hosting adoption metadata could not be saved','HOSTING_ADOPTION_FAILED');
+        }
+        return ['schemaVersion'=>1,'hostname'=>$hostname,'projectId'=>$project,'state'=>$action==='ADOPT'?'ADOPTED':'RELEASED','mode'=>'OBSERVE_ONLY','taskId'=>$task,'executionId'=>$execution,'idempotent'=>false];
+    }
+
     public function disableSite(string $token,string $csrf,string $siteId,array $payload,?string $now=null): array
     {
         $owner=$this->ownerMutation($token,$csrf,'hosting.site.disable',$now);self::keys($payload,['schemaVersion']);if(($payload['schemaVersion']??null)!==1)throw new HubManagedHostingException('Disable request is invalid','HOSTING_INVALID');$site=$this->siteForOwner($siteId,(string)$owner['user_id']);$at=self::time($now??gmdate('c'));$task=self::uuid();$execution=self::uuid();try{$this->pdo->exec('BEGIN IMMEDIATE');$this->insertTask($task,$execution,(string)$owner['user_id'],(string)$site['project_id'],null,'ปิดการเผยแพร่ '.$site['name'],'hosting.site.disable',['mode'=>'HOSTING_DISABLE','siteId'=>$site['site_id']],$at);$this->event((string)$site['site_id'],$task,'DISABLE_REQUESTED','QUEUED','AWH กำลังปิด public route อย่างปลอดภัย',$at);$this->pdo->exec('COMMIT');}catch(Throwable $error){$this->rollback();if($error instanceof HubManagedHostingException)throw $error;throw new HubManagedHostingException('Disable could not be queued','HOSTING_DISABLE_FAILED');}return ['siteId'=>$site['site_id'],'taskId'=>$task,'state'=>'QUEUED'];
     }
 
-    private function hostingInventory(array $managed,array $telemetry,string $root): array
+    private function hostingInventory(array $managed,array $telemetry,string $root,array $adoptions=[]): array
     {
         $server=is_array($telemetry['server']??null)?$telemetry['server']:[];
         $routes=is_array($server['sites']??null)?$server['sites']:[];
@@ -151,43 +209,90 @@ final class HubManagedHostingService
             $primary=is_string($site['domainHost']??null)&&$site['domainHost']!==''?strtolower((string)$site['domainHost']):(is_string($site['primaryHost']??null)&&$site['primaryHost']!==''?strtolower((string)$site['primaryHost']):strtolower((string)$site['slug'].'.'.$root));
             $route=$routeMap[$primary]??null;$domain=$domainMap[$primary]??null;
             $routeType=is_array($route)?(string)($route['routeType']??'UNKNOWN'):match((string)($site['runtimeType']??'AUTO')){'STATIC'=>'STATIC','PHP'=>'PHP','NODE'=>'PROXY',default=>'UNKNOWN'};
+            $redirect=is_array($route)&&is_string($route['redirectHost']??null)?strtolower((string)$route['redirectHost']):null;
+            $liveHost=$redirect!==null&&isset($routeMap[$redirect])?$redirect:$primary;
+            $liveRoute=$routeMap[$liveHost]??$route;$liveDomain=$domainMap[$liveHost]??$domain;
+            $liveTls=is_array($liveDomain)?(($liveDomain['tls']??false)===true):(is_array($liveRoute)&&($liveRoute['tls']??false)===true);
+            $liveState=is_array($liveRoute)?($liveTls?'ONLINE':'ROUTED'):'NOT_DETECTED';
             $sites[]=[
                 'inventoryId'=>'managed-'.(string)$site['siteId'],'ownership'=>'MANAGED','managedSiteId'=>(string)$site['siteId'],
                 'projectId'=>$site['projectId']??null,'projectName'=>$site['projectName']??null,'name'=>(string)($site['name']??$primary),
-                'primaryHost'=>$primary,'hosts'=>array_keys($hosts),'environment'=>(string)($site['environment']??'PRODUCTION'),
-                'state'=>(string)($site['state']??'UNKNOWN'),'routeDetected'=>is_array($route),'routeType'=>$routeType,
-                'runtimeType'=>(string)($site['runtimeType']??'AUTO'),'upstreamPort'=>is_array($route)?($route['upstreamPort']??$site['port']??null):($site['port']??null),
-                'rootClass'=>is_array($route)?($route['rootClass']??null):null,'configName'=>is_array($route)?($route['configName']??null):null,
-                'tls'=>is_array($domain)?(($domain['tls']??false)===true):false,'certificateExpiresAt'=>is_array($domain)?($domain['certificateExpiresAt']??null):null,
-                'certificateDaysRemaining'=>is_array($domain)?($domain['certificateDaysRemaining']??null):null,'redirectHost'=>is_array($route)?($route['redirectHost']??null):null,
-                'url'=>$site['url']??null,'source'=>$site['source']??null,'backupEnabled'=>($site['backupEnabled']??false)===true,
+                'primaryHost'=>$primary,'liveHost'=>$liveHost,'hosts'=>array_keys($hosts),'environment'=>(string)($site['environment']??'PRODUCTION'),
+                'state'=>(string)($site['state']??'UNKNOWN'),'managementState'=>(string)($site['state']??'UNKNOWN'),'liveState'=>$liveState,'routeDetected'=>is_array($route),'routeType'=>$routeType,
+                'runtimeType'=>(string)($site['runtimeType']??'AUTO'),'upstreamPort'=>is_array($liveRoute)?($liveRoute['upstreamPort']??$site['port']??null):($site['port']??null),
+                'rootClass'=>is_array($liveRoute)?($liveRoute['rootClass']??null):null,'configName'=>is_array($liveRoute)?($liveRoute['configName']??null):null,
+                'tls'=>$liveTls,'certificateExpiresAt'=>is_array($liveDomain)?($liveDomain['certificateExpiresAt']??null):null,
+                'certificateDaysRemaining'=>is_array($liveDomain)?($liveDomain['certificateDaysRemaining']??null):null,'redirectHost'=>$redirect,
+                'url'=>$site['url']??($liveState!=='NOT_DETECTED'?(($liveTls?'https://':'http://').$liveHost.'/'):null),'source'=>$site['source']??null,'backupEnabled'=>($site['backupEnabled']??false)===true,
                 'databaseMode'=>$site['databaseMode']??null,'databaseState'=>$site['databaseState']??null,
-                'currentReleaseId'=>$site['currentReleaseId']??null,'rollbackReleaseId'=>$site['rollbackReleaseId']??null,'lastEvent'=>$site['lastEvent']??null,
+                'currentReleaseId'=>$site['currentReleaseId']??null,'rollbackReleaseId'=>$site['rollbackReleaseId']??null,'lastEvent'=>$site['lastEvent']??null,'recentEvents'=>$site['recentEvents']??[],
             ];
         }
         foreach($routes as $route){
             if(!is_array($route)||!is_string($route['primaryHost']??null))continue;$host=strtolower((string)$route['primaryHost']);
             if(isset($claimed[$host]))continue;
-            $domain=$domainMap[$host]??null;$routeType=(string)($route['routeType']??'UNKNOWN');$isAlias=$routeType==='REDIRECT';
+            $domain=$domainMap[$host]??null;$routeType=(string)($route['routeType']??'UNKNOWN');$isAlias=$routeType==='REDIRECT';$adoption=$adoptions[$host]??null;
+            $tls=is_array($domain)?(($domain['tls']??false)===true):(($route['tls']??false)===true);
+            $ownership=$isAlias?'ALIAS':(is_array($adoption)?'ADOPTED':'DISCOVERED');
             $sites[]=[
-                'inventoryId'=>(string)($route['inventoryId']??('nginx-'.substr(hash('sha256',$host),0,20))),'ownership'=>$isAlias?'ALIAS':'DISCOVERED','managedSiteId'=>null,
-                'projectId'=>null,'projectName'=>null,'name'=>$host,'primaryHost'=>$host,'hosts'=>$route['hosts']??[$host],
+                'inventoryId'=>(string)($route['inventoryId']??('nginx-'.substr(hash('sha256',$host),0,20))),'ownership'=>$ownership,'managedSiteId'=>null,
+                'projectId'=>is_array($adoption)?($adoption['projectId']??null):null,'projectName'=>is_array($adoption)?($adoption['projectName']??null):null,'name'=>$host,'primaryHost'=>$host,'liveHost'=>$host,'hosts'=>$route['hosts']??[$host],
                 'environment'=>str_contains($host,'staging')?'STAGING':(str_contains($host,'preview')?'PREVIEW':'PRODUCTION'),
-                'state'=>$isAlias?'ALIAS':'ROUTED','routeDetected'=>true,'routeType'=>$routeType,'runtimeType'=>match($routeType){'STATIC'=>'STATIC','PHP'=>'PHP','PROXY'=>'SERVICE','REDIRECT'=>'REDIRECT',default=>'UNKNOWN'},
+                'state'=>$isAlias?'ALIAS':(is_array($adoption)?'OBSERVED':'ROUTED'),'managementState'=>is_array($adoption)?'OBSERVE_ONLY':'UNMANAGED','liveState'=>$tls?'ONLINE':'ROUTED','routeDetected'=>true,'routeType'=>$routeType,'runtimeType'=>match($routeType){'STATIC'=>'STATIC','PHP'=>'PHP','PROXY'=>'SERVICE','REDIRECT'=>'REDIRECT',default=>'UNKNOWN'},
                 'upstreamPort'=>$route['upstreamPort']??null,'rootClass'=>$route['rootClass']??null,'configName'=>$route['configName']??null,
-                'tls'=>is_array($domain)?(($domain['tls']??false)===true):(($route['tls']??false)===true),'certificateExpiresAt'=>is_array($domain)?($domain['certificateExpiresAt']??null):null,
+                'tls'=>$tls,'certificateExpiresAt'=>is_array($domain)?($domain['certificateExpiresAt']??null):null,
                 'certificateDaysRemaining'=>is_array($domain)?($domain['certificateDaysRemaining']??null):null,'redirectHost'=>$route['redirectHost']??null,
-                'url'=>(($domain['tls']??$route['tls']??false)===true?'https://':'http://').$host.'/','source'=>null,'backupEnabled'=>false,'currentReleaseId'=>null,'rollbackReleaseId'=>null,'lastEvent'=>null,
+                'url'=>($tls?'https://':'http://').$host.'/','source'=>null,'backupEnabled'=>false,'currentReleaseId'=>null,'rollbackReleaseId'=>null,'lastEvent'=>null,
+                'adoption'=>is_array($adoption)?$adoption:null,
             ];
         }
-        usort($sites,static function(array $a,array $b):int{$weight=['MANAGED'=>0,'DISCOVERED'=>1,'ALIAS'=>2];return ($weight[$a['ownership']]??9)<=>($weight[$b['ownership']]??9)?:strcmp((string)$a['primaryHost'],(string)$b['primaryHost']);});
+        usort($sites,static function(array $a,array $b):int{$weight=['MANAGED'=>0,'ADOPTED'=>1,'DISCOVERED'=>2,'ALIAS'=>3];return ($weight[$a['ownership']]??9)<=>($weight[$b['ownership']]??9)?:strcmp((string)$a['primaryHost'],(string)$b['primaryHost']);});
         $siteByHost=[];foreach($sites as $site)if(is_string($site['primaryHost']??null))$siteByHost[strtolower((string)$site['primaryHost'])]=$site;
         foreach($domains as &$domain){$site=$siteByHost[$domain['host']]??null;if(is_array($site)){$domain['managedSiteId']=$site['managedSiteId']??null;$domain['ownership']=$site['ownership']??'DISCOVERED';}}unset($domain);
-        $managedCount=0;$discoveredCount=0;$aliasCount=0;foreach($sites as $site){$kind=$site['ownership']??null;if($kind==='MANAGED')$managedCount++;elseif($kind==='ALIAS')$aliasCount++;else $discoveredCount++;}
+        $managedCount=0;$adoptedCount=0;$discoveredCount=0;$aliasCount=0;foreach($sites as $site){$kind=$site['ownership']??null;if($kind==='MANAGED')$managedCount++;elseif($kind==='ADOPTED')$adoptedCount++;elseif($kind==='ALIAS')$aliasCount++;else $discoveredCount++;}
         $storage=is_array($server['storage']??null)?$server['storage']:[];
         $usedPercent=$storage['usedPercent']??null;$usedPercent=(is_int($usedPercent)||is_float($usedPercent))?(float)$usedPercent:null;
         $available=$storage['availableBytes']??null;$available=is_int($available)&&$available>=0?$available:null;
-        return ['sites'=>$sites,'domains'=>$domains,'meta'=>['state'=>(string)($telemetry['state']??'UNAVAILABLE'),'generatedAt'=>$telemetry['generatedAt']??null,'managedCount'=>$managedCount,'discoveredCount'=>$discoveredCount,'aliasCount'=>$aliasCount,'domainCount'=>count($domains),'storageUsedPercent'=>$usedPercent,'storageAvailableBytes'=>$available,'readOnlyDiscovery'=>true]];
+        return ['sites'=>$sites,'domains'=>$domains,'meta'=>['state'=>(string)($telemetry['state']??'UNAVAILABLE'),'generatedAt'=>$telemetry['generatedAt']??null,'managedCount'=>$managedCount,'adoptedCount'=>$adoptedCount,'discoveredCount'=>$discoveredCount,'aliasCount'=>$aliasCount,'domainCount'=>count($domains),'storageUsedPercent'=>$usedPercent,'storageAvailableBytes'=>$available,'readOnlyDiscovery'=>true]];
+    }
+
+    /** @return array<string,list<array<string,mixed>>> */
+    private function recentSiteEvents(string $owner): array
+    {
+        $q=$this->pdo->prepare("SELECT e.site_id,e.event_name,e.state,e.message,e.occurred_at FROM control_site_events e JOIN control_managed_sites s ON s.site_id=e.site_id WHERE s.created_by_user_id=:owner ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT 1200");
+        $q->execute(['owner'=>$owner]);$out=[];
+        foreach($q->fetchAll() as $row){$site=(string)$row['site_id'];if(count($out[$site]??[])>=6)continue;$out[$site][]= ['name'=>(string)$row['event_name'],'state'=>(string)$row['state'],'message'=>$row['message']===null?null:(string)$row['message'],'at'=>(string)$row['occurred_at']];}
+        return $out;
+    }
+
+    /** @return array<string,array<string,mixed>> */
+    private function adoptionState(string $owner): array
+    {
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.project_id,e.checkpoint_json,e.updated_at,p.name AS project_name FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=e.project_id WHERE t.user_id=:owner AND e.required_capability='hosting.site.observe_adopt' AND e.state='COMPLETED' AND t.state='COMPLETED' ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 800");
+        $q->execute(['owner'=>$owner]);$seen=[];$active=[];
+        foreach($q->fetchAll() as $row){
+            try{$cp=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(!is_array($cp)||($cp['schemaVersion']??null)!==1||($cp['mode']??null)!=='HOSTING_OBSERVE_ADOPTION'||($cp['observationOnly']??false)!==true)continue;
+            $host=is_string($cp['hostname']??null)?strtolower((string)$cp['hostname']):'';
+            if($host===''||isset($seen[$host])||preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/',$host)!==1)continue;
+            $seen[$host]=true;$action=strtoupper((string)($cp['action']??''));
+            if($action!=='ADOPT')continue;
+            $project=is_string($cp['projectId']??null)?strtolower((string)$cp['projectId']):'';
+            if(!self::validUuid($project)||!hash_equals($project,strtolower((string)$row['project_id'])))continue;
+            $active[$host]=['hostname'=>$host,'projectId'=>$project,'projectName'=>(string)$row['project_name'],'mode'=>'OBSERVE_ONLY','executionId'=>(string)$row['execution_id'],'adoptedAt'=>(string)$row['updated_at']];
+        }
+        return $active;
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function projectsWithoutHosting(string $owner,array $managed,array $adoptions): array
+    {
+        $covered=[];foreach($managed as $site)if(is_array($site)&&($site['state']??null)!=='DISABLED'&&is_string($site['projectId']??null))$covered[strtolower((string)$site['projectId'])]=true;
+        foreach($adoptions as $adoption)if(is_array($adoption)&&is_string($adoption['projectId']??null))$covered[strtolower((string)$adoption['projectId'])]=true;
+        $q=$this->pdo->prepare("SELECT DISTINCT p.project_id,p.name,p.type FROM projects p JOIN control_project_capabilities c ON c.project_id=p.project_id WHERE c.user_id=:owner AND c.capability='project.read' AND c.revoked_at IS NULL ORDER BY lower(p.name),p.project_id");
+        $q->execute(['owner'=>$owner]);$out=[];
+        foreach($q->fetchAll() as $row){$id=strtolower((string)$row['project_id']);if(isset($covered[$id]))continue;$out[]=['projectId'=>$id,'name'=>(string)$row['name'],'type'=>(string)$row['type']];}
+        return array_slice($out,0,100);
     }
 
     private function ecosystemStatus(string $at): array

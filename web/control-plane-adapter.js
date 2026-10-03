@@ -504,6 +504,12 @@ export async function createManagedSite({ name, slug, projectId, runtimeType = '
   return controlRequest('/api/v1/control/hosting/sites', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, name: name.trim(), slug, projectId, environment: 'PRODUCTION', runtimeType, databaseMode, publicMode: 'IP_PORT', healthPath: '/', backupEnabled: Boolean(backupEnabled) }) });
 }
 export async function bindManagedSiteDomain(siteId, hostname) { if (!UUID.test(siteId) || typeof hostname !== 'string' || !hostname.trim()) throw new Error('โดเมนไม่ถูกต้อง'); return controlRequest(`/api/v1/control/hosting/sites/${siteId}/domain`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, hostname: hostname.trim().toLowerCase() }) }); }
+export async function observeHostingSite(hostname, projectId, action = 'ADOPT') {
+  const host=typeof hostname==='string'?hostname.trim().toLowerCase():'';
+  const mode=String(action||'').toUpperCase();
+  if (!UUID.test(projectId) || !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(host) || !['ADOPT','RELEASE'].includes(mode)) throw new Error('ข้อมูลการเชื่อมเว็บไซต์ไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/hosting/adoptions', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, hostname: host, projectId, action: mode }) });
+}
 export async function managedSiteAction(siteId, action) { if (!UUID.test(siteId) || !['deploy','rollback','disable'].includes(action)) throw new Error('เว็บไซต์ไม่ถูกต้อง'); return controlRequest(`/api/v1/control/hosting/sites/${siteId}/${action}`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 
 export async function loadWorkspaceContinuity(projectId) {

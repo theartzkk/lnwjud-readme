@@ -25,7 +25,7 @@ $fixture=[
     'sites'=>[
         ['inventoryId'=>'nginx-11111111111111111111','primaryHost'=>'school.kruart.online','hosts'=>['school.kruart.online'],'tls'=>true,'routeType'=>'STATIC','upstreamPort'=>null,'redirectHost'=>null,'rootClass'=>'WEB_ROOT','configName'=>'school.conf'],
         ['inventoryId'=>'nginx-22222222222222222222','primaryHost'=>'legacy.kruart.online','hosts'=>['legacy.kruart.online'],'tls'=>true,'routeType'=>'PROXY','upstreamPort'=>9001,'redirectHost'=>null,'rootClass'=>null,'configName'=>'legacy.conf'],
-        ['inventoryId'=>'nginx-33333333333333333333','primaryHost'=>'www.kruart.online','hosts'=>['www.kruart.online'],'tls'=>true,'routeType'=>'REDIRECT','upstreamPort'=>null,'redirectHost'=>'kruart.online','rootClass'=>null,'configName'=>'aliases.conf'],
+        ['inventoryId'=>'nginx-33333333333333333333','primaryHost'=>'www.kruart.online','hosts'=>['www.kruart.online'],'tls'=>true,'routeType'=>'REDIRECT','upstreamPort'=>null,'redirectHost'=>'school.kruart.online','rootClass'=>null,'configName'=>'aliases.conf'],
     ],
     'security'=>['fail2ban'=>'ACTIVE','automaticUpdates'=>'ACTIVE'],
 ];
@@ -58,8 +58,51 @@ hc(($byHost['legacy.kruart.online']['ownership']??null)==='DISCOVERED','legacy r
 hc(($byHost['legacy.kruart.online']['upstreamPort']??null)===9001,'safe upstream port detail');
 hc(($byHost['www.kruart.online']['ownership']??null)==='ALIAS','redirect classified as alias');
 hc(($result['meta']['readOnlyDiscovery']??null)===true,'discovery must be read only');
-$encoded=json_encode($result,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+
+$adoptions=['legacy.kruart.online'=>['hostname'=>'legacy.kruart.online','projectId'=>'33333333-3333-4333-8333-333333333333','projectName'=>'Legacy App','mode'=>'OBSERVE_ONLY','executionId'=>'44444444-4444-4444-8444-444444444444','adoptedAt'=>$now]];
+$adopted=$method->invoke($service,$managed,$telemetry,'kruart.online',$adoptions);
+hc(($adopted['meta']['adoptedCount']??null)===1,'adopted count');
+hc(($adopted['meta']['discoveredCount']??null)===0,'adopted host no longer counted as unmanaged discovery');
+$adoptedByHost=[];foreach($adopted['sites'] as $row)$adoptedByHost[$row['primaryHost']]=$row;
+hc(($adoptedByHost['legacy.kruart.online']['ownership']??null)==='ADOPTED','legacy host becomes observe-only adopted');
+hc(($adoptedByHost['legacy.kruart.online']['projectName']??null)==='Legacy App','adoption projects are projected without route mutation');
+hc(($adoptedByHost['legacy.kruart.online']['managementState']??null)==='OBSERVE_ONLY','adoption stays observe only');
+
+$managedRedirect=[[
+    'siteId'=>'55555555-5555-4555-8555-555555555555','projectId'=>'66666666-6666-4666-8666-666666666666',
+    'projectName'=>'Legacy Managed','name'=>'Legacy Managed','slug'=>'www','environment'=>'PRODUCTION','state'=>'FAILED','runtimeType'=>'AUTO',
+    'domainHost'=>'www.kruart.online','primaryHost'=>'www.kruart.online','port'=>null,'url'=>null,'source'=>['ready'=>false],'backupEnabled'=>true,
+    'currentReleaseId'=>null,'rollbackReleaseId'=>null,'lastEvent'=>null,'recentEvents'=>[],
+]];
+$reconciled=$method->invoke($service,$managedRedirect,$telemetry,'kruart.online');
+$managedByHost=[];foreach($reconciled['sites'] as $row)$managedByHost[$row['primaryHost']]=$row;
+hc(($managedByHost['www.kruart.online']['managementState']??null)==='FAILED','management failure remains visible');
+hc(($managedByHost['www.kruart.online']['liveState']??null)==='ONLINE','live redirect target keeps website online');
+hc(($managedByHost['www.kruart.online']['liveHost']??null)==='school.kruart.online','live target is reconciled independently from managed record');
+
+$encoded=json_encode($adopted,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
 hc(!str_contains($encoded,'/var/www/')&&!str_contains($encoded,'/etc/nginx/'),'raw server paths are not exposed');
 
-@unlink($path); @rmdir($root);
+$db=$root.'/adoption.sqlite';$pdo=new PDO('sqlite:'.$db,null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
+$pdo->exec('CREATE TABLE projects(project_id TEXT PRIMARY KEY,name TEXT NOT NULL)');
+$pdo->exec('CREATE TABLE control_tasks(task_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,state TEXT NOT NULL)');
+$pdo->exec('CREATE TABLE control_task_executions(execution_id TEXT PRIMARY KEY,task_id TEXT NOT NULL,project_id TEXT NOT NULL,required_capability TEXT NOT NULL,state TEXT NOT NULL,checkpoint_json TEXT NOT NULL,updated_at TEXT NOT NULL)');
+$owner='77777777-7777-4777-8777-777777777777';$project='88888888-8888-4888-8888-888888888888';$host='legacy.kruart.online';
+$pdo->prepare('INSERT INTO projects VALUES(:id,:name)')->execute(['id'=>$project,'name'=>'Legacy App']);
+$record=function(string $task,string $execution,string $action,string $at)use($pdo,$owner,$project,$host):void{
+    $pdo->prepare("INSERT INTO control_tasks VALUES(:task,:owner,'COMPLETED')")->execute(['task'=>$task,'owner'=>$owner]);
+    $cp=['schemaVersion'=>1,'mode'=>'HOSTING_OBSERVE_ADOPTION','action'=>$action,'hostname'=>$host,'projectId'=>$project,'observationOnly'=>true];
+    $pdo->prepare("INSERT INTO control_task_executions VALUES(:execution,:task,:project,'hosting.site.observe_adopt','COMPLETED',:checkpoint,:at)")->execute(['execution'=>$execution,'task'=>$task,'project'=>$project,'checkpoint'=>json_encode($cp,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
+};
+$record('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','ADOPT','2026-10-03T10:00:00+00:00');
+$record('cccccccc-cccc-4ccc-8ccc-cccccccccccc','dddddddd-dddd-4ddd-8ddd-dddddddddddd','RELEASE','2026-10-03T10:05:00+00:00');
+$pdoProp=$reflection->getProperty('pdo');$pdoProp->setAccessible(true);$pdoProp->setValue($service,$pdo);
+$adoptionState=$reflection->getMethod('adoptionState');$adoptionState->setAccessible(true);
+hc($adoptionState->invoke($service,$owner)===[],'latest RELEASE clears observe-only adoption');
+$record('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','ffffffff-ffff-4fff-8fff-ffffffffffff','ADOPT','2026-10-03T10:10:00+00:00');
+$activeAdoption=$adoptionState->invoke($service,$owner);
+hc(($activeAdoption[$host]['projectId']??null)===$project,'latest ADOPT restores observe-only adoption');
+hc(($activeAdoption[$host]['mode']??null)==='OBSERVE_ONLY','adoption registry never implies managed authority');
+
+@unlink($path);@unlink($db); @rmdir($root);
 echo "AWH Hosting Center Inventory: PASS\n";

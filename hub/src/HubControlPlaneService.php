@@ -219,6 +219,12 @@ final class HubControlPlaneService
         try { return $this->hosting->sites($sessionToken); }
         catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting request was rejected',$error->codeName); }
     }
+    public function observeHostingSiteForSession(string $sessionToken,string $csrf,array $payload,?string $now=null): array
+    {
+        try { return $this->hosting->observeAdoption($sessionToken,$csrf,$payload,$now); }
+        catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting adoption request was rejected',$error->codeName); }
+    }
+
     public function coreReleaseStatusForSession(string $sessionToken): array
     {
         try { return $this->coreReleases->status($sessionToken); }

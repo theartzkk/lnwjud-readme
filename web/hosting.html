@@ -21,13 +21,15 @@
 
 <section class="hosting-panel sites-panel">
 <div class="section-heading"><div><span>Server inventory</span><h2>เว็บไซต์และ Subdomain ทั้งหมด</h2></div><small id="inventory-freshness">กำลังอ่านสถานะจากเซิร์ฟเวอร์</small></div>
-<div class="inventory-toolbar"><label class="inventory-search"><span class="sr-only">ค้นหาเว็บไซต์</span><input id="inventory-search" type="search" placeholder="ค้นหาเว็บหรือ subdomain" autocomplete="off" /></label><label class="inventory-filter"><span class="sr-only">กรองรายการ</span><select id="inventory-filter"><option value="ALL">ทั้งหมด</option><option value="MANAGED">AWH ดูแล</option><option value="DISCOVERED">ตรวจพบจากเซิร์ฟเวอร์</option><option value="ALIAS">ชื่อทางเข้า / Redirect</option></select></label></div>
+<div class="inventory-toolbar"><label class="inventory-search"><span class="sr-only">ค้นหาเว็บไซต์</span><input id="inventory-search" type="search" placeholder="ค้นหาเว็บหรือ subdomain" autocomplete="off" /></label><label class="inventory-filter"><span class="sr-only">กรองรายการ</span><select id="inventory-filter"><option value="ALL">ทั้งหมด</option><option value="MANAGED">AWH Managed</option><option value="ADOPTED">เชื่อมกับ Project แล้ว</option><option value="DISCOVERED">ตรวจพบจากเซิร์ฟเวอร์</option><option value="ALIAS">ชื่อทางเข้า / Redirect</option></select></label></div>
 <div id="site-list" class="site-list"></div>
 </section>
 
+<section id="unhosted-panel" class="hosting-panel onboarding-panel" hidden><div class="section-heading"><div><span>Project onboarding</span><h2>โปรเจกต์ที่ยังไม่มี Hosting</h2></div><small>เริ่มตั้งค่าเว็บใหม่ได้โดยไม่ต้องสร้าง Nginx เอง</small></div><div id="unhosted-projects" class="onboarding-list"></div></section>
+
 <section class="hosting-panel domains-panel"><div class="section-heading"><div><span>Domains & HTTPS</span><h2>โดเมนและใบรับรอง</h2></div><small>ตรวจจากเส้นทางที่ Nginx ให้บริการจริง</small></div><div id="domain-list" class="domain-list"></div></section>
 
-<details class="hosting-panel create-panel"><summary class="create-summary"><span><small>โปรเจกต์ใหม่</small><strong>เพิ่มเว็บไซต์</strong></span><em>กรอกเพียง 3 อย่าง แล้วกดสร้างเว็บไซต์</em></summary>
+<details id="create-panel" class="hosting-panel create-panel"><summary class="create-summary"><span><small>โปรเจกต์ใหม่</small><strong>เพิ่มเว็บไซต์</strong></span><em>กรอกเพียง 3 อย่าง แล้วกดสร้างเว็บไซต์</em></summary>
 <form id="hosting-create-form" class="hosting-form create-body">
 <label>ชื่อเว็บไซต์<input id="site-name" maxlength="120" required placeholder="เช่น BAY Library" /></label>
 <label>ชื่อสำหรับลิงก์<input id="site-slug" maxlength="48" required placeholder="library" /><small>ใช้ภาษาอังกฤษ ตัวเลข และขีดกลาง</small></label>

@@ -1,4 +1,4 @@
-import { bindManagedSiteDomain, createManagedSite, listManagedSites, loadAuthSession, loadControlData, managedSiteAction } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { bindManagedSiteDomain, createManagedSite, listManagedSites, loadAuthSession, loadControlData, managedSiteAction, observeHostingSite } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const CANONICAL_DOMAIN='kruart.online';
@@ -7,6 +7,7 @@ let sites=[];
 let inventory=[];
 let inventoryMeta=null;
 let domains=[];
+let projectsWithoutHosting=[];
 let inventoryFilter='ALL';
 let inventoryQuery='';
 let dnsPlan=null;
@@ -23,11 +24,12 @@ const statusLabel=(state)=>({
   DRAFT:'รอไฟล์เว็บไซต์',
   DEGRADED:'ต้องตรวจสอบ',
   ROUTED:'ตรวจพบเส้นทาง',
+  OBSERVED:'เชื่อมกับ Project แล้ว',
   ALIAS:'ชื่อทางเข้า',
 })[state]||'กำลังตรวจสอบ';
 
 const runtimeLabel=(value)=>({AUTO:'อัตโนมัติ',PHP:'PHP',NODE:'Node',STATIC:'เว็บไซต์แบบไฟล์',SERVICE:'บริการเว็บ',REDIRECT:'Redirect',UNKNOWN:'ยังไม่ระบุ'})[value]||value||'—';
-const ownershipLabel=(value)=>({MANAGED:'AWH ดูแล',DISCOVERED:'ตรวจพบจากเซิร์ฟเวอร์',ALIAS:'ชื่อทางเข้า / Redirect'})[value]||'ตรวจพบ';
+const ownershipLabel=(value)=>({MANAGED:'AWH Managed',ADOPTED:'เชื่อมกับ Project แล้ว',DISCOVERED:'ตรวจพบจากเซิร์ฟเวอร์',ALIAS:'ชื่อทางเข้า / Redirect'})[value]||'ตรวจพบ';
 const routeLabel=(value)=>({STATIC:'Static',PHP:'PHP',PROXY:'Reverse proxy',REDIRECT:'Redirect',UNKNOWN:'ยังไม่ระบุ'})[value]||value||'—';
 const environmentLabel=(value)=>({PRODUCTION:'ใช้งานจริง',STAGING:'ทดสอบ',PREVIEW:'ตัวอย่าง'})[value]||value||'—';
 
@@ -56,6 +58,11 @@ function friendlyError(error,fallback='ยังทำรายการนี�
     DOMAIN_INVALID:'รูปแบบชื่อเว็บไม่ถูกต้อง',
     HOSTING_SITE_NOT_READY:'รอให้เว็บไซต์พร้อมก่อน แล้วจึงเชื่อมชื่อเว็บได้',
     HOSTING_CAPACITY_FULL:'พื้นที่สำหรับเว็บไซต์เต็มชั่วคราว กรุณาตรวจระบบก่อนเพิ่มเว็บใหม่',
+    HOSTING_DISCOVERY_NOT_FOUND:'ยังไม่พบเส้นทางเว็บนี้จากเซิร์ฟเวอร์จริง กดตรวจอีกครั้งแล้วลองใหม่',
+    HOSTING_ADOPTION_ALIAS_TARGET_REQUIRED:'ชื่อนี้เป็น Redirect ให้เชื่อมเว็บไซต์ปลายทางแทน',
+    HOSTING_ADOPTION_CONFLICT:'เว็บไซต์นี้เชื่อมกับ Project อื่นอยู่ ยกเลิกการเชื่อมเดิมก่อน',
+    HOSTING_ALREADY_MANAGED:'เว็บไซต์นี้อยู่ภายใต้ Managed Hosting แล้ว ไม่ต้อง Adopt ซ้ำ',
+    HOSTING_ADOPTION_FAILED:'ยังบันทึกการเชื่อม Project ไม่สำเร็จ ลองอีกครั้ง',
     SITE_SLUG_UNAVAILABLE:'ชื่อสำหรับลิงก์นี้ถูกใช้แล้ว ลองใช้ชื่ออื่น',
     SITE_NOT_FOUND:'ไม่พบเว็บไซต์นี้ หรือคุณไม่มีสิทธิ์เข้าถึง',
     STEP_UP_REQUIRED:'รายการนี้ต้องยืนยันสิทธิ์เพิ่มเติมก่อน',
@@ -189,6 +196,42 @@ function humanEvent(site){
   })[event.name]||null;
 }
 
+function adoptionPanel(item){
+  if(!item?.primaryHost||!['DISCOVERED','ADOPTED'].includes(item.ownership))return null;
+  const wrap=document.createElement('div');wrap.className='site-adoption';
+  const copy=document.createElement('div');copy.className='site-adoption-copy';
+  const strong=document.createElement('strong');
+  const small=document.createElement('small');
+  copy.append(strong,small);wrap.append(copy);
+  if(item.ownership==='ADOPTED'){
+    strong.textContent='เชื่อมกับ '+(item.projectName||'Project')+' แล้ว';
+    small.textContent='โหมด Observe-only · AWH อ่านสถานะได้ แต่ยังไม่แก้ Nginx หรือไฟล์ Production';
+    const release=document.createElement('button');release.type='button';release.className='secondary-button';release.textContent='ยกเลิกการเชื่อม';
+    release.addEventListener('click',async()=>{
+      release.disabled=true;
+      try{await runAction(()=>observeHostingSite(item.primaryHost,item.projectId,'RELEASE'));$('hosting-message').textContent='ยกเลิกการเชื่อม Project แล้ว โดยเว็บไซต์ Production ไม่ถูกเปลี่ยน';await refreshHostingData(false);}
+      catch(error){reportError(error);$('hosting-message').textContent=friendlyError(error);}
+      finally{release.disabled=false;}
+    });
+    wrap.append(release);return wrap;
+  }
+  strong.textContent='รับเว็บเดิมเข้าศูนย์ Hosting';
+  small.textContent='ขั้นแรกเป็น Observe-only เท่านั้น ไม่มีการย้ายไฟล์ เปลี่ยน route หรือ restart เว็บ';
+  const controls=document.createElement('div');controls.className='site-adoption-controls';
+  const select=document.createElement('select');select.setAttribute('aria-label','เลือก Project สำหรับ '+item.primaryHost);
+  for(const project of control?.projects||[]){const option=document.createElement('option');option.value=project.projectId;option.textContent=project.name;select.append(option);}
+  if(!select.childElementCount){const option=document.createElement('option');option.value='';option.textContent='ยังไม่มี Project';select.append(option);}
+  const adopt=document.createElement('button');adopt.type='button';adopt.className='primary-button';adopt.textContent='เชื่อมกับ Project';adopt.disabled=!select.value;
+  select.addEventListener('change',()=>{adopt.disabled=!select.value;});
+  adopt.addEventListener('click',async()=>{
+    if(!select.value)return;adopt.disabled=true;
+    try{await runAction(()=>observeHostingSite(item.primaryHost,select.value,'ADOPT'));$('hosting-message').textContent='เชื่อมเว็บเดิมกับ Project แบบอ่านอย่างเดียวแล้ว · Production ไม่ถูกเปลี่ยน';await refreshHostingData(false);}
+    catch(error){reportError(error);$('hosting-message').textContent=friendlyError(error);}
+    finally{adopt.disabled=!select.value;}
+  });
+  controls.append(select,adopt);wrap.append(controls);return wrap;
+}
+
 function domainButton(site){
   const node=document.createElement('button');
   node.type='button';
@@ -223,16 +266,19 @@ function renderHostingSummary(){
   const meta=inventoryMeta||{};
   const total=inventory.length||sites.length;
   const managed=Number(meta.managedCount??sites.length);
+  const adopted=Number(meta.adoptedCount||0);
   const discovered=Number(meta.discoveredCount||0);
   const aliases=Number(meta.aliasCount||0);
-  $('hosting-summary').textContent=total?(total+' รายการ · '+managed+' AWH ดูแล'):'ยังไม่พบเว็บไซต์';
+  $('hosting-summary').textContent=total?(total+' รายการ · '+managed+' Managed · '+adopted+' เชื่อม Project'):'ยังไม่พบเว็บไซต์';
   const host=$('hosting-kpis');
   host.replaceChildren();
   const cards=[
     ['เว็บไซต์/เส้นทาง',String(total),'รวมรายการที่พบจากเซิร์ฟเวอร์'],
-    ['AWH ดูแล',String(managed),'มี Project และ release authority'],
-    ['เว็บเดิมที่ตรวจพบ',String(discovered),'อ่านสถานะเท่านั้น ยังไม่เปลี่ยน config'],
+    ['AWH Managed',String(managed),'มี deploy / rollback authority'],
+    ['เชื่อม Project แล้ว',String(adopted),'Observe-only · ไม่เปลี่ยน route หรือไฟล์'],
+    ['เว็บเดิมที่ยังไม่เชื่อม',String(discovered),'ตรวจพบจริงจากเซิร์ฟเวอร์'],
     ['ชื่อทางเข้า',String(aliases),'alias หรือ redirect ที่มีอยู่จริง'],
+    ['Project ยังไม่มี Hosting',String(projectsWithoutHosting.length),'พร้อมสร้างเว็บใหม่หรือเชื่อมเว็บเดิม'],
     ['พื้นที่ว่าง',formatBytes(meta.storageAvailableBytes),Number.isFinite(Number(meta.storageUsedPercent))?('ใช้ไป '+Number(meta.storageUsedPercent).toFixed(0)+'% ของ VPS'):'กำลังรอสถานะพื้นที่'],
   ];
   for(const [label,value,note] of cards){
@@ -305,11 +351,15 @@ function renderSites(){
     const title=document.createElement('h3');title.textContent=item.name||item.primaryHost||'เว็บไซต์';
     const hostName=document.createElement('a');hostName.className='site-url';hostName.href=item.url||((item.tls===false?'http':'https')+'://'+item.primaryHost+'/');hostName.target='_blank';hostName.rel='noopener noreferrer';hostName.textContent=item.primaryHost||'—';
     titleWrap.append(title,hostName);
-    const state=document.createElement('span');state.className='site-state';state.dataset.kind=item.ownership||'DISCOVERED';state.dataset.state=item.state||'UNKNOWN';state.textContent=item.ownership==='MANAGED'?statusLabel(item.state):ownershipLabel(item.ownership);
+    const state=document.createElement('span');state.className='site-state';state.dataset.kind=item.ownership||'DISCOVERED';
+    const liveOnline=item.liveState==='ONLINE';
+    state.dataset.state=liveOnline?'READY':(item.state||'UNKNOWN');
+    state.textContent=item.ownership==='MANAGED'?(liveOnline?'เว็บออนไลน์':statusLabel(item.state)):ownershipLabel(item.ownership);
     head.append(titleWrap,state);card.append(head);
 
     const strip=document.createElement('div');strip.className='site-health-strip';
     const chips=[
+      [item.liveState==='ONLINE'?'ออนไลน์':item.liveState==='ROUTED'?'มีเส้นทาง':'ยังไม่พบเส้นทาง',item.liveState==='ONLINE'?'ok':item.liveState==='ROUTED'?'neutral':'attention'],
       [item.tls?'HTTPS':'HTTP',item.tls?'ok':'attention'],
       [routeLabel(item.routeType),'neutral'],
       [environmentLabel(item.environment),'neutral'],
@@ -320,12 +370,15 @@ function renderSites(){
 
     const note=document.createElement('div');note.className='site-event';
     if(item.ownership==='DISCOVERED')note.textContent='ตรวจพบจาก Nginx · AWH แสดงข้อมูลแบบอ่านอย่างเดียวและยังไม่เปลี่ยนเว็บนี้';
+    else if(item.ownership==='ADOPTED')note.textContent='เชื่อมกับ '+(item.projectName||'Project')+' แบบ Observe-only · เว็บจริงยังใช้ route และไฟล์เดิมทั้งหมด';
     else if(item.ownership==='ALIAS')note.textContent=item.redirectHost?('ชื่อทางเข้าเดิม · ส่งต่อไป '+item.redirectHost):'ชื่อทางเข้า/Redirect ที่ตรวจพบจาก Nginx';
+    else if(managed&&item.liveState==='ONLINE'&&['FAILED','DEGRADED'].includes(String(item.managementState||item.state)))note.textContent='เว็บจริงยังออนไลน์ · เฉพาะสถานะการจัดการ AWH ต้องตรวจสอบก่อน Deploy ใหม่';
     else{
       const sourceNote=sourceInstruction(managed||item);const eventNote=humanEvent(managed||item);
       note.textContent=sourceNote||eventNote||(item.routeDetected?'เส้นทางเว็บถูกตรวจพบในเซิร์ฟเวอร์':'AWH กำลังตรวจเส้นทางเว็บ');
     }
     card.append(note);
+    const adoption=adoptionPanel(item);if(adoption)card.append(adoption);
 
     if(managed&&managed.source?.ready!==true){
       const sourceAction=document.createElement('div');sourceAction.className='site-source-action';
@@ -346,7 +399,9 @@ function renderSites(){
     const tech=document.createElement('details');tech.className='site-tech';
     const summary=document.createElement('summary');summary.textContent='รายละเอียดเว็บไซต์';
     const meta=document.createElement('div');meta.className='site-meta';
-    meta.append(statusChip('สถานะ: '+ownershipLabel(item.ownership)),statusChip('ระบบ: '+runtimeLabel(item.runtimeType)),statusChip('เส้นทาง: '+routeLabel(item.routeType)),statusChip('สภาพแวดล้อม: '+environmentLabel(item.environment)));
+    meta.append(statusChip('การดูแล: '+ownershipLabel(item.ownership)),statusChip('เว็บจริง: '+(item.liveState==='ONLINE'?'ออนไลน์':item.liveState==='ROUTED'?'มีเส้นทาง':'ยังไม่พบเส้นทาง')),statusChip('ระบบ: '+runtimeLabel(item.runtimeType)),statusChip('เส้นทาง: '+routeLabel(item.routeType)),statusChip('สภาพแวดล้อม: '+environmentLabel(item.environment)));
+    if(item.ownership==='MANAGED'&&item.managementState)meta.append(statusChip('Managed state: '+statusLabel(item.managementState)));
+    if(item.liveHost&&item.liveHost!==item.primaryHost)meta.append(statusChip('ปลายทางจริง: '+item.liveHost));
     if(item.projectName)meta.append(statusChip('โปรเจกต์: '+item.projectName));
     if(item.upstreamPort)meta.append(statusChip('พอร์ตภายใน: '+item.upstreamPort));
     if(item.configName)meta.append(statusChip('Nginx: '+item.configName));
@@ -354,9 +409,24 @@ function renderSites(){
     else if(item.rootClass==='WEB_ROOT')meta.append(statusChip('พื้นที่ไฟล์: เว็บเดิม'));
     if(item.databaseMode)meta.append(statusChip('ฐานข้อมูล: '+item.databaseMode+(item.databaseState?(' · '+item.databaseState):'')));
     if(item.backupEnabled)meta.append(statusChip('สำรองข้อมูล: เปิด'));
+    if(item.rollbackReleaseId)meta.append(statusChip('จุดย้อนรุ่น: พร้อม'));
     if(siteSourceReady(item))meta.append(statusChip('ไฟล์ต้นทาง: พร้อม'));
+    if(item.source?.revisionId)meta.append(statusChip('Source: '+String(item.source.revisionId).slice(0,12)));
     if(item.currentReleaseId)meta.append(statusChip('รุ่นปัจจุบัน: '+String(item.currentReleaseId).slice(0,18)));
-    tech.append(summary,meta);card.append(tech);host.append(card);
+    tech.append(summary,meta);
+    const history=Array.isArray(item.recentEvents)?item.recentEvents.slice(0,6):[];
+    if(history.length){
+      const log=document.createElement('div');log.className='site-event-log';
+      const logTitle=document.createElement('strong');logTitle.textContent='ประวัติล่าสุด';log.append(logTitle);
+      for(const event of history){
+        const row=document.createElement('div');row.className='site-event-row';
+        const text=document.createElement('span');text.textContent=event.message||humanEvent({lastEvent:{name:event.name}})||event.name||'เหตุการณ์เว็บไซต์';
+        const at=document.createElement('time');const date=event.at?new Date(event.at):null;at.textContent=date&&!Number.isNaN(date.valueOf())?date.toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'}):'—';
+        row.append(text,at);log.append(row);
+      }
+      tech.append(log);
+    }
+    card.append(tech);host.append(card);
   }
 
   if(!host.childElementCount){const empty=document.createElement('div');empty.className='site-empty';empty.textContent='ไม่พบเว็บไซต์ตามตัวกรองนี้';host.append(empty);}
@@ -386,6 +456,7 @@ async function refreshHostingData(background=false){
       sites=Array.isArray(result.sites)?result.sites:[];
       inventory=Array.isArray(result.inventory)?result.inventory:[];
       inventoryMeta=result.inventoryMeta&&typeof result.inventoryMeta==='object'?result.inventoryMeta:null;
+      projectsWithoutHosting=Array.isArray(result.projectsWithoutHosting)?result.projectsWithoutHosting:[];
       domains=Array.isArray(result.domains)?result.domains:[];
       dnsPlan=result.dns&&typeof result.dns==='object'?result.dns:null;
       ecosystem=result.ecosystem&&typeof result.ecosystem==='object'?result.ecosystem:null;
