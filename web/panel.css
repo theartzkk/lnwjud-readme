@@ -79,6 +79,8 @@
 .cp-admin-form label{display:grid;gap:7px;font-size:13px;font-weight:750;color:#58708d}
 .cp-admin-form input,.cp-admin-form select{width:100%;min-height:44px;border:1px solid rgba(23,48,90,.16);border-radius:14px;background:#fff;padding:10px 12px;color:#17305a;font:inherit}
 .cp-admin-form input:focus,.cp-admin-form select:focus{outline:3px solid rgba(255,122,26,.12);border-color:rgba(255,122,26,.55)}
+.cp-provider-hub{margin:18px 0;padding:18px;border:1px solid rgba(23,48,90,.11);border-radius:22px;background:rgba(255,255,255,.7)}
+.cp-provider-head{margin-bottom:12px}.cp-provider-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.cp-provider-card{padding:15px;border:1px solid rgba(23,48,90,.11);border-radius:18px;background:#fff}.cp-provider-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.cp-provider-card-head>span:first-child{display:grid;gap:3px}.cp-provider-card-head small,.cp-provider-models{color:#58708d;font-size:.82rem}.cp-provider-models{margin:10px 0}.cp-provider-form{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center}.cp-provider-form input{min-width:0;min-height:44px;border:1px solid rgba(23,48,90,.16);border-radius:14px;padding:10px 12px;font-size:16px}.cp-provider-form .cp-inline-message{grid-column:1/-1;margin:0}
 .cp-ai-form{grid-template-columns:repeat(3,minmax(0,1fr))}
 .cp-ai-form>.cp-toggle,.cp-ai-form>button,.cp-ai-form>.cp-inline-message{grid-column:1/-1}
 .cp-toggle{display:flex!important;align-items:center;gap:10px}
@@ -88,7 +90,7 @@
 .cp-mini-action{border:1px solid rgba(23,48,90,.14);border-radius:999px;background:#fff;padding:7px 11px;color:#17305a;font:700 12px/1 system-ui,-apple-system,"Noto Sans Thai",sans-serif;cursor:pointer}
 .cp-mini-action:disabled{opacity:.5;cursor:wait}
 .cp-row>.cp-mini-action,.cp-row>.cp-inline-actions{margin-inline-start:auto}
-@media(max-width:840px){.cp-admin-grid,.cp-ai-form{grid-template-columns:1fr}.cp-admin-form{padding:15px;border-radius:18px}.cp-row{align-items:flex-start;flex-wrap:wrap}.cp-row>.cp-mini-action,.cp-row>.cp-inline-actions{margin-inline-start:0}}
+@media(max-width:840px){.cp-admin-grid,.cp-ai-form,.cp-provider-grid{grid-template-columns:1fr}.cp-provider-form{grid-template-columns:1fr 1fr 1fr}.cp-provider-form input{grid-column:1/-1}.cp-admin-form{padding:15px;border-radius:18px}.cp-row{align-items:flex-start;flex-wrap:wrap}.cp-row>.cp-mini-action,.cp-row>.cp-inline-actions{margin-inline-start:0}}
 
 /* AWH Agent lives in the Owner Control Panel; infrastructure keeps only VPS diagnostics. */
 .cp-agent-center{scroll-margin-top:82px;background:linear-gradient(180deg,#fff 0%,#f7fbff 100%);border-color:#d7e7f5}

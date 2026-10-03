@@ -1,4 +1,4 @@
-import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, loadControlData, listManagedSites, loadProviderStatus, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, updatePersonAccess, cancelTask, decideApproval, revokeDevice, managedSiteAction, loadCoreReleaseStatus, requestCoreRelease } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, loadControlData, listManagedSites, loadProviderStatus, loadProviderHub, updateProviderHubCredential, testProviderHubConnection, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, updatePersonAccess, cancelTask, decideApproval, revokeDevice, managedSiteAction, loadCoreReleaseStatus, requestCoreRelease } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
@@ -469,6 +469,22 @@ async function renderExternalCapabilities(){
     if(!data.entries.length)empty(host,'ยังไม่มี external capability ที่ลงทะเบียน');
   }catch(error){empty(host,error instanceof Error?error.message:'โหลด external capabilities ไม่สำเร็จ');}
 }
+function renderProviderHub(data){
+ const host=$('cp-provider-list');if(!host)return;host.replaceChildren();const hub=data?.hub,statuses=data?.statuses||{};
+ if(!hub||!Array.isArray(hub.providers)){empty(host,'ยังโหลด AI Providers ไม่ได้');return;}
+ $('cp-provider-policy').textContent='Free-first · Cloud only · Paid ต้อง Owner อนุมัติ';
+ for(const provider of hub.providers){const status=statuses[provider.providerId]||{},credential=status.credential||{},ready=status.available===true&&credential.lastTestStatus==='PASS';
+  const card=document.createElement('article');card.className='cp-provider-card';
+  const head=document.createElement('div');head.className='cp-provider-card-head';const copy=document.createElement('span'),title=document.createElement('strong'),detail=document.createElement('small'),chip=document.createElement('span');
+  title.textContent=provider.displayName||provider.providerId;detail.textContent=ready?'พร้อมใช้งาน':status.keyConfigured?(credential.lastTestStatus==='FAILED'?'เชื่อมแล้ว · ทดสอบไม่ผ่าน':'เชื่อมแล้ว · รอทดสอบ'):'ยังไม่ได้เชื่อม API key';chip.className='cp-chip '+(ready?'good':status.keyConfigured?'warn':'');chip.textContent=ready?'READY':status.keyConfigured?'CONNECTED':'KEY REQUIRED';copy.append(title,detail);head.append(copy,chip);
+  const models=document.createElement('p');models.className='cp-provider-models';const prod=(provider.models||[]).filter(m=>m.lifecycle==='production').map(m=>m.displayName||m.modelId);models.textContent=(provider.costClass==='included'?'Free/Included · ':'')+(prod.length?prod.join(' · '):'รอ qualification');
+  const form=document.createElement('form');form.className='cp-provider-form';const input=document.createElement('input');input.type='password';input.maxLength=4096;input.autocomplete='off';input.spellcheck=false;input.placeholder=(provider.displayName||provider.providerId)+' API key';
+  const connect=document.createElement('button');connect.type='submit';connect.className='cp-mini-action';connect.textContent=status.keyConfigured?'แทนที่ key':'เชื่อม';const test=document.createElement('button');test.type='button';test.className='cp-mini-action';test.textContent='ทดสอบ';test.disabled=!status.keyConfigured;const remove=document.createElement('button');remove.type='button';remove.className='cp-mini-action';remove.textContent='ยกเลิก';remove.disabled=!status.keyConfigured;const msg=document.createElement('p');msg.className='cp-inline-message';msg.setAttribute('role','status');form.append(input,connect,test,remove,msg);card.append(head,models,form);host.append(card);
+  const reload=async()=>renderProviderHub(await loadProviderHub());
+  form.addEventListener('submit',async e=>{e.preventDefault();const secret=input.value.trim();if(!secret){msg.textContent='วาง API key ก่อน';return;}connect.disabled=true;msg.textContent='กำลังเชื่อม…';try{await updateProviderHubCredential(provider.providerId,'SET',secret);input.value='';await testProviderHubConnection(provider.providerId);await reload();}catch(error){input.value='';msg.textContent=error instanceof Error?error.message:'ยังเชื่อมไม่ได้';}finally{connect.disabled=false;}});
+  test.addEventListener('click',async()=>{test.disabled=true;msg.textContent='กำลังทดสอบ…';try{await testProviderHubConnection(provider.providerId);await reload();}catch(error){msg.textContent=error instanceof Error?error.message:'ทดสอบไม่ผ่าน';}finally{test.disabled=false;}});
+  remove.addEventListener('click',async()=>{remove.disabled=true;msg.textContent='กำลังยกเลิก…';try{await updateProviderHubCredential(provider.providerId,'REMOVE',null);await reload();}catch(error){msg.textContent=error instanceof Error?error.message:'ยังยกเลิกไม่ได้';}finally{remove.disabled=false;}});
+ }}
 function filterMenus(query){
   const q=String(query||'').trim().toLowerCase();
   for(const node of document.querySelectorAll('[data-cp-keywords]')){
@@ -537,7 +553,7 @@ async function load(){
     $('cp-updated').textContent='ตรวจข้อมูลแล้ว · '+Math.max(1,Math.round(performance.now()-started))+' ms';
     void renderExternalCapabilities();
 
-    Promise.allSettled([listManagedSites(),loadProviderStatus(),loadPeopleAccess(),loadControlData(),loadCoreReleaseStatus()]).then((secondary)=>{
+    Promise.allSettled([listManagedSites(),loadProviderStatus(),loadPeopleAccess(),loadControlData(),loadCoreReleaseStatus(),loadProviderHub()]).then((secondary)=>{
       if(secondary[0].status==='fulfilled'){renderSites(secondary[0].value);renderLiveSites(secondary[0].value);}
       else if($('cp-live-sites'))empty($('cp-live-sites'),'ยังโหลด Managed Sites ไม่สำเร็จ');
       if(secondary[1].status==='fulfilled')renderProvider(secondary[1].value);
@@ -546,6 +562,7 @@ async function load(){
         for(const id of ['cp-live-tasks','cp-live-approvals','cp-live-devices'])if($(id))empty($(id),'ยังโหลด Control Plane ไม่สำเร็จ');
       }
       if(secondary[4].status==='fulfilled')renderCoreReleaseControl(secondary[4].value);
+      if(secondary[5].status==='fulfilled')renderProviderHub(secondary[5].value); else if($('cp-provider-list'))empty($('cp-provider-list'),'ยังโหลด AI Providers ไม่สำเร็จ');
       else if($('cp-core-release-state'))$('cp-core-release-state').textContent='ยังโหลดสถานะ Core Release ไม่สำเร็จ';
     });
   }catch(error){
