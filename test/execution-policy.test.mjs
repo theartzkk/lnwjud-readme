@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { loadExecutionPolicy, privilegeLane, qaScriptForBudget, releaseNodeCandidates } from '../scripts/ops/execution-policy.mjs';
 
+test('operator diagnostics distinguish source authority from disk storage failures', async () => {
+  const bridge=await readFile(new URL('../hub/src/HubOperatorBridgeService.php',import.meta.url),'utf8');
+  assert.doesNotMatch(bridge,/OPERATOR_SOURCE_STORAGE_UNAVAILABLE/);
+  assert.match(bridge,/OPERATOR_SOURCE_AUTHORITY_UNAVAILABLE/);
+  assert.match(bridge,/OPERATOR_SOURCE_STAGING_UNAVAILABLE/);
+  assert.match(bridge,/OPERATOR_SOURCE_RUNTIME_UNAVAILABLE/);
+});
+
 test('execution metadata is context-only rather than an AI behavior policy',async()=>{
   const context=await loadExecutionPolicy();
   assert.equal(context.schemaVersion,2);

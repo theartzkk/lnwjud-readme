@@ -414,7 +414,8 @@ final class HubOperatorBridgeService
         if(!$liveReady&&$guardFresh&&in_array($guardState,['OK','WARNING','CRITICAL'],true)){
             $state=$guardState;$diskBlocked=$guardReleaseBlocked;$guardFallbackUsed=true;
         }
-        $guardDisagreesWithLive=$liveReady&&$guardFresh&&($guardReleaseBlocked!==$diskBlocked||($guardState!=='UNKNOWN'&&!hash_equals($guardState,$state)));
+        $normalizedGuardState=match($guardState){'NORMAL'=>'OK',default=>$guardState};
+        $guardDisagreesWithLive=$liveReady&&$guardFresh&&($guardReleaseBlocked!==$diskBlocked||($normalizedGuardState!=='UNKNOWN'&&!hash_equals($normalizedGuardState,$state)));
         return [
             'state'=>$state,'authority'=>'AWH_STORAGE_GUARD+LIVE_DISK',
             'freeBytes'=>$freeBytes,'totalBytes'=>$totalBytes,'usedPercent'=>$usedPercent,
@@ -831,8 +832,8 @@ final class HubOperatorBridgeService
         if(!self::uuidValid($missionId))throw new HubOperatorBridgeException('Source metadata repair requires the active mission of the target project','OPERATOR_PROJECT_SCOPE_REQUIRED');
 
         $gitRoot=getenv('AWH_CANONICAL_GIT_ROOT');if(!is_string($gitRoot)||$gitRoot==='')$gitRoot='/srv/awh-git';
-        $gitReal=realpath($gitRoot);if(!is_string($gitReal)||!is_dir($gitReal)||is_link($gitRoot))throw new HubOperatorBridgeException('Source promotion roots are unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
-        $repo=$gitReal.'/'.$config['directory'];$repoReal=realpath($repo);if(!is_string($repoReal)||dirname($repoReal)!==$gitReal||!is_dir($repoReal)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git repository is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $gitReal=realpath($gitRoot);if(!is_string($gitReal)||!is_dir($gitReal)||is_link($gitRoot))throw new HubOperatorBridgeException('Source authority paths are unavailable in this execution context','OPERATOR_SOURCE_AUTHORITY_UNAVAILABLE');
+        $repo=$gitReal.'/'.$config['directory'];$repoReal=realpath($repo);if(!is_string($repoReal)||dirname($repoReal)!==$gitReal||!is_dir($repoReal)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git authority is unavailable in this execution context','OPERATOR_SOURCE_AUTHORITY_UNAVAILABLE');
         $projectRecord=$this->resolveProject((string)$config['project']);$projectId=(string)$projectRecord['project_id'];
         $this->ensureProjectMissionActive($missionId,$at,$projectId);
         $gate=$this->projectGate((string)$config['project'],$at,false,'source.promote',$missionId);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
@@ -887,10 +888,10 @@ final class HubOperatorBridgeService
         if($stagedFile!==$bundleSha.'.bundle'||hash_equals($expected,$target))throw new HubOperatorBridgeException('Source promotion identity is invalid','OPERATOR_REQUEST_INVALID');
         $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';
         $gitRoot=getenv('AWH_CANONICAL_GIT_ROOT');if(!is_string($gitRoot)||$gitRoot==='')$gitRoot='/srv/awh-git';
-        $stageReal=realpath($stageRoot);$gitReal=realpath($gitRoot);if(!is_string($stageReal)||!is_dir($stageReal)||is_link($stageRoot)||!is_string($gitReal)||!is_dir($gitReal)||is_link($gitRoot))throw new HubOperatorBridgeException('Source promotion roots are unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $stageReal=realpath($stageRoot);$gitReal=realpath($gitRoot);if(!is_string($stageReal)||!is_dir($stageReal)||is_link($stageRoot)||!is_string($gitReal)||!is_dir($gitReal)||is_link($gitRoot))throw new HubOperatorBridgeException('Source authority paths are unavailable in this execution context','OPERATOR_SOURCE_AUTHORITY_UNAVAILABLE');
         $bundle=$stageReal.'/'.$stagedFile;$bundleReal=realpath($bundle);if(!is_string($bundleReal)||dirname($bundleReal)!==$stageReal||is_link($bundle)||!is_file($bundleReal)||!is_readable($bundleReal))throw new HubOperatorBridgeException('Source bundle is unavailable','OPERATOR_SOURCE_BUNDLE_NOT_READY');
         $size=@filesize($bundleReal);$actual=hash_file('sha256',$bundleReal);if(!is_int($size)||$size<1||$size>self::MAX_SOURCE_BUNDLE_BYTES||!is_string($actual)||!hash_equals($bundleSha,$actual))throw new HubOperatorBridgeException('Source bundle verification failed','OPERATOR_SOURCE_BUNDLE_NOT_READY');
-        $repo=$gitReal.'/'.$config['directory'];$repoReal=realpath($repo);if(!is_string($repoReal)||dirname($repoReal)!==$gitReal||!is_dir($repoReal)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git repository is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $repo=$gitReal.'/'.$config['directory'];$repoReal=realpath($repo);if(!is_string($repoReal)||dirname($repoReal)!==$gitReal||!is_dir($repoReal)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git authority is unavailable in this execution context','OPERATOR_SOURCE_AUTHORITY_UNAVAILABLE');
         $projectRecord=$this->resolveProject((string)$config['project']);$projectId=(string)$projectRecord['project_id'];
         $missionId=is_string($request['missionExecutionId']??null)?trim((string)$request['missionExecutionId']):'';
         if(!self::uuidValid($missionId))throw new HubOperatorBridgeException('Source promotion requires the active mission of the target project','OPERATOR_PROJECT_SCOPE_REQUIRED');
@@ -898,7 +899,7 @@ final class HubOperatorBridgeService
         $gate=$this->projectGate((string)$config['project'],$at,false,'source.promote',$missionId);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $current=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($current)))throw new HubOperatorBridgeException('Canonical main moved before source promotion','OPERATOR_SOURCE_BASE_MOVED');
         $defaultBranch=is_string($config['defaultBranch']??null)?trim((string)$config['defaultBranch']):'main';if(preg_match('/^[a-z0-9][a-z0-9._\/-]{0,79}$/',$defaultBranch)!==1)throw new HubOperatorBridgeException('Repository default branch contract is invalid','OPERATOR_SOURCE_REPOSITORY_FORBIDDEN');
-        $headBefore=trim($this->runGit($repoReal,['symbolic-ref','HEAD']));if(preg_match('#^refs/heads/[A-Za-z0-9._/-]+$#',$headBefore)!==1)throw new HubOperatorBridgeException('Repository default HEAD is unresolved','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');$headChanged=false;
+        $headBefore=trim($this->runGit($repoReal,['symbolic-ref','HEAD']));if(preg_match('#^refs/heads/[A-Za-z0-9._/-]+$#',$headBefore)!==1)throw new HubOperatorBridgeException('Repository default HEAD is unresolved','OPERATOR_SOURCE_REPOSITORY_INVALID');$headChanged=false;
         $heads=$this->runGit($repoReal,['bundle','list-heads',$bundleReal]);$advertised=false;foreach(preg_split('/\r?\n/',$heads)?:[] as $line){$parts=preg_split('/\s+/',trim($line));if(is_array($parts)&&isset($parts[0])&&strtolower((string)$parts[0])===$target){$advertised=true;break;}}
         if(!$advertised)throw new HubOperatorBridgeException('Target revision is not advertised by source bundle','OPERATOR_SOURCE_BUNDLE_NOT_READY');
         $authority=$this->acquireMutationAuthority(
@@ -980,7 +981,7 @@ final class HubOperatorBridgeService
     {
         if(!class_exists('ZipArchive'))throw new HubOperatorBridgeException('ZIP runtime is unavailable for projection verification','OPERATOR_SOURCE_PROJECTION_REQUIRED');
         $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';
-        $stage=realpath($stageRoot);if(!is_string($stage)||!is_dir($stage)||is_link($stageRoot)||!is_writable($stage))throw new HubOperatorBridgeException('Projection verification staging is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $stage=realpath($stageRoot);if(!is_string($stage)||!is_dir($stage)||is_link($stageRoot)||!is_writable($stage))throw new HubOperatorBridgeException('Projection verification staging is unavailable','OPERATOR_SOURCE_STAGING_UNAVAILABLE');
         $archive=$stage.'/.projection-'.substr($target,0,12).'-'.bin2hex(random_bytes(6)).'.zip';$zip=null;
         try{
             $this->runGit($repo,['archive','--format=zip','--output='.$archive,$target]);
@@ -1467,10 +1468,10 @@ final class HubOperatorBridgeService
     /** @param list<string> $args @return array{code:int,stdout:string} */
     private function runGitResult(string $repo,array $args): array
     {
-        if(!is_dir($repo)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git repository is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        if(!is_dir($repo)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git authority is unavailable in this execution context','OPERATOR_SOURCE_AUTHORITY_UNAVAILABLE');
         $command=array_merge(['/usr/bin/git','--git-dir='.$repo],$args);$pipes=[];
         $process=@proc_open($command,[0=>['file','/dev/null','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,null,['LC_ALL'=>'C','PATH'=>'/usr/bin:/bin'],['bypass_shell'=>true]);
-        if(!is_resource($process))throw new HubOperatorBridgeException('Bounded Git runtime is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        if(!is_resource($process))throw new HubOperatorBridgeException('Bounded Git runtime is unavailable','OPERATOR_SOURCE_RUNTIME_UNAVAILABLE');
         $stdout=is_resource($pipes[1]??null)?stream_get_contents($pipes[1],65537):'';$stderr=is_resource($pipes[2]??null)?stream_get_contents($pipes[2],65537):'';
         foreach($pipes as $pipe)if(is_resource($pipe))fclose($pipe);$code=proc_close($process);
         if(!is_string($stdout)||strlen($stdout)>65536||!is_string($stderr)||strlen($stderr)>65536)throw new HubOperatorBridgeException('Bounded Git output exceeded safe limit','OPERATOR_SOURCE_PROMOTE_FAILED');
