@@ -2255,6 +2255,37 @@ final class HubControlPlaneService
         catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider status is unavailable', $error->codeName); }
     }
 
+    public function groqProviderStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertFinalReady(); $this->assertOwner((string)$session['user_id']);
+        try { return ['schemaVersion'=>1,'provider'=>$this->agent->statusByProvider((string)$session['user_id'],'groq',$now)]; }
+        catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Groq provider status is unavailable',$error->codeName); }
+    }
+
+    public function updateGroqProviderCredential(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); self::exactKeys($payload,['action','schemaVersion','secret']);
+        if (($payload['schemaVersion']??null)!==1 || !is_string($payload['action']??null) || (!is_null($payload['secret']??null) && !is_string($payload['secret']))) throw new HubControlPlaneException('Groq credential request is invalid','PROVIDER_CREDENTIAL_INVALID');
+        $this->assertSelfServiceReady(); $userId=(string)$session['user_id']; $this->assertOwner($userId);
+        try { if (HubTrustPolicy::requiresStepUp('provider.credential')) HubOwnerAuthService::assertRecentStepUpSession($session,$now); }
+        catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required','STEP_UP_REQUIRED'); }
+        try {
+            $action=strtoupper((string)$payload['action']);
+            if ($action==='SET' && is_string($payload['secret'])) return ['schemaVersion'=>1,'provider'=>$this->agent->saveCredentialForProvider($userId,'groq',$payload['secret'],$now)];
+            if ($action==='REMOVE' && $payload['secret']===null) return ['schemaVersion'=>1,'provider'=>$this->agent->removeCredentialForProvider($userId,'groq',$now)];
+            throw new HubNativeAgentException('Groq credential request is invalid','PROVIDER_CREDENTIAL_INVALID');
+        } catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Groq credential could not be changed',$error->codeName); }
+    }
+
+    public function testGroqProviderConnection(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); self::exactKeys($payload,['schemaVersion']);
+        if (($payload['schemaVersion']??null)!==1) throw new HubControlPlaneException('Groq test request is invalid','PROVIDER_POLICY_INVALID');
+        $this->assertSelfServiceReady(); $userId=(string)$session['user_id']; $this->assertOwner($userId);
+        try { return ['schemaVersion'=>1,'connection'=>$this->agent->testConnectionForProvider($userId,'groq',$now)]; }
+        catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Groq connection test failed',$error->codeName,$error->diagnostic); }
+    }
+
     public function systemOneStatus(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);

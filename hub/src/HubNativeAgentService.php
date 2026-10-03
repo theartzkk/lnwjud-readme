@@ -6,6 +6,8 @@ require_once __DIR__ . '/HubProviderCredentialStore.php';
 require_once __DIR__ . '/HubProviderPricingService.php';
 require_once __DIR__ . '/HubAiProviderAdapter.php';
 require_once __DIR__ . '/HubOpenAiProviderAdapter.php';
+require_once __DIR__ . '/HubGroqProviderAdapter.php';
+require_once __DIR__ . '/HubGroqProviderBootstrap.php';
 require_once __DIR__ . '/HubAiGovernanceService.php';
 require_once __DIR__ . '/HubAiAttachmentPreparer.php';
 
@@ -34,6 +36,7 @@ final class HubNativeAgentService
     private readonly ?HubAiGovernanceService $governance;
     private readonly ?string $fixtureKey;
     private readonly HubAiAttachmentPreparer $attachmentPreparer;
+    private bool $freeOnlyRouting = false;
     /** @var array<string,HubAiProviderAdapter> */
     private array $runtimeAdapters = [];
     /** @var array<string,HubProviderCredentialStore> */
@@ -44,6 +47,12 @@ final class HubNativeAgentService
     {
         $this->adapter = $adapter ?? new HubOpenAiProviderAdapter($transport);
         $this->providerId = $this->adapter->providerId();
+        if ($adapter === null && $additionalAdapters === [] && HubGroqProviderBootstrap::schemaPresent($pdo)) {
+            HubGroqProviderBootstrap::reconcile($pdo);
+            $this->freeOnlyRouting = true;
+            $additionalAdapters = [new HubGroqProviderAdapter()];
+            $additionalCredentials['groq'] = HubProviderCredentialStore::fromEnvironment('groq');
+        }
         $this->fixtureKey = $key;
         $this->attachmentPreparer = $attachmentPreparer ?? new HubAiAttachmentPreparer();
         $this->credentials = $credentials ?? HubProviderCredentialStore::fromEnvironment($this->providerId);
@@ -63,6 +72,13 @@ final class HubNativeAgentService
     public function status(string $userId, ?string $now = null): array
     {
         return $this->statusForProvider($userId,$this->providerId,$now);
+    }
+
+    public function statusByProvider(string $userId, string $providerId, ?string $now = null): array
+    {
+        $providerId = self::providerIdValue($providerId);
+        if (!isset($this->runtimeAdapters[$providerId])) throw new HubNativeAgentException('Provider runtime is unavailable','PROVIDER_UNAVAILABLE',['provider'=>$providerId,'operation'=>'status','category'=>'runtime','retryable'=>false]);
+        return $this->statusForProvider($userId,$providerId,$now);
     }
 
     /** @return array<string,mixed> */
@@ -237,6 +253,72 @@ final class HubNativeAgentService
         }
     }
 
+    public function saveCredentialForProvider(string $userId, string $providerId, string $secret, ?string $now = null): array
+    {
+        $providerId = self::providerIdValue($providerId);
+        if ($providerId === $this->providerId) return $this->saveCredential($userId, $secret, $now);
+        $store = $this->runtimeCredentials[$providerId] ?? null;
+        if (!$store instanceof HubProviderCredentialStore) throw new HubNativeAgentException('Provider credential operation is unavailable','PROVIDER_CREDENTIAL_UNAVAILABLE');
+        $at = self::timestamp($now ?? gmdate('c')); $previous = $store->read();
+        try {
+            $store->replace($secret);
+            $this->recordCredentialStateForProvider($userId,$providerId,true,'NOT_TESTED',null,$at);
+        } catch (Throwable $error) {
+            $this->restoreProviderCredential($providerId,$previous);
+            if ($error instanceof HubProviderCredentialStoreException) throw new HubNativeAgentException('Provider credential could not be saved',$error->codeName);
+            if ($error instanceof HubNativeAgentException) throw $error;
+            throw new HubNativeAgentException('Provider credential could not be saved','PROVIDER_CREDENTIAL_FAILED');
+        }
+        return $this->statusByProvider($userId,$providerId,$at);
+    }
+
+    public function removeCredentialForProvider(string $userId, string $providerId, ?string $now = null): array
+    {
+        $providerId = self::providerIdValue($providerId);
+        if ($providerId === $this->providerId) return $this->removeCredential($userId,$now);
+        $store = $this->runtimeCredentials[$providerId] ?? null;
+        if (!$store instanceof HubProviderCredentialStore) throw new HubNativeAgentException('Provider credential operation is unavailable','PROVIDER_CREDENTIAL_UNAVAILABLE');
+        $at = self::timestamp($now ?? gmdate('c')); $previous = $store->read();
+        try {
+            $store->remove();
+            $this->recordCredentialStateForProvider($userId,$providerId,false,'NOT_TESTED',null,$at);
+        } catch (Throwable $error) {
+            $this->restoreProviderCredential($providerId,$previous);
+            if ($error instanceof HubProviderCredentialStoreException) throw new HubNativeAgentException('Provider credential could not be removed',$error->codeName);
+            if ($error instanceof HubNativeAgentException) throw $error;
+            throw new HubNativeAgentException('Provider credential could not be removed','PROVIDER_CREDENTIAL_FAILED');
+        }
+        return $this->statusByProvider($userId,$providerId,$at);
+    }
+
+    public function testConnectionForProvider(string $userId, string $providerId, ?string $now = null): array
+    {
+        $providerId = self::providerIdValue($providerId);
+        if ($providerId === $this->providerId) return $this->testConnection($userId,$now);
+        $at = self::timestamp($now ?? gmdate('c')); $key = $this->credential($providerId);
+        if ($key === null) return ['provider'=>$providerId,'status'=>'NOT_CONFIGURED'];
+        $adapter = $this->runtimeAdapters[$providerId] ?? null;
+        if (!$adapter instanceof HubAiProviderAdapter) throw new HubNativeAgentException('Provider runtime is unavailable','PROVIDER_UNAVAILABLE');
+        try {
+            if ($providerId === HubGroqProviderBootstrap::PROVIDER_ID && $adapter instanceof HubGroqProviderAdapter) {
+                $qualified = HubGroqProviderBootstrap::qualifyProduction($this->pdo,$adapter,$key,$at);
+                $this->recordCredentialStateForProvider($userId,$providerId,true,'PASS',$at,$at);
+                return ['provider'=>$providerId,'status'=>'PASS','path'=>'responses','qualification'=>$qualified];
+            }
+            $policy = $this->policy($userId,$at,$providerId);
+            $response = $adapter->call(['model'=>$policy['modelFast'],'input'=>'Reply with OK only.','max_output_tokens'=>256,'instructions'=>'Reply with OK only.'],$key);
+            self::outputText($response);
+            $this->recordCredentialStateForProvider($userId,$providerId,true,'PASS',$at,$at);
+            return ['provider'=>$providerId,'status'=>'PASS','model'=>$policy['modelFast'],'path'=>'responses'];
+        } catch (Throwable $error) {
+            try { $this->recordCredentialStateForProvider($userId,$providerId,true,'FAILED',$at,$at); } catch (Throwable) {}
+            if ($error instanceof HubAiProviderAdapterException) throw new HubNativeAgentException($error->getMessage(),$error->codeName,$error->diagnostic);
+            if ($error instanceof HubGroqProviderBootstrapException) throw new HubNativeAgentException($error->getMessage(),$error->codeName,['provider'=>$providerId,'operation'=>'qualification','category'=>'setup','retryable'=>false]);
+            if ($error instanceof HubNativeAgentException) throw $error;
+            throw new HubNativeAgentException('Provider connection test failed','PROVIDER_TEST_FAILED',['provider'=>$providerId,'operation'=>'responses','category'=>'unknown','retryable'=>false]);
+        }
+    }
+
     /** @return array{provider:string,routingMode:string,overridden:bool} */
     public function projectRouting(string $projectId): array
     {
@@ -375,11 +457,17 @@ final class HubNativeAgentService
 
     private function recordCredentialState(string $userId, bool $configured, string $testStatus, ?string $testedAt, string $at): void
     {
+        $this->recordCredentialStateForProvider($userId,$this->providerId,$configured,$testStatus,$testedAt,$at);
+    }
+
+    private function recordCredentialStateForProvider(string $userId, string $providerId, bool $configured, string $testStatus, ?string $testedAt, string $at): void
+    {
+        $providerId = self::providerIdValue($providerId);
         if (!$this->selfServiceTablePresent('control_provider_credentials')) throw new HubNativeAgentException('Provider credential authority is not ready', 'SELF_SERVICE_SCHEMA_NOT_READY');
         if (!in_array($testStatus, ['NOT_TESTED', 'PASS', 'FAILED'], true)) throw new HubNativeAgentException('Provider credential state is invalid', 'PROVIDER_CREDENTIAL_FAILED');
         try {
             $this->pdo->beginTransaction();
-            $this->pdo->prepare('INSERT INTO control_provider_credentials(provider_id, configured, storage_version, updated_by_user_id, updated_at, last_tested_at, last_test_status) VALUES(:provider, :configured, 1, :user, :at, :tested, :status) ON CONFLICT(provider_id) DO UPDATE SET configured=excluded.configured, storage_version=excluded.storage_version, updated_by_user_id=excluded.updated_by_user_id, updated_at=excluded.updated_at, last_tested_at=excluded.last_tested_at, last_test_status=excluded.last_test_status')->execute(['provider' => $this->providerId, 'configured' => $configured ? 1 : 0, 'user' => $userId, 'at' => $at, 'tested' => $testedAt, 'status' => $testStatus]);
+            $this->pdo->prepare('INSERT INTO control_provider_credentials(provider_id, configured, storage_version, updated_by_user_id, updated_at, last_tested_at, last_test_status) VALUES(:provider, :configured, 1, :user, :at, :tested, :status) ON CONFLICT(provider_id) DO UPDATE SET configured=excluded.configured, storage_version=excluded.storage_version, updated_by_user_id=excluded.updated_by_user_id, updated_at=excluded.updated_at, last_tested_at=excluded.last_tested_at, last_test_status=excluded.last_test_status')->execute(['provider' => $providerId, 'configured' => $configured ? 1 : 0, 'user' => $userId, 'at' => $at, 'tested' => $testedAt, 'status' => $testStatus]);
             $this->pdo->commit();
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
@@ -389,18 +477,33 @@ final class HubNativeAgentService
 
     private function restoreCredential(?string $previous): void
     {
-        try { if ($previous === null) $this->credentials->remove(); else $this->credentials->replace($previous); }
+        $this->restoreProviderCredential($this->providerId,$previous);
+    }
+
+    private function restoreProviderCredential(string $providerId, ?string $previous): void
+    {
+        $store = $this->runtimeCredentials[$providerId] ?? null;
+        if (!$store instanceof HubProviderCredentialStore) throw new HubNativeAgentException('Provider credential state needs attention','PROVIDER_CREDENTIAL_STATE_UNCERTAIN');
+        try { if ($previous === null) $store->remove(); else $store->replace($previous); }
         catch (HubProviderCredentialStoreException) { throw new HubNativeAgentException('Provider credential state needs attention', 'PROVIDER_CREDENTIAL_STATE_UNCERTAIN'); }
     }
 
     /** @return array{0:string,1:string,2:string,3:?string} */
     private function modelForExecution(string $userId,string $projectId,string $request,array $policy,array $executionContext,string $at,int $maxOutputTokens): array
     {
-        $route=$this->routeForProject($projectId,self::route($request,$policy['routingStrategy'])); $model=$policy['model'.ucfirst(strtolower($route))];
-        if ($this->governance===null || !is_string($executionContext['executionId']??null) || !is_string($executionContext['taskId']??null)) return [$this->providerId,$route,$model,null];
+        // Paid providers remain fail-closed until a separate owner-authorized approval authority exists.
+        $allowPaidProviders = false;
+        $providers = $this->eligibleRuntimeProviders($userId,$at,$allowPaidProviders);
+        if ($providers === []) throw new HubNativeAgentException('No eligible remote free provider is configured','PROVIDER_UNAVAILABLE',['operation'=>'route','category'=>'policy','retryable'=>false]);
+        if ($this->governance===null || !is_string($executionContext['executionId']??null) || !is_string($executionContext['taskId']??null)) {
+            $provider = $providers[0]; $selectedPolicy = $this->policy($userId,$at,$provider);
+            $route = $this->routeForProject($projectId,self::route($request,$selectedPolicy['routingStrategy']));
+            $model = $selectedPolicy['model'.ucfirst(strtolower($route))];
+            return [$provider,$route,$model,null];
+        }
         $inputEstimate=max(1,(int)ceil((strlen($request)+strlen(json_encode($executionContext,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)))/4));
         $baseline=$this->quote($policy,$policy['modelStrong'],$inputEstimate,0,0,$maxOutputTokens,$at,$this->providerId)['estimatedMicrounits'];
-        $providers=$this->eligibleRuntimeProviders($userId,$at); $excluded=self::excludedProviderIds($executionContext['excludedProviderIds']??[]); if ($excluded!==[]) $providers=array_values(array_filter($providers,static fn(string $provider):bool=>!in_array($provider,$excluded,true))); if ($providers===[]) throw new HubNativeAgentException('No eligible alternate provider remains','PROVIDER_UNAVAILABLE',['operation'=>'route','category'=>'failover','retryable'=>true]); $preferred=[]; foreach($providers as $provider) { $p=$this->policy($userId,$at,$provider); foreach(['modelFast','modelBalanced','modelStrong'] as $field) if (is_string($p[$field]??null)) $preferred[]=$provider.':'.$p[$field]; }
+         $excluded=self::excludedProviderIds($executionContext['excludedProviderIds']??[]); if ($excluded!==[]) $providers=array_values(array_filter($providers,static fn(string $provider):bool=>!in_array($provider,$excluded,true))); if ($providers===[]) throw new HubNativeAgentException('No eligible alternate provider remains','PROVIDER_UNAVAILABLE',['operation'=>'route','category'=>'failover','retryable'=>true]); $preferred=[]; foreach($providers as $provider) { $p=$this->policy($userId,$at,$provider); foreach(['modelFast','modelBalanced','modelStrong'] as $field) if (is_string($p[$field]??null)) $preferred[]=$provider.':'.$p[$field]; }
         try { $selected=(count($providers)!==1 || $providers[0]!==$this->providerId)
             ? $this->governance->selectAcrossProviders($userId,$projectId,(string)$executionContext['executionId'],(string)$executionContext['taskId'],$providers,(string)($executionContext['capability']??'agent.conversation'),(string)($executionContext['dataClassification']??'INTERNAL'),$policy['routingStrategy'],$preferred,$inputEstimate,$maxOutputTokens,$baseline,['routing'=>(string)($executionContext['routingPolicyVersion']??'m16-runtime-v1'),'prompt'=>(string)($executionContext['promptPolicyVersion']??'native-v1'),'tool'=>(string)($executionContext['toolPolicyVersion']??'bounded-v1')],$at)
             : $this->governance->selectModel($userId,$projectId,(string)$executionContext['executionId'],(string)$executionContext['taskId'],$this->providerId,(string)($executionContext['capability']??'agent.conversation'),(string)($executionContext['dataClassification']??'INTERNAL'),$policy['routingStrategy'],[$policy['modelFast'],$policy['modelBalanced'],$policy['modelStrong']],$inputEstimate,$maxOutputTokens,$baseline,['routing'=>(string)($executionContext['routingPolicyVersion']??'m16-v1'),'prompt'=>(string)($executionContext['promptPolicyVersion']??'native-v1'),'tool'=>(string)($executionContext['toolPolicyVersion']??'bounded-v1')],$at);
@@ -410,10 +513,30 @@ final class HubNativeAgentService
     }
 
     /** @return list<string> */
-    private function eligibleRuntimeProviders(string $userId,string $at): array
+    private function eligibleRuntimeProviders(string $userId,string $at,bool $allowPaidProviders=false): array
     {
-        $out=[]; foreach(array_keys($this->runtimeAdapters) as $provider) { try { $policy=$this->policy($userId,$at,$provider); if (!($policy['enabled']??false) || $this->credential($provider)===null) continue; $out[]=$provider; } catch(Throwable) {} }
-        if ($out===[]) $out[]=$this->providerId; return array_values(array_unique($out));
+        $out=[];
+        if (!$this->freeOnlyRouting) {
+            foreach(array_keys($this->runtimeAdapters) as $provider) {
+                try { $policy=$this->policy($userId,$at,$provider); if (!($policy['enabled']??false) || $this->credential($provider)===null) continue; $out[]=$provider; } catch(Throwable) {}
+            }
+            if ($out===[]) $out[]=$this->providerId;
+            return array_values(array_unique($out));
+        }
+        $profile=$this->pdo->prepare('SELECT provider_kind,cost_class,enabled FROM control_execution_providers WHERE provider_id=:provider');
+        foreach(array_keys($this->runtimeAdapters) as $provider) {
+            try {
+                $policy=$this->policy($userId,$at,$provider);
+                if (!($policy['enabled']??false) || $this->credential($provider)===null) continue;
+                $profile->execute(['provider'=>$provider]); $row=$profile->fetch();
+                if (!is_array($row) || (int)$row['enabled']!==1) continue;
+                $kind=strtoupper((string)$row['provider_kind']); $cost=strtoupper((string)$row['cost_class']);
+                if (!in_array($kind,['API','BURST'],true) || $cost==='LOCAL_FREE') continue;
+                if (!$allowPaidProviders && $cost!=='INCLUDED') continue;
+                $out[]=$provider;
+            } catch(Throwable) {}
+        }
+        return array_values(array_unique($out));
     }
 
     /** Fail over only before tool execution and only for explicitly retryable provider/network pressure. */
@@ -474,10 +597,17 @@ final class HubNativeAgentService
         return $q->fetchColumn() !== false;
     }
 
+    private static function providerIdValue(string $value): string
+    {
+        $value=strtolower(trim($value));
+        if (preg_match('/^[a-z0-9][a-z0-9._-]{1,63}$/',$value)!==1) throw new HubNativeAgentException('Provider identity is invalid','PROVIDER_POLICY_INVALID');
+        return $value;
+    }
+
     private static function route(string $request, string $strategy = 'BALANCED'): string { $value = function_exists('mb_strtolower') ? mb_strtolower($request, 'UTF-8') : strtolower($request); $length = function_exists('mb_strlen') ? mb_strlen($request, 'UTF-8') : strlen($request); if (preg_match('/(?:production|deploy|migration|security|architecture|incident|rollback|schema)/u', $value) === 1) return 'STRONG'; return match ($strategy) { 'SAVER' => 'FAST', 'QUALITY' => $length >= 400 ? 'STRONG' : 'BALANCED', default => $length < 180 ? 'FAST' : 'BALANCED' }; }
     private static function strategy(string $value): string { $value=strtoupper(trim($value)); if (!in_array($value,['SAVER','BALANCED','QUALITY'],true)) throw new HubNativeAgentException('Provider routing strategy is invalid','PROVIDER_POLICY_INVALID'); return $value; }
     private static function serviceTier(string $value): string { $value=strtoupper(trim($value)); if (!in_array($value,['DEFAULT','BATCH','FLEX','PRIORITY','CUSTOM'],true)) throw new HubNativeAgentException('Provider service tier is invalid','PROVIDER_POLICY_INVALID'); return $value; }
-    private static function model(string $value): string { $value = trim($value); if (preg_match('/^[A-Za-z0-9._:-]{2,100}$/', $value) !== 1) throw new HubNativeAgentException('Provider model is invalid', 'PROVIDER_POLICY_INVALID'); return $value; }
+    private static function model(string $value): string { $value = trim($value); if (preg_match('/^[A-Za-z0-9._:\/-]{2,100}$/', $value) !== 1) throw new HubNativeAgentException('Provider model is invalid', 'PROVIDER_POLICY_INVALID'); return $value; }
     private static function nonNegativeInt(mixed $value, int $max): int { if (!is_int($value) || $value < 0 || $value > $max) throw new HubNativeAgentException('Provider budget is invalid', 'PROVIDER_POLICY_INVALID'); return $value; }
     private static function outputText(array $response): string { $text = is_string($response['output_text'] ?? null) ? $response['output_text'] : ''; if (trim($text) === '') { foreach (($response['output'] ?? []) as $item) foreach (($item['content'] ?? []) as $content) if (($content['type'] ?? null) === 'output_text' && is_string($content['text'] ?? null)) $text .= $content['text']; } $text = trim($text); if ($text === '' || strlen($text) > 8000 || preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', $text)) throw new HubNativeAgentException('Native provider response is invalid', 'PROVIDER_FAILED'); return $text; }
     /** Provider output is replayed only in-memory for stateless tool continuation. */

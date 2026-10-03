@@ -5,10 +5,10 @@ import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   bindSchoolIdentity, exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadBayCommunicationStatus, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus, loadSchoolIdentityBindings, loadSchoolIdentityCandidates,
-  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadDecisionProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
+  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadGroqProviderStatus, loadDecisionProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
   recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokeDevice, revokePerson, revokeSchoolIdentity, saveCurrentContext, submitWorkMessage,
-  testProviderConnection, testDecisionProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
-  updateProviderCredential, updateDecisionProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
+  testProviderConnection, testGroqProviderConnection, testDecisionProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
+  updateProviderCredential, updateGroqProviderCredential, updateDecisionProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 (() => {
@@ -17,7 +17,7 @@ import {
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-arm64.zip', 'macOS Apple Silicon', 'mac-arm64'], ['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, decisionProvider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, groqProvider: null, decisionProvider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
   const MAX_BRAND_DATA_URL_CHARS = 11500;
@@ -491,6 +491,17 @@ import {
     if ($('provider-project-routing')) $('provider-project-routing').value = state.providerRouting?.routingMode || 'AUTO';
     const usage = $('provider-usage'); if (usage) { usage.replaceChildren(); const rows = Array.isArray(provider.usageByProject) ? provider.usageByProject : []; for (const row of rows) { const item = document.createElement('li'); item.textContent = `${row.projectName || 'Project'} · ${baht(row.estimatedMicrounits || 0)}`; usage.append(item); } if (!usage.childElementCount) usage.textContent = 'ยังไม่มีการใช้งานที่คิดค่าใช้จ่าย'; }
   }
+  function renderGroqProvider() {
+    const provider = state.groqProvider;
+    if (!provider) { message('groq-status', 'ยังไม่ได้โหลดสถานะ Groq'); return; }
+    const credential = provider.credential || {}; const models = provider.models || {};
+    const ready = provider.available === true && credential.lastTestStatus === 'PASS';
+    const status = ready ? 'Groq Free พร้อมใช้งาน · ' + (models.fast || 'fast') + ' / ' + (models.strong || 'strong') + ' · ไม่ใช้ API เสียเงินอัตโนมัติ' : provider.keyConfigured ? 'เชื่อม Groq แล้ว · ' + (credential.lastTestStatus === 'FAILED' ? 'ทดสอบไม่ผ่าน' : 'รอทดสอบ') : 'ยังไม่ได้เชื่อม Groq Free';
+    message('groq-status', status);
+    const remove = $('groq-credential-remove'); if (remove) remove.disabled = !provider.keyConfigured;
+    const test = $('groq-connection-test'); if (test) test.disabled = !provider.keyConfigured;
+  }
+
   function renderDecisionProvider() {
     const provider = state.decisionProvider;
     if (!provider) { message('jev-status', 'ยังไม่ได้โหลดสถานะ Jev'); return; }
@@ -702,6 +713,30 @@ import {
     // Credential setup is the only prerequisite for a first-time owner. Keep it
     // before routing and budget controls so it is reachable immediately on mobile.
     policy.before(section);
+    const groqSection = document.createElement('section'); groqSection.className = 'account-form'; groqSection.id = 'groq-provider-settings';
+    groqSection.innerHTML = '<h3>Groq Free · AI หลักแบบไม่เสียค่า API</h3><p id="groq-status" class="muted">กำลังตรวจสถานะ Groq</p><p class="muted">ใช้ Groq บน Cloud เท่านั้น ไม่รันโมเดลบน Mac, Windows หรือ VPS และจะไม่ fallback ไป API แบบเสียเงินเอง</p><form id="groq-credential-form" class="compact-form"><label for="groq-api-key">Groq API key</label><input id="groq-api-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">เชื่อม Groq</button><button id="groq-credential-remove" class="text-button" type="button">ยกเลิกการเชื่อม</button><button id="groq-connection-test" class="text-button" type="button">ทดสอบและเปิดใช้</button></div></form><p id="groq-message" class="form-message" role="status"></p><small class="muted">Key ถูกเก็บใน server credential store และไม่ถูกแสดงกลับบนหน้าเว็บ</small>';
+    section.after(groqSection);
+    $('groq-credential-form').addEventListener('submit', async (event) => {
+      event.preventDefault(); const field = $('groq-api-key'); if (!field.value.trim()) { message('groq-message', 'วาง Groq API key ก่อน'); return; }
+      message('groq-message', 'กำลังบันทึกและตรวจ Groq อย่างปลอดภัย…');
+      try {
+        await withPrivilegedRetry(()=>updateGroqProviderCredential('SET', field.value),'การเปลี่ยน Groq credential');
+        const tested = await testGroqProviderConnection();
+        state.groqProvider = (await loadGroqProviderStatus()).provider; renderGroqProvider();
+        message('groq-message', tested.connection?.status === 'PASS' ? 'Groq Free พร้อมใช้งานแล้ว' : 'บันทึก key แล้ว แต่ยังเปิดใช้ไม่สำเร็จ');
+      } catch (error) { message('groq-message', error instanceof Error ? error.message : 'ยังเชื่อม Groq ไม่ได้'); }
+      finally { field.value = ''; }
+    });
+    $('groq-credential-remove').addEventListener('click', async () => {
+      message('groq-message', 'กำลังยกเลิก Groq…');
+      try { const data = await withPrivilegedRetry(()=>updateGroqProviderCredential('REMOVE'),'การลบ Groq credential'); state.groqProvider = data.provider; renderGroqProvider(); message('groq-message', 'ยกเลิก Groq แล้ว'); }
+      catch (error) { message('groq-message', error instanceof Error ? error.message : 'ยังยกเลิก Groq ไม่ได้'); }
+    });
+    $('groq-connection-test').addEventListener('click', async () => {
+      message('groq-message', 'กำลังตรวจ active models และทดสอบ Groq…');
+      try { const data = await testGroqProviderConnection(); state.groqProvider = (await loadGroqProviderStatus()).provider; renderGroqProvider(); message('groq-message', data.connection?.status === 'PASS' ? 'Groq ผ่านการทดสอบและพร้อม route งาน' : 'Groq ยังไม่พร้อม'); }
+      catch (error) { message('groq-message', error instanceof Error ? error.message : 'ทดสอบ Groq ไม่ผ่าน'); }
+    });
     $('provider-credential-form').addEventListener('submit', async (event) => {
       event.preventDefault(); const field = $('provider-api-key'); message('provider-credential-message', 'กำลังบันทึก key อย่างปลอดภัย…');
       try { const data = await withPrivilegedRetry(()=>updateProviderCredential('SET', field.value),'การเปลี่ยน API credential'); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'บันทึก key แล้ว'); }
@@ -1689,7 +1724,7 @@ import {
     const full = await loadControlData();
     state.control = { ...state.control, ...full, authenticated: true, available: true };
     renderWorkspace();
-    if (state.control?.role === 'OWNER') void loadProviderStatus().then((value) => { state.provider = value?.provider || value; }).catch(() => undefined);
+    if (state.control?.role === 'OWNER') { void loadProviderStatus().then((value) => { state.provider = value?.provider || value; }).catch(() => undefined); void loadGroqProviderStatus().then((value) => { state.groqProvider = value?.provider || value; }).catch(() => undefined); }
     if (refreshConversationOnSurface && authenticatedSurfaceRequested()) await refreshConversation();
     return state.control;
   }
@@ -1698,7 +1733,7 @@ import {
     if (refreshingWorkspace || sendingMessage) return;
     refreshingWorkspace = true;
     if (showBusy) message('goal-message', 'กำลังรีเฟรช…');
-    try { state.control = await loadControlData(); if (state.control?.role === 'OWNER') state.provider = await loadProviderStatus().catch(() => state.provider); renderWorkspace(); await refreshConversation(); if (showBusy) message('goal-message', ''); }
+    try { state.control = await loadControlData(); if (state.control?.role === 'OWNER') { state.provider = await loadProviderStatus().catch(() => state.provider); state.groqProvider = await loadGroqProviderStatus().then((value)=>value?.provider||value).catch(() => state.groqProvider); } renderWorkspace(); await refreshConversation(); if (showBusy) message('goal-message', ''); }
     catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ไม่สามารถรีเฟรชข้อมูลได้'); }
     finally { refreshingWorkspace = false; }
   }
@@ -1773,10 +1808,12 @@ import {
     catch { if (isOwner()) message('product-settings-message', 'ยังโหลดการตั้งค่าลักษณะของ AWH ไม่ได้'); }
     if (isOwner()) {
       ensureOwnerSelfServiceSurface(); ensureProviderSelfServiceSurface();
-      const project = selectedProject(); const requests = [loadProviderStatus(), loadDecisionProviderStatus(), loadObservabilityStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
-      const [providerResult, decisionProviderResult, observabilityResult, capabilitiesResult, peopleResult, accountRequestsResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
+      const project = selectedProject(); const requests = [loadProviderStatus(), loadGroqProviderStatus(), loadDecisionProviderStatus(), loadObservabilityStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
+      const [providerResult, groqResult, decisionProviderResult, observabilityResult, capabilitiesResult, peopleResult, accountRequestsResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
       if (providerResult.status === 'fulfilled') { state.provider = providerResult.value.provider; renderProvider(); }
       else message('provider-status', 'ยังโหลดสถานะ AI ไม่ได้ ลองรีเฟรชอีกครั้ง');
+      if (groqResult.status === 'fulfilled') { state.groqProvider = groqResult.value.provider; renderGroqProvider(); }
+      else message('groq-status', 'ยังโหลดสถานะ Groq ไม่ได้');
       if (decisionProviderResult.status === 'fulfilled') { state.decisionProvider = decisionProviderResult.value.decisionProvider; renderDecisionProvider(); }
       else message('jev-status', 'ยังโหลดสถานะ Jev ไม่ได้ · AWH ยังใช้ routing เดิมได้ตามปกติ');
       if (observabilityResult.status === 'fulfilled') { state.observability = observabilityResult.value.observability; renderObservability(); }

@@ -135,7 +135,7 @@ final class HubAiQualificationService
     }
     private static function model(string $value): string
     {
-        $value=trim($value); if (preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$/',$value)!==1) throw new HubAiQualificationException('Model identity is invalid','AI_MODEL_INVALID'); return $value;
+        $value=trim($value); if (preg_match('/^[A-Za-z0-9][A-Za-z0-9._:\/-]{1,127}$/',$value)!==1) throw new HubAiQualificationException('Model identity is invalid','AI_MODEL_INVALID'); return $value;
     }
     private static function label(string $value): string
     {
