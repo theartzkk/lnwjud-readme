@@ -15,6 +15,7 @@ require_once dirname(__DIR__) . '/src/HubSelfServiceMigration.php';
 require_once dirname(__DIR__) . '/src/HubCentralProjectAuthorityMigration.php';
 require_once dirname(__DIR__) . '/src/HubAnywhereExecutionMigration.php';
 require_once dirname(__DIR__) . '/src/HubCapabilityRegistryService.php';
+require_once dirname(__DIR__) . '/src/HubDurableExecutionService.php';
 require_once dirname(__DIR__) . '/src/HubEnrollmentService.php';
 require_once dirname(__DIR__) . '/src/HubControlPlaneService.php';
 
@@ -210,6 +211,71 @@ try {
     $visible = array_column($after['capabilities'], 'state', 'capability');
     m13_assert(($visible['project.mutate.assisted'] ?? null) === 'READY', 'Cloud-assisted source editing is visible as ready');
     m13_assert(($visible['voice.tts'] ?? null) === 'PLANNED' && ($visible['video.render'] ?? null) === 'PLANNED', 'future voice/video capabilities are truthful planned entries');
+
+    // Scheduler regression: one blocked queue head may not starve a later
+    // execution whose mutation resource is independently eligible.
+    $pdo->exec("UPDATE control_task_executions SET state='CANCELLED',lease_owner=NULL,lease_expires_at=NULL WHERE state='QUEUED' AND task_id IN (SELECT task_id FROM control_tasks WHERE state IN ('QUEUED','WAITING_FOR_WORKER'))");
+    $pdo->exec("UPDATE control_tasks SET state='CANCELLED',cancelled_at=updated_at WHERE state IN ('QUEUED','WAITING_FOR_WORKER') AND task_id IN (SELECT task_id FROM control_task_executions WHERE state='CANCELLED')");
+    $pdo->exec("UPDATE control_execution_envelopes SET state='RELEASED',lease_expires_at=NULL WHERE execution_id IN (SELECT execution_id FROM control_task_executions WHERE state='CANCELLED')");
+    $schedulerRoot=$root.'/scheduler-vault'; @mkdir($schedulerRoot,0700,true); putenv('AWH_PROJECT_VAULT_ROOT='.$schedulerRoot);
+    $durable=new HubDurableExecutionService($pdo,HubProjectVaultService::fromEnvironment($pdo),null,null);
+    $fixtureAt=gmdate('c',strtotime($now)+60);
+    // Production has canonical source columns introduced after M13. Add only
+    // those compatibility columns here so the scheduler regression exercises
+    // the current source-readiness authority without pulling newer migrations
+    // into the M13 contract fixture.
+    $pdo->exec("ALTER TABLE projects ADD COLUMN canonical_source_authority TEXT");
+    $pdo->exec("ALTER TABLE projects ADD COLUMN canonical_source_revision TEXT");
+    $pdo->exec("ALTER TABLE projects ADD COLUMN canonical_source_vault_revision_id TEXT");
+    $pdo->prepare("UPDATE projects SET canonical_source_authority='GITHUB',canonical_source_revision=:sha WHERE project_id=:project")->execute(['sha'=>str_repeat('a',40),'project'=>$project]);
+
+    $headAt=gmdate('c',strtotime($fixtureAt)+1);$headTask=m13_uuid();$headExecution=m13_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'blocked scheduler head','QUEUED',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$headTask,'user'=>$owner,'project'=>$project2,'key'=>'m13-scheduler-head','at'=>$headAt]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','project.mutate.assisted','QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$headExecution,'task'=>$headTask,'project'=>$project2,'checkpoint'=>json_encode(['mode'=>'PROJECT_ASSISTED_EDIT'],JSON_THROW_ON_ERROR),'at'=>$headAt]);
+
+    $readAt=gmdate('c',strtotime($fixtureAt)+2);$readTask=m13_uuid();$readExecution=m13_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'eligible scheduler follower','QUEUED',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$readTask,'user'=>$owner,'project'=>$project,'key'=>'m13-scheduler-read','at'=>$readAt]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','project.read','QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$readExecution,'task'=>$readTask,'project'=>$project,'checkpoint'=>json_encode(['mode'=>'PROJECT_INSPECTION'],JSON_THROW_ON_ERROR),'at'=>$readAt]);
+
+    $claimMethod=new ReflectionMethod(HubDurableExecutionService::class,'claim');$claimMethod->setAccessible(true);
+    $claimed=$claimMethod->invoke($durable,gmdate('c',strtotime($fixtureAt)+3));
+    m13_assert(is_array($claimed)&&($claimed['execution_id']??null)===$readExecution,'source-not-ready scheduler head is skipped and later non-conflicting execution is claimed');
+    $headRow=$pdo->query("SELECT state,attempt_count FROM control_task_executions WHERE execution_id=".$pdo->quote($headExecution))->fetch();
+    m13_assert(is_array($headRow)&&$headRow['state']==='QUEUED'&&(int)$headRow['attempt_count']===0,'skipped scheduler head remains durable without consuming retry budget');
+    $headEnvelope=$pdo->query("SELECT state FROM control_execution_envelopes WHERE execution_id=".$pdo->quote($headExecution))->fetchColumn();
+    m13_assert($headEnvelope==='WAITING','skipped scheduler head records waiting authority instead of blocking the tick');
+    foreach([[$headTask,$headExecution],[$readTask,$readExecution]] as [$task,$execution]){
+        $pdo->prepare("UPDATE control_task_executions SET state='CANCELLED',lease_owner=NULL,lease_expires_at=NULL WHERE execution_id=:execution")->execute(['execution'=>$execution]);
+        $pdo->prepare("UPDATE control_tasks SET state='CANCELLED',lease_expires_at=NULL,cancelled_at=:at,updated_at=:at WHERE task_id=:task")->execute(['at'=>$readAt,'task'=>$task]);
+        $pdo->prepare("UPDATE control_execution_envelopes SET state='RELEASED',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>$readAt,'execution'=>$execution]);
+    }
+
+    // Provider recovery regression: only genuinely newer canonical health may
+    // wake the same preserved execution, and one observation may wake it once.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS control_ai_provider_profiles(provider_id TEXT PRIMARY KEY,lifecycle TEXT NOT NULL,current_availability TEXT NOT NULL,updated_at TEXT NOT NULL)");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS control_ai_models(provider_id TEXT NOT NULL,model_id TEXT NOT NULL,lifecycle TEXT NOT NULL,enabled INTEGER NOT NULL,PRIMARY KEY(provider_id,model_id))");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS control_ai_model_health(provider_id TEXT NOT NULL,model_id TEXT NOT NULL,circuit_state TEXT NOT NULL,circuit_until TEXT,updated_at TEXT NOT NULL,PRIMARY KEY(provider_id,model_id))");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS control_ai_route_decisions(route_id TEXT PRIMARY KEY,execution_id TEXT NOT NULL,provider_id TEXT,model_id TEXT,created_at TEXT NOT NULL)");
+    $waitAt=gmdate('c',strtotime($fixtureAt)+20);$recoverAt=gmdate('c',strtotime($waitAt)+60);$wakeAt=gmdate('c',strtotime($recoverAt)+1);
+    $providerTask=m13_uuid();$providerExecution=m13_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'provider recovery fixture','WAITING_FOR_WORKER',NULL,NULL,0,NULL,'PROVIDER_UNAVAILABLE',:key,NULL,:at,:at,NULL)")->execute(['task'=>$providerTask,'user'=>$owner,'project'=>$project,'key'=>'m13-provider-recovery','at'=>$waitAt]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','agent.conversation','WAITING_FOR_CAPABILITY',NULL,NULL,3,NULL,:checkpoint,'PROVIDER_UNAVAILABLE',:at,:at)")->execute(['execution'=>$providerExecution,'task'=>$providerTask,'project'=>$project,'checkpoint'=>json_encode(['mode'=>'NATIVE_CONVERSATION','_executionPolicy'=>['version'=>'execution-failure-v1','code'=>'PROVIDER_UNAVAILABLE','nextEligibleAt'=>'2099-01-01T00:00:00+00:00']],JSON_THROW_ON_ERROR),'at'=>$waitAt]);
+    $registry->ensureExecutionEnvelope($providerExecution,$waitAt);$registry->updateEnvelopeState($providerExecution,'WAITING',null,$waitAt);
+    $pdo->prepare("INSERT INTO control_ai_provider_profiles(provider_id,lifecycle,current_availability,updated_at) VALUES('fixture-health','PRODUCTION','AVAILABLE',:at)")->execute(['at'=>$recoverAt]);
+    $pdo->prepare("INSERT INTO control_ai_models(provider_id,model_id,lifecycle,enabled) VALUES('fixture-health','fixture-model','PRODUCTION',1)")->execute();
+    $pdo->prepare("INSERT INTO control_ai_model_health(provider_id,model_id,circuit_state,circuit_until,updated_at) VALUES('fixture-health','fixture-model','CLOSED',NULL,:at)")->execute(['at'=>$recoverAt]);
+    $pdo->prepare("INSERT INTO control_ai_route_decisions(route_id,execution_id,provider_id,model_id,created_at) VALUES(:route,:execution,'fixture-health','fixture-model',:at)")->execute(['route'=>m13_uuid(),'execution'=>$providerExecution,'at'=>$waitAt]);
+    $wakeMethod=new ReflectionMethod(HubDurableExecutionService::class,'reconcileRecoverableProviderWaits');$wakeMethod->setAccessible(true);
+    m13_assert($wakeMethod->invoke($durable,$wakeAt)===1,'new provider health evidence wakes one preserved execution');
+    $wakeRow=$pdo->query("SELECT state,attempt_count,last_error_code,checkpoint_json FROM control_task_executions WHERE execution_id=".$pdo->quote($providerExecution))->fetch();
+    $wakeCheckpoint=is_array($wakeRow)?json_decode((string)$wakeRow['checkpoint_json'],true):null;
+    m13_assert(is_array($wakeRow)&&$wakeRow['state']==='QUEUED'&&(int)$wakeRow['attempt_count']===0&&$wakeRow['last_error_code']===null&&($wakeCheckpoint['_capabilityRecovery']['providerId']??null)==='fixture-health','provider wake reuses exact execution and records recovery evidence');
+    $secondWait=gmdate('c',strtotime($recoverAt)+60);
+    $pdo->prepare("UPDATE control_task_executions SET state='WAITING_FOR_CAPABILITY',attempt_count=3,last_error_code='PROVIDER_UNAVAILABLE',updated_at=:at WHERE execution_id=:execution")->execute(['at'=>$secondWait,'execution'=>$providerExecution]);
+    $pdo->prepare("UPDATE control_tasks SET state='WAITING_FOR_WORKER',failure_code='PROVIDER_UNAVAILABLE',updated_at=:at WHERE task_id=:task")->execute(['at'=>$secondWait,'task'=>$providerTask]);
+    m13_assert($wakeMethod->invoke($durable,gmdate('c',strtotime($secondWait)+60))===0,'unchanged provider health evidence never creates an automatic retry loop');
+    m13_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($providerExecution))->fetchColumn()==='WAITING_FOR_CAPABILITY','provider execution stays preserved until newer health evidence exists');
+
     m13_assert($pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $pdo->query('PRAGMA foreign_key_check')->fetchAll() === [], 'M13 preserves database integrity and foreign keys');
     $releasedCheckpoint=$control->publishWorkspaceCheckpoint((string)$writerEnrollment['accessToken'],$blockedCheckpoint,gmdate('c',strtotime($now)+2));
     m13_assert(($releasedCheckpoint['workspace']['lease']['active']??false)===true,'workspace lease remains stable after parallel resource lanes release');

@@ -46,7 +46,7 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/activeMutationCount/);
   assert.match(script,/used>=90/);
   assert.match(script,/3\*1024\*\*3/);
-  assert.match(script,/Production ยังรับ Build\/QA ชั่วคราว/);
+  assert.match(script,/Production รับ Build\/QA แบบจำกัดทรัพยากรได้/);
   assert.match(page,/ไม่ถือ Production authority/);
   assert.match(script,/requestCoreRelease/);
   assert.match(script,/requestPlatformRelease/);
@@ -144,6 +144,10 @@ test('Release Runner is visible in Update Center but remains executor-only under
   assert.match(script,/awh-build-01/);
   assert.match(script,/storageBlocked/);
   assert.match(script,/activeMutations===0/);
+  assert.match(script,/ยังไม่ได้ติดตั้ง — ไม่จำเป็นต่อการใช้งานปัจจุบัน Production รับ Build\/QA แบบจำกัดทรัพยากรได้/);
+  assert.match(script,/ตัวเลือกขยายระบบในอนาคต เมื่อ Build\/QA เริ่มกระทบ Production/);
+  assert.match(script,/Writer 0 · ไม่มี blocker/);
+  assert.doesNotMatch(script,/Production พร้อม · Runner ยังไม่เชื่อม/);
 });
 
 test('Agent visibility is version-aware but public macOS updater remains fail-closed', async()=>{

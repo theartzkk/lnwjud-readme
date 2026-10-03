@@ -152,7 +152,7 @@ final class HubDurableExecutionService
     /** Claims and completes at most one persisted server-native task. */
     public function runOnce(?string $now = null): ?array
     {
-        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $this->advertise($at); $this->reconcileRunnableInspections($at); $claimed = $this->claim($at);
+        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $this->advertise($at); $this->reconcileRunnableInspections($at); $this->reconcileRecoverableProviderWaits($at); $claimed = $this->claim($at);
         if ($claimed === null) return null;
         try {
             $checkpoint = json_decode((string) $claimed['checkpoint_json'], true, 32, JSON_THROW_ON_ERROR);
@@ -219,6 +219,82 @@ final class HubDurableExecutionService
         return $count;
     }
 
+    /**
+     * Wake provider-backed work only after canonical AI health has changed
+     * after the execution entered WAITING_FOR_CAPABILITY. This is deliberately
+     * event/health driven: auth, quota, budget and policy failures are never
+     * retried here, and the same health observation cannot create a retry loop.
+     */
+    private function reconcileRecoverableProviderWaits(string $at): int
+    {
+        foreach (['control_ai_route_decisions','control_ai_provider_profiles','control_ai_models','control_ai_model_health'] as $table) {
+            $exists=$this->pdo->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:name");
+            $exists->execute(['name'=>$table]);
+            if ($exists->fetchColumn()===false) return 0;
+        }
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.updated_at,e.checkpoint_json,
+                r.provider_id,r.model_id,p.current_availability,p.lifecycle AS provider_lifecycle,p.updated_at AS provider_updated_at,
+                m.lifecycle AS model_lifecycle,m.enabled,
+                h.circuit_state,h.circuit_until,h.updated_at AS health_updated_at
+            FROM control_task_executions e
+            JOIN control_tasks t ON t.task_id=e.task_id
+            JOIN control_ai_route_decisions r ON r.route_id=(
+                SELECT rr.route_id FROM control_ai_route_decisions rr
+                WHERE rr.execution_id=e.execution_id AND rr.provider_id IS NOT NULL AND rr.model_id IS NOT NULL
+                ORDER BY rr.created_at DESC,rr.route_id DESC LIMIT 1
+            )
+            JOIN control_ai_provider_profiles p ON p.provider_id=r.provider_id
+            JOIN control_ai_models m ON m.provider_id=r.provider_id AND m.model_id=r.model_id
+            LEFT JOIN control_ai_model_health h ON h.provider_id=r.provider_id AND h.model_id=r.model_id
+            WHERE e.state='WAITING_FOR_CAPABILITY'
+              AND e.executor_kind='VPS'
+              AND e.lease_owner IS NULL
+              AND t.state='WAITING_FOR_WORKER'
+              AND e.last_error_code IN ('PROVIDER_UNAVAILABLE','PROVIDER_FAILED','PROVIDER_RATE_LIMITED','PROVIDER_USAGE_PERSIST_FAILED')
+              AND e.attempt_count >= " . self::MAX_ATTEMPTS . "
+            ORDER BY e.updated_at,e.execution_id LIMIT 25");
+        try { $q->execute(); $rows=$q->fetchAll(); } catch (Throwable) { return 0; }
+        $nowTs=strtotime($at); if ($nowTs===false) return 0; $count=0;
+        foreach ($rows as $row) {
+            $waitingAt=strtotime((string)($row['updated_at']??''));
+            if ($waitingAt===false) continue;
+            if (!in_array((string)($row['current_availability']??''),['AVAILABLE','DEGRADED'],true)) continue;
+            if ((string)($row['provider_lifecycle']??'')!=='PRODUCTION' || (string)($row['model_lifecycle']??'')!=='PRODUCTION' || (int)($row['enabled']??0)!==1) continue;
+            $circuit=(string)($row['circuit_state']??'CLOSED');
+            $until=is_string($row['circuit_until']??null)?strtotime((string)$row['circuit_until']):false;
+            if ($circuit==='OPEN' && ($until===false || $until>$nowTs)) continue;
+            $providerAt=is_string($row['provider_updated_at']??null)?strtotime((string)$row['provider_updated_at']):false;
+            $healthAt=is_string($row['health_updated_at']??null)?strtotime((string)$row['health_updated_at']):false;
+            $evidenceAt=max($providerAt===false?0:$providerAt,$healthAt===false?0:$healthAt);
+            if ($evidenceAt<=$waitingAt) continue;
+
+            $checkpoint=json_decode((string)($row['checkpoint_json']??'{}'),true,64);
+            if (!is_array($checkpoint)) $checkpoint=[];
+            unset($checkpoint['_executionPolicy']);
+            $checkpoint['_capabilityRecovery']=[
+                'version'=>'provider-health-v1',
+                'providerId'=>(string)$row['provider_id'],
+                'modelId'=>(string)$row['model_id'],
+                'evidenceAt'=>gmdate('c',$evidenceAt),
+                'wokenAt'=>$at,
+            ];
+            $checkpointJson=json_encode($checkpoint,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+            try {
+                $this->pdo->exec('BEGIN IMMEDIATE');
+                $u=$this->pdo->prepare("UPDATE control_task_executions SET state='QUEUED',lease_owner=NULL,lease_expires_at=NULL,attempt_count=0,checkpoint_json=:checkpoint,last_error_code=NULL,updated_at=:at WHERE execution_id=:execution AND state='WAITING_FOR_CAPABILITY' AND lease_owner IS NULL");
+                $u->execute(['checkpoint'=>$checkpointJson,'at'=>$at,'execution'=>$row['execution_id']]);
+                if ($u->rowCount()!==1) { $this->pdo->exec('COMMIT'); continue; }
+                $this->pdo->prepare("UPDATE control_tasks SET state='QUEUED',progress=0,failure_code=NULL,lease_expires_at=NULL,updated_at=:at WHERE task_id=:task AND state='WAITING_FOR_WORKER'")
+                    ->execute(['at'=>$at,'task'=>$row['task_id']]);
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','CONFLICT','ACTIVE')")
+                    ->execute(['at'=>$at,'execution'=>$row['execution_id']]);
+                $this->event((string)$row['task_id'],'QUEUED',0,'provider health recovered after capability wait; same execution requeued once',$at);
+                $this->pdo->exec('COMMIT'); $count++;
+            } catch (Throwable) { $this->rollbackImmediate(); }
+        }
+        return $count;
+    }
+
     /** @return list<array<string,mixed>> */
     public function recoverExpired(?string $now = null): array
     {
@@ -243,12 +319,25 @@ final class HubDurableExecutionService
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
             $q = $this->pdo->prepare("SELECT e.*, t.goal, t.conversation_id, t.user_id FROM control_task_executions e JOIN control_tasks t ON t.task_id = e.task_id WHERE e.state = 'QUEUED' AND e.executor_kind = 'VPS' AND e.required_capability IN ('agent.conversation', 'project.read', 'project.search', 'project.mutate.text', 'project.mutate.assisted', 'artifact.object') AND t.state IN ('QUEUED', 'WAITING_FOR_WORKER') ORDER BY e.created_at, e.execution_id LIMIT 25"); $q->execute();
+            $registry=HubCapabilityRegistryService::schemaPresent($this->pdo)?new HubCapabilityRegistryService($this->pdo):null;
             $row = null;
-            foreach ($q->fetchAll() as $candidate) { if ($this->retryEligible($candidate, $at)) { $row = $candidate; break; } }
+            foreach ($q->fetchAll() as $candidate) {
+                if (!$this->retryEligible($candidate, $at)) continue;
+                if ($registry instanceof HubCapabilityRegistryService) {
+                    try {
+                        $authority=$registry->activateExecutionAuthority((string)$candidate['execution_id'],$expires,$at,true);
+                        if (($authority['granted']??false)!==true) continue;
+                    } catch (HubCapabilityRegistryException $error) {
+                        if (in_array($error->codeName,['PROJECT_SOURCE_NOT_READY','PLATFORM_MAINTENANCE_FREEZE'],true)) continue;
+                        throw $error;
+                    }
+                }
+                $row = $candidate; break;
+            }
             if (!is_array($row)) { $this->pdo->exec('COMMIT'); return null; }
             $update = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :owner, lease_expires_at = :expires, attempt_count = attempt_count + 1, updated_at = :at WHERE execution_id = :id AND state = 'QUEUED'"); $update->execute(['owner' => self::EXECUTOR_ID, 'expires' => $expires, 'at' => $at, 'id' => $row['execution_id']]);
             if ($update->rowCount() !== 1) { $this->pdo->exec('ROLLBACK'); return null; }
-            $this->pdo->prepare("UPDATE control_tasks SET state = 'RUNNING', progress = 15, updated_at = :at WHERE task_id = :task AND state IN ('QUEUED', 'WAITING_FOR_WORKER')")->execute(['at' => $at, 'task' => $row['task_id']]); $this->event((string) $row['task_id'], 'RUNNING', 15, str_starts_with((string) $row['required_capability'], 'project.mutate.') ? 'server-native candidate workspace started' : 'server-native inspection started', $at); if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string) $row['execution_id'], 'ACTIVE', $expires, $at, true); $this->pdo->exec('COMMIT'); return $row;
+            $this->pdo->prepare("UPDATE control_tasks SET state = 'RUNNING', progress = 15, updated_at = :at WHERE task_id = :task AND state IN ('QUEUED', 'WAITING_FOR_WORKER')")->execute(['at' => $at, 'task' => $row['task_id']]); $this->event((string) $row['task_id'], 'RUNNING', 15, str_starts_with((string) $row['required_capability'], 'project.mutate.') ? 'server-native candidate workspace started' : 'server-native inspection started', $at); $this->pdo->exec('COMMIT'); return $row;
         } catch (Throwable $error) { $this->rollbackImmediate(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Server execution claim failed', 'EXECUTION_CLAIM_FAILED'); }
     }
 

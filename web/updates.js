@@ -384,9 +384,9 @@ function renderReleaseInfrastructure(){
     $('release-runner-activity').textContent='สถานะ '+activityLabel(runner.activity||runner.state);
   }else{
     $('release-runner-name').textContent='awh-build-01';
-    $('release-runner-state').textContent='ยังไม่ได้เชื่อม — Production ยังรับ Build/QA ชั่วคราวจนกว่าจะเพิ่ม Runner';
-    $('release-runner-platform').textContent='เป้าหมาย Linux x64 · 4 vCPU / 8 GB / 80–100 GB';
-    $('release-runner-activity').textContent='สถานะ แผนขยายระบบ';
+    $('release-runner-state').textContent='ยังไม่ได้ติดตั้ง — ไม่จำเป็นต่อการใช้งานปัจจุบัน Production รับ Build/QA แบบจำกัดทรัพยากรได้';
+    $('release-runner-platform').textContent='ตัวเลือกขยายระบบในอนาคต เมื่อ Build/QA เริ่มกระทบ Production';
+    $('release-runner-activity').textContent='สถานะ Optional';
   }
   document.querySelector('.infrastructure-card[data-role="runner"]').dataset.state=runnerOnline?'READY':runner?'WARN':'PLANNED';
 
@@ -398,14 +398,16 @@ function renderReleaseInfrastructure(){
       :activeMutations>0
         ?'มี mutation กำลังทำงาน ระบบจะ serialize deploy และไม่เปิด writer ซ้ำ'
         :storageWarn
-          ?'ปล่อยรุ่นได้แบบระวัง แต่ควรย้าย Build/QA ไป Release Runner เพื่อลด disk pressure'
-          :'พร้อมรับ release ตาม exact-SHA และ single-writer policy';
+          ?'ปล่อยรุ่นได้แบบระวัง · Storage Guard และ cleanup จะ reclaim อัตโนมัติ โดยไม่ต้องมี Runner แยก'
+          :'พร้อมรับ release ตาม exact-SHA และ resource-scoped single-writer policy';
   $('release-capacity-storage').textContent='Headroom '+(Number.isFinite(free)?sizeText(free):'—');
-  $('release-capacity-mutations').textContent='Writer '+activeMutations+(waitingMutations>0?' · รอ '+waitingMutations:'');
+  $('release-capacity-mutations').textContent=activeMutations>0
+    ?('Writer '+activeMutations+(waitingMutations>0?' · เก็บรอเงื่อนไข '+waitingMutations:''))
+    :(waitingMutations>0?'Writer 0 · ไม่มี blocker · งานรอเงื่อนไข '+waitingMutations:'Writer 0 · ไม่มี blocker');
   document.querySelector('.infrastructure-card[data-role="release"]').dataset.state=storageBlocked?'BLOCKED':releaseReady?'READY':'WARN';
 
-  chip.dataset.state=storageBlocked?'BLOCKED':(!telemetryReady||storageWarn||!runnerOnline?'WARN':'READY');
-  chip.textContent=storageBlocked?'ยังไม่พร้อมปล่อยรุ่น':(!telemetryReady?'กำลังยืนยัน Infrastructure':(!runnerOnline?'Production พร้อม · Runner ยังไม่เชื่อม':storageWarn?'พร้อมแบบมีคำเตือน':'พร้อม'));
+  chip.dataset.state=storageBlocked?'BLOCKED':(!telemetryReady||storageWarn?'WARN':'READY');
+  chip.textContent=storageBlocked?'ยังไม่พร้อมปล่อยรุ่น':(!telemetryReady?'กำลังยืนยัน Infrastructure':storageWarn?'พร้อมแบบมีคำเตือน':'พร้อม');
 }
 
 function itemVisibility(item){

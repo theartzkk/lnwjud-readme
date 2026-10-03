@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { loadExecutionPolicy, privilegeLane, qaScriptForBudget, releaseNodeCandidates } from '../scripts/ops/execution-policy.mjs';
+
+test('durable scheduler skips blocked queue heads and health recovery wakes the same execution', (t) => {
+  const probe=spawnSync('php',['--version'],{encoding:'utf8'});
+  if(probe.error?.code==='ENOENT'){t.skip('PHP runtime unavailable');return;}
+  assert.equal(probe.status,0,probe.stderr||'PHP runtime probe failed');
+  const fixture=fileURLToPath(new URL('../hub/tests/m13-anywhere-execution.php',import.meta.url));
+  const result=spawnSync('php',[fixture],{encoding:'utf8',timeout:60_000});
+  assert.equal(result.status,0,[result.stdout,result.stderr].filter(Boolean).join('\n'));
+  assert.match(result.stdout,/AWH M13 Anywhere Execution: PASS/);
+});
 
 test('operator diagnostics distinguish source authority from disk storage failures', async () => {
   const bridge=await readFile(new URL('../hub/src/HubOperatorBridgeService.php',import.meta.url),'utf8');
