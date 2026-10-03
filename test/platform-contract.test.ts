@@ -50,13 +50,16 @@ test('current-state authority prevents historical checkpoints from masquerading 
 test('external capability registry pins sources without creating parallel authority', async () => {
  const registry=await loadExternalCapabilityRegistry(join(process.cwd(),'config','external-capabilities.json'));
  assert.equal(registry.controlPlaneAuthority,'AWH');
- assert.equal(registry.entries.length,4);
+ assert.equal(registry.entries.length,7);
  const byId=new Map(registry.entries.map((entry)=>[entry.id,entry]));
  assert.equal(byId.get('teamai-cli')?.workerTool,'tool.teamai');
  assert.equal(byId.get('context-mode')?.license,'Elastic-2.0');
  assert.equal(byId.get('context-mode')?.hostedServiceAllowed,false);
  assert.equal(byId.get('hallmark')?.integrationMode,'REFERENCE_SKILL');
  assert.equal(byId.get('awesome-claude-design')?.integrationMode,'REFERENCE_CORPUS');
+ assert.equal(byId.get('nvidia-openshell')?.integrationMode,'EVALUATION_CANDIDATE');
+ assert.equal(byId.get('opendecider')?.integrationMode,'EVALUATION_CANDIDATE');
+ assert.equal(byId.get('cloudflare-forge')?.integrationMode,'EVALUATION_CANDIDATE');
  for(const entry of registry.entries){
    assert.equal(entry.authorityBoundary,'AWH_EXISTING_CONTROL_PLANE');
    assert.equal(entry.enabledByDefault,false);
