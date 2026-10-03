@@ -4,26 +4,34 @@ declare(strict_types=1);
 $socket=getenv('AWH_OPERATOR_SOCKET');if(!is_string($socket)||$socket==='')$socket='/run/awh-operator-bridge.sock';
 $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';
 $args=$argv;array_shift($args);$cmd=array_shift($args)??'';$request=['schemaVersion'=>1];$cleanup=null;
-$usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|flow-preflight <project> [--release-track <track>]|flow-start <project> <goal> [--release-track <track>] [--multi-track <track1,track2>] --confirm|platform-freeze-status|platform-freeze-enable <project> <reason> --confirm|platform-freeze-disable <reason> --confirm|mission-status <project>|mission-acquire <project> <goal> [--release-track <track>] [--multi-track <track1,track2>] --confirm|mission-renew <execution-id>|mission-release <execution-id> <success|failure> --confirm|vault-export <project> --confirm|vault-import <project> <archive.zip> <expected-vault-revision> <archive-sha256> --mission <execution-id> --confirm|verification-store --confirm|verification-regressions|source-promote <repository> <bundle> <expected-main-sha> <target-sha> <bundle-sha256> --mission <execution-id> --confirm|source-metadata-repair <repository> <base-sha> <target-sha> --mission <execution-id> --confirm|bay-status|bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
+$usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|flow-preflight <project> [--release-track <track>] [--workstream <key>]|flow-start <project> <goal> [--release-track <track>] [--workstream <key>] [--multi-track <track1,track2>] --confirm|platform-freeze-status|platform-freeze-enable <project> <reason> --confirm|platform-freeze-disable <reason> --confirm|mission-status <project>|mission-acquire <project> <goal> [--release-track <track>] [--workstream <key>] [--multi-track <track1,track2>] --confirm|mission-renew <execution-id>|mission-release <execution-id> <success|failure> --confirm|vault-export <project> --confirm|vault-import <project> <archive.zip> <expected-vault-revision> <archive-sha256> --mission <execution-id> --confirm|verification-store --confirm|verification-regressions|source-promote <repository> <bundle> <expected-main-sha> <target-sha> <bundle-sha256> --mission <execution-id> --confirm|source-metadata-repair <repository> <base-sha> <target-sha> --mission <execution-id> --confirm|bay-status|bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
 switch($cmd){
 case 'status':$request['action']='system.status';break;
 case 'projects':$request['action']='projects.list';break;
 case 'gate':$project=array_shift($args);if(!is_string($project)||$project==='')$usage();$request+=['action'=>'project.gate','project'=>$project];break;
 case 'flow-preflight':
     $project=array_shift($args);if(!is_string($project)||$project==='')$usage();$request+=['action'=>'flow.preflight','project'=>$project];
-    if($args!==[]){$flag=array_shift($args);$track=array_shift($args);if($flag!=='--release-track'||!is_string($track)||preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$track)!==1||$args!==[])$usage();$request['releaseTrack']=$track;}break;
+    while($args!==[]){
+        $flag=array_shift($args);$value=array_shift($args);
+        if($flag==='--release-track'&&is_string($value)&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$value)===1){$request['releaseTrack']=$value;continue;}
+        if($flag==='--workstream'&&is_string($value)&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$value)===1){$request['workstream']=$value;continue;}
+        $usage();
+    }
+    break;
 case 'flow-start':
     $project=array_shift($args);$goal=array_shift($args);if(!is_string($project)||$project===''||!is_string($goal)||$goal==='')$usage();
-    $releaseTrack=null;$scopeMode='SINGLE_TRACK';$impacted=[];
+    $releaseTrack=null;$workstream=null;$scopeMode='SINGLE_TRACK';$impacted=[];
     while($args!==[]&&($args[0]??null)!=='--confirm'){
         $flag=array_shift($args);$value=array_shift($args);
         if($flag==='--release-track'&&is_string($value)&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$value)===1){$releaseTrack=$value;continue;}
+        if($flag==='--workstream'&&is_string($value)&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$value)===1){$workstream=$value;continue;}
         if($flag==='--multi-track'&&is_string($value)&&preg_match('/^[a-z0-9._-]+(?:,[a-z0-9._-]+){1,15}$/',$value)===1){$scopeMode='MULTI_TRACK_MAINTENANCE';$impacted=array_values(array_unique(explode(',',$value)));continue;}
         $usage();
     }
     $confirm=array_shift($args);if($confirm!=='--confirm'||$args!==[])$usage();
     $request+=['action'=>'flow.start','project'=>$project,'goal'=>$goal,'confirmation'=>'START_OR_RESUME_PROJECT_FLOW'];
     if(is_string($releaseTrack))$request+=['releaseTrack'=>$releaseTrack,'scopeMode'=>$scopeMode,'impactedTracks'=>$impacted];
+    if(is_string($workstream))$request['workstream']=$workstream;
     break;
 case 'platform-freeze-status':if($args!==[])$usage();$request['action']='platform.maintenance.status';break;
 case 'platform-freeze-enable':$project=array_shift($args);$reason=array_shift($args);$confirm=array_shift($args);if(!is_string($project)||$project===''||!is_string($reason)||$reason===''||$confirm!=='--confirm'||$args!==[])$usage();$request+=['action'=>'platform.maintenance.enable','project'=>$project,'reason'=>$reason,'confirmation'=>'ENABLE_PLATFORM_MAINTENANCE_FREEZE'];break;
@@ -41,16 +49,18 @@ case 'vault-import':
 case 'mission-status':$project=array_shift($args);if(!is_string($project)||$project===''||$args!==[])$usage();$request+=['action'=>'mission.status','project'=>$project];break;
 case 'mission-acquire':
     $project=array_shift($args);$goal=array_shift($args);if(!is_string($project)||$project===''||!is_string($goal)||$goal==='')$usage();
-    $releaseTrack=null;$scopeMode='SINGLE_TRACK';$impacted=[];
+    $releaseTrack=null;$workstream=null;$scopeMode='SINGLE_TRACK';$impacted=[];
     while($args!==[]&&($args[0]??null)!=='--confirm'){
         $flag=array_shift($args);$value=array_shift($args);
         if($flag==='--release-track'&&is_string($value)&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$value)===1){$releaseTrack=$value;continue;}
+        if($flag==='--workstream'&&is_string($value)&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$value)===1){$workstream=$value;continue;}
         if($flag==='--multi-track'&&is_string($value)&&preg_match('/^[a-z0-9._-]+(?:,[a-z0-9._-]+){1,15}$/',$value)===1){$scopeMode='MULTI_TRACK_MAINTENANCE';$impacted=array_values(array_unique(explode(',',$value)));continue;}
         $usage();
     }
     $confirm=array_shift($args);if($confirm!=='--confirm'||$args!==[])$usage();
     $request+=['action'=>'mission.acquire','project'=>$project,'goal'=>$goal,'confirmation'=>'ACQUIRE_PROJECT_MISSION'];
     if(is_string($releaseTrack))$request+=['releaseTrack'=>$releaseTrack,'scopeMode'=>$scopeMode,'impactedTracks'=>$impacted];
+    if(is_string($workstream))$request['workstream']=$workstream;
     break;
 case 'mission-renew':$execution=strtolower((string)array_shift($args));if(preg_match('/^[0-9a-f-]{36}$/',$execution)!==1||$args!==[])$usage();$request+=['action'=>'mission.renew','executionId'=>$execution];break;
 case 'mission-release':$execution=strtolower((string)array_shift($args));$outcome=array_shift($args);$confirm=array_shift($args);if(preg_match('/^[0-9a-f-]{36}$/',$execution)!==1||!in_array($outcome,['success','failure'],true)||$confirm!=='--confirm'||$args!==[])$usage();$request+=['action'=>'mission.release','executionId'=>$execution,'outcome'=>$outcome,'confirmation'=>'RELEASE_PROJECT_MISSION'];break;

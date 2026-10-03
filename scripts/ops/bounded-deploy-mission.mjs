@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadExecutionPolicy, privilegeLane, qaScriptForBudget } from './execution-policy.mjs';
@@ -87,6 +87,22 @@ async function persistFailureEvidence(code,context){
     await writeFile(path,JSON.stringify(document,null,2)+'\n',{encoding:'utf8',mode:0o644});
     return path;
   }catch{return null;}
+}
+
+export async function supersedeFailureEvidence(releaseTrack,releaseSha,{root=DURABLE_FAILURE_DIR,observedAt=new Date().toISOString()}={}){
+  if(!['vps-platform','awh'].includes(releaseTrack)||typeof releaseSha!=='string'||!SHA.test(releaseSha))return {state:'NOT_APPLICABLE'};
+  const name=releaseTrack==='vps-platform'?'vps-platform-release-failure.last':'awh-core-release-failure.last';
+  const path=join(root,name);
+  if(!existsSync(path))return {state:'NONE'};
+  let document=null;
+  try{document=JSON.parse(await readFile(path,'utf8'));}catch{return {state:'PRESERVED_UNREADABLE',path};}
+  if(document?.releaseTrack!==releaseTrack)return {state:'PRESERVED_MISMATCH',path};
+  const archiveRoot=join(root,'superseded');
+  await mkdir(archiveRoot,{recursive:true,mode:0o700});
+  const stamp=String(observedAt).replace(/[^0-9]/g,'').slice(0,14)||'unknown';
+  const archived=join(archiveRoot,`${name}.${stamp}.${releaseSha.slice(0,12)}.superseded`);
+  await rename(path,archived);
+  return {state:'SUPERSEDED',path,archived,previousReleaseSha:typeof document?.releaseSha==='string'?document.releaseSha:null,releaseSha};
 }
 
 export function deployEvidenceFromResult(result){
@@ -483,7 +499,9 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   missionContext.publicRelease={releaseId:release?.releaseId??null,sourceSha:release?.sourceSha??null,sourceState:release?.sourceState??null};
   missionContext.productionIdentity=identity;
   const journeys=await goldenJourneys(plan,head,deploy.tail,release,url,identity);
-  await saveCapsule({...baseCapsule,state:'COMPLETED',result:'PASS',deploy:missionContext.deploy,publicRelease:missionContext.publicRelease,productionIdentity:identity,goldenJourneys:journeys,completedAt:new Date().toISOString()});
+  const completedAt=new Date().toISOString();
+  await saveCapsule({...baseCapsule,state:'COMPLETED',result:'PASS',deploy:missionContext.deploy,publicRelease:missionContext.publicRelease,productionIdentity:identity,goldenJourneys:journeys,completedAt});
+  try{const superseded=await supersedeFailureEvidence(releaseTrack,head,{observedAt:completedAt});console.log(`MISSION_FAILURE_EVIDENCE=${superseded.state}`);}catch{console.log('MISSION_FAILURE_EVIDENCE=PRESERVED_ERROR');}
   console.log('MISSION_BACKUP=PASS'); console.log('MISSION_SOURCE_DRIFT=PASS'); console.log('MISSION_PUBLIC_VERIFY=PASS'); console.log('MISSION_STATE=COMPLETED'); console.log('MISSION_RESULT=PASS');
 }
 

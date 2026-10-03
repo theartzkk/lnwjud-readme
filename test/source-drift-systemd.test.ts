@@ -155,8 +155,15 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(janitor, /for-each-ref/);
   assert.match(janitor, /fresh_active\s*=\s*active_projects\(\)/);
   assert.match(janitor, /row\["projectId"\]\s+in\s+fresh_active/);
+  assert.match(janitor, /AWH_DURABLE_WORKTREE_ROOT.*\/var\/lib\/awh-remote\/worktrees/);
+  assert.match(janitor, /protected_projects\(\)/);
+  assert.match(janitor, /WAITING_FOR_CAPABILITY/);
+  assert.match(janitor, /head_in_canonical_main/);
+  assert.match(janitor, /DURABLE_KEEP_NEWEST/);
+  assert.match(janitor, /durableReclaimedLogicalBytes/);
   assert.match(guard, /RECOVER=79/);
   assert.match(tempService, /ReadWritePaths=.*-\/var\/lib\/awh-remote\/tmp/);
+  assert.match(tempService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/worktrees/);
   assert.match(guardService, /ReadWritePaths=.*-\/var\/lib\/awh-remote\/tmp/);
   assert.match(remote, /install -d -o awh-remote -g awh-operator -m 2770 \/var\/lib\/awh-remote\/tmp/);
   assert.match(janitor, /KEEP_NEWEST/);

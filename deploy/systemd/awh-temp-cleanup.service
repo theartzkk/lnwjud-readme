@@ -11,4 +11,4 @@ NoNewPrivileges=true
 PrivateTmp=false
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/tmp /var/lib/awh-hub -/var/lib/awh-remote/tmp /var/lib/awh-remote/operator-staging -/var/lib/awh-remote/.cache -/var/lib/awh-remote/.npm
+ReadWritePaths=/tmp /var/lib/awh-hub -/var/lib/awh-remote/tmp /var/lib/awh-remote/worktrees /var/lib/awh-remote/operator-staging -/var/lib/awh-remote/.cache -/var/lib/awh-remote/.npm

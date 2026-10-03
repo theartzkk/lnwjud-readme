@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { canonicalMainFromObserved, deployEvidenceFromResult, desktopImpactForFiles, desktopReleaseRequested, failureEvidenceDocument, localOperatorInvocation, missionModeFromArgs, postDeployIdentityForMode, productionStateForRefs, sanitizeFailureDiagnostic } from '../scripts/ops/bounded-deploy-mission.mjs';
+import { canonicalMainFromObserved, deployEvidenceFromResult, desktopImpactForFiles, desktopReleaseRequested, failureEvidenceDocument, localOperatorInvocation, missionModeFromArgs, postDeployIdentityForMode, productionStateForRefs, sanitizeFailureDiagnostic, supersedeFailureEvidence } from '../scripts/ops/bounded-deploy-mission.mjs';
 import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../scripts/release/hydrate-desktop-release-artifacts.mjs';
 
 test('desktop impact detection still identifies native-agent-affecting source changes',()=>{
@@ -105,6 +105,20 @@ test('bounded release failure evidence is durable and redacts sensitive diagnost
   assert.equal(doc.rehearsal?.exitCode,1);
   assert.match(doc.rehearsal?.stderrTail??'',/Missing reviewed M4 asset/);
   assert.doesNotMatch(doc.rehearsal?.stderrTail??'',/password|must-not-persist/i);
+});
+
+test('verified release success supersedes stale failure evidence instead of leaving a misleading last failure',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'awh-failure-evidence-'));
+  try{
+    const name='vps-platform-release-failure.last';
+    await writeFile(join(root,name),JSON.stringify({schemaVersion:1,kind:'bounded-release-failure',releaseTrack:'vps-platform',releaseSha:'a'.repeat(40),failureCode:'OLD_FAILURE',observedAt:'2026-10-03T01:00:00.000Z'})+'\n');
+    const result=await supersedeFailureEvidence('vps-platform','b'.repeat(40),{root,observedAt:'2026-10-03T03:20:00.000Z'});
+    assert.equal(result.state,'SUPERSEDED');
+    await assert.rejects(readFile(join(root,name),'utf8'));
+    const archived=JSON.parse(await readFile(result.archived,'utf8'));
+    assert.equal(archived.failureCode,'OLD_FAILURE');
+    assert.equal(result.releaseSha,'b'.repeat(40));
+  } finally { await rm(root,{recursive:true,force:true}); }
 });
 
 test('root core release demotes typed operator calls to the guarded awh-remote identity',()=>{

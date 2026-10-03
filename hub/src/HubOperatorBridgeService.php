@@ -435,6 +435,9 @@ final class HubOperatorBridgeService
         $selector=self::text($request,'project',160);
         $trackKey=is_string($request['releaseTrack']??null)?strtolower(trim((string)$request['releaseTrack'])):'';
         if($trackKey!==''&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$trackKey)!==1)throw new HubOperatorBridgeException('Flow release track is invalid','OPERATOR_REQUEST_INVALID');
+        $requestedGoal=is_string($request['goal']??null)?trim((string)$request['goal']):'';
+        $requestedWorkstream=is_string($request['workstream']??null)?strtolower(trim((string)$request['workstream'])):'';
+        if($requestedWorkstream!==''&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$requestedWorkstream)!==1)throw new HubOperatorBridgeException('Flow workstream is invalid','OPERATOR_REQUEST_INVALID');
         $track=$trackKey===''?null:HubUpdateTargetRegistry::byReleaseTrack($trackKey);
         if($trackKey!==''&&!is_array($track))throw new HubOperatorBridgeException('Flow release track is not registered','RELEASE_TRACK_SCOPE_VIOLATION');
 
@@ -449,7 +452,14 @@ final class HubOperatorBridgeService
         foreach((array)($mission['missions']??[]) as $candidate){
             if(!is_array($candidate))continue;
             $candidateTrack=is_string($candidate['releaseTrack']??null)?(string)$candidate['releaseTrack']:'';
-            if($trackKey===''||($candidateTrack!==''&&hash_equals($trackKey,$candidateTrack))){$matchingMission=$candidate;break;}
+            if($trackKey!==''&&($candidateTrack===''||!hash_equals($trackKey,$candidateTrack)))continue;
+            if($requestedWorkstream!==''){
+                $candidateWorkstream=is_string($candidate['workstream']??null)?(string)$candidate['workstream']:'';
+                if($candidateWorkstream!==''&&!hash_equals($requestedWorkstream,$candidateWorkstream))continue;
+                if($candidateWorkstream===''&&$requestedGoal==='')continue;
+            }
+            if($trackKey!==''&&$requestedGoal!==''&&!self::missionGoalsCompatible($requestedGoal,(string)($candidate['goal']??'')))continue;
+            $matchingMission=$candidate;break;
         }
         $existingState=is_array($matchingMission)?(string)($matchingMission['state']??'IDLE'):'IDLE';
         $existing=$existingState==='STALE_RESUMABLE'?'RESUMABLE':($existingState==='COORDINATING'?'ACTIVE':'NONE');
@@ -513,12 +523,13 @@ final class HubOperatorBridgeService
     {
         if(($request['confirmation']??null)!==self::FLOW_START_CONFIRMATION)throw new HubOperatorBridgeException('Explicit flow start confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
         $project=self::text($request,'project',160);$goal=self::text($request,'goal',500);
-        $preflightRequest=['schemaVersion'=>1,'project'=>$project];
+        $preflightRequest=['schemaVersion'=>1,'project'=>$project,'goal'=>$goal];
         if(is_string($request['releaseTrack']??null))$preflightRequest['releaseTrack']=$request['releaseTrack'];
+        if(is_string($request['workstream']??null))$preflightRequest['workstream']=$request['workstream'];
         $preflight=$this->flowPreflight($preflightRequest,$at);
         if(($preflight['blocking']??true)===true)throw new HubOperatorBridgeException('Project flow is hard-blocked by live readiness','OPERATOR_FLOW_BLOCKED');
         $missionRequest=['schemaVersion'=>1,'project'=>$project,'goal'=>$goal,'confirmation'=>self::MISSION_ACQUIRE_CONFIRMATION];
-        foreach(['releaseTrack','scopeMode','impactedTracks'] as $key)if(array_key_exists($key,$request))$missionRequest[$key]=$request[$key];
+        foreach(['releaseTrack','workstream','scopeMode','impactedTracks'] as $key)if(array_key_exists($key,$request))$missionRequest[$key]=$request[$key];
         $mission=$this->missionAcquire($missionRequest,$at);
         return ['schemaVersion'=>1,'state'=>(string)($mission['state']??'UNKNOWN'),'decision'=>(string)($mission['decision']??$preflight['decision']),'preflight'=>$preflight,'mission'=>$mission['mission']??null,'scope'=>$mission['scope']??null,'observedAt'=>$at];
     }
@@ -577,10 +588,12 @@ final class HubOperatorBridgeService
         $selector=self::text($request,'project',160);$goal=self::text($request,'goal',500);
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
         $requestedTrack=is_string($request['releaseTrack']??null)?strtolower(trim((string)$request['releaseTrack'])):'';
+        $requestedWorkstream=is_string($request['workstream']??null)?strtolower(trim((string)$request['workstream'])):'';
+        if($requestedWorkstream!==''&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$requestedWorkstream)!==1)throw new HubOperatorBridgeException('Mission workstream is invalid','OPERATOR_REQUEST_INVALID');
         $this->reconcileStaleMissions($projectId,$at);
 
         $existing=$this->activeProjectMissions($at,$projectId);$current=null;
-        foreach($existing as $row)if(self::missionMatchesReleaseTrack($row,$requestedTrack===''?null:$requestedTrack)){$current=$row;break;}
+        foreach($existing as $row)if(self::missionMatchesCoordinationScope($row,$requestedTrack===''?null:$requestedTrack,$goal,$requestedWorkstream===''?null:$requestedWorkstream)){$current=$row;break;}
         if(is_array($current)){
             $renewed=$this->missionRenew(['executionId'=>(string)$current['execution_id']],$at);
             $scope=$this->missionScopeFromRequest($request,(string)$current['execution_id'],$projectId,$at);
@@ -595,7 +608,7 @@ final class HubOperatorBridgeService
         }
 
         $resumable=$this->resumableProjectMissions($projectId);$current=null;
-        foreach($resumable as $row)if(self::missionMatchesReleaseTrack($row,$requestedTrack===''?null:$requestedTrack)){$current=$row;break;}
+        foreach($resumable as $row)if(self::missionMatchesCoordinationScope($row,$requestedTrack===''?null:$requestedTrack,$goal,$requestedWorkstream===''?null:$requestedWorkstream)){$current=$row;break;}
         if(is_array($current)){
             $resumed=$this->resumeProjectMission($current,$at);
             $scope=$this->missionScopeFromRequest($request,(string)$current['execution_id'],$projectId,$at);
@@ -615,6 +628,7 @@ final class HubOperatorBridgeService
         if(($storage['releaseBlocked']??false)===true)throw new HubOperatorBridgeException('VPS storage safety gate is recovering below the mission reserve','OPERATOR_STORAGE_CRITICAL');
         $checkpoint=['mode'=>'OPERATOR_PROJECT_MISSION','goal'=>$goal,'startedAt'=>$at,'storageState'=>$storage['state']??'UNKNOWN'];
         if($requestedTrack!=='')$checkpoint['requestedReleaseTrack']=$requestedTrack;
+        if($requestedWorkstream!=='')$checkpoint['workstreamKey']=$requestedWorkstream;
         $authority=$this->acquireMutationAuthority($projectId,$goal,self::MISSION_CAPABILITY,$checkpoint,$at,self::MISSION_LEASE_SECONDS,self::MISSION_OWNER);
         $mission=$this->activeProjectMission($authority['executionId'],$at,$projectId,true);
         $joined=($authority['joined']??false)===true;
@@ -779,12 +793,57 @@ final class HubOperatorBridgeService
         return is_string($current)&&hash_equals($current,$releaseTrack);
     }
 
+    private static function missionWorkstreamFromCheckpoint(string $raw): ?string
+    {
+        try{$checkpoint=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){return null;}
+        if(!is_array($checkpoint)||array_is_list($checkpoint))return null;
+        $workstream=is_string($checkpoint['workstreamKey']??null)?strtolower(trim((string)$checkpoint['workstreamKey'])):'';
+        return preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$workstream)===1?$workstream:null;
+    }
+
+    /** @return list<string> */
+    private static function missionGoalTokens(string $goal): array
+    {
+        $normalized=mb_strtolower(trim($goal),'UTF-8');
+        $parts=preg_split('/[^\\p{L}\\p{N}]+/u',$normalized,-1,PREG_SPLIT_NO_EMPTY)?:[];
+        $stop=['a','an','the','to','for','and','or','of','in','on','with','from','into','by','via','as','is','are','be','fix','finish','complete','continue','resume','implement','add','harden','improve','repair','ensure','work','working','system','project','mission','release','flow','current','existing','latest','production','runtime','awh'];
+        $tokens=[];
+        foreach($parts as $part){
+            if(!is_string($part)||mb_strlen($part,'UTF-8')<3||in_array($part,$stop,true)||in_array($part,$tokens,true))continue;
+            $tokens[]=$part;if(count($tokens)>=16)break;
+        }
+        return $tokens;
+    }
+
+    private static function missionGoalsCompatible(string $requestedGoal,string $existingGoal): bool
+    {
+        $requested=trim($requestedGoal);$existing=trim($existingGoal);
+        if($requested===''||$existing==='')return false;
+        if(hash_equals(mb_strtolower($requested,'UTF-8'),mb_strtolower($existing,'UTF-8')))return true;
+        $left=self::missionGoalTokens($requested);$right=self::missionGoalTokens($existing);
+        if($left===[]||$right===[])return false;
+        $shared=array_values(array_intersect($left,$right));$minimum=min(count($left),count($right));
+        if($minimum===1&&count($shared)===1)return true;
+        return count($shared)>=3||(count($shared)>=2&&count($shared)/$minimum>=0.5);
+    }
+
+    /** @param array<string,mixed> $row */
+    private static function missionMatchesCoordinationScope(array $row,?string $releaseTrack,string $requestedGoal,?string $requestedWorkstream): bool
+    {
+        if(!self::missionMatchesReleaseTrack($row,$releaseTrack))return false;
+        if($releaseTrack===null||$releaseTrack==='')return true;
+        $currentWorkstream=self::missionWorkstreamFromCheckpoint((string)($row['checkpoint_json']??''));
+        if(is_string($requestedWorkstream)&&$requestedWorkstream!==''&&is_string($currentWorkstream))return hash_equals($requestedWorkstream,$currentWorkstream);
+        return self::missionGoalsCompatible($requestedGoal,(string)($row['goal']??''));
+    }
+
     /** @param array<string,mixed> $row @return array<string,mixed> */
     private function missionProjection(array $row): array
     {
         $stale=(string)($row['execution_state']??'')==='WAITING_FOR_CAPABILITY'||(string)($row['envelope_state']??'')==='WAITING';
         $releaseTrack=self::missionReleaseTrackFromCheckpoint((string)($row['checkpoint_json']??''));
-        return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'goal'=>(string)$row['goal'],'releaseTrack'=>$releaseTrack,'state'=>$stale?'STALE_RESUMABLE':'COORDINATING','executionState'=>$stale?'STALE_RESUMABLE':'RUNNING','progress'=>(int)$row['progress'],'leaseExpiresAt'=>$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at'],'ownerActionRequired'=>false,'nextUserAction'=>'NONE','nextAutomaticAction'=>$stale?'RESUME_SAME_EXECUTION':'CONTINUE'];
+        $workstream=self::missionWorkstreamFromCheckpoint((string)($row['checkpoint_json']??''));
+        return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'goal'=>(string)$row['goal'],'releaseTrack'=>$releaseTrack,'workstream'=>$workstream,'state'=>$stale?'STALE_RESUMABLE':'COORDINATING','executionState'=>$stale?'STALE_RESUMABLE':'RUNNING','progress'=>(int)$row['progress'],'leaseExpiresAt'=>$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at'],'ownerActionRequired'=>false,'nextUserAction'=>'NONE','nextAutomaticAction'=>$stale?'RESUME_SAME_EXECUTION':'CONTINUE'];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed>|null */
@@ -1315,12 +1374,12 @@ final class HubOperatorBridgeService
             $this->pdo->exec('BEGIN IMMEDIATE');
             if($capability===self::MISSION_CAPABILITY){
                 $requestedTrack=is_string($checkpoint['requestedReleaseTrack']??null)?strtolower(trim((string)$checkpoint['requestedReleaseTrack'])):'';
-                $existing=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.lease_expires_at,e.checkpoint_json FROM control_task_executions e JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.project_id=:project AND e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND x.state='ACTIVE' AND (e.lease_expires_at IS NULL OR e.lease_expires_at>:at) AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 40");
+                $requestedWorkstream=is_string($checkpoint['workstreamKey']??null)?strtolower(trim((string)$checkpoint['workstreamKey'])):'';
+                $existing=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.lease_expires_at,e.checkpoint_json,t.goal FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.project_id=:project AND e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND x.state='ACTIVE' AND (e.lease_expires_at IS NULL OR e.lease_expires_at>:at) AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 40");
                 $existing->execute(['project'=>$projectId,'capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'at'=>$at]);
                 foreach($existing->fetchAll() as $row){
                     if(!is_array($row))continue;
-                    $currentTrack=self::missionReleaseTrackFromCheckpoint((string)($row['checkpoint_json']??''));
-                    if($requestedTrack!==''&&(!is_string($currentTrack)||!hash_equals($requestedTrack,$currentTrack)))continue;
+                    if(!self::missionMatchesCoordinationScope($row,$requestedTrack===''?null:$requestedTrack,$goal,$requestedWorkstream===''?null:$requestedWorkstream))continue;
                     $this->pdo->exec('COMMIT');
                     return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>$projectId,'leaseExpiresAt'=>(string)$row['lease_expires_at'],'joined'=>true];
                 }
