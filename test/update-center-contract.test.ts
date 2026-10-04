@@ -111,6 +111,30 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/\['vps-platform','awh-core','awh-agent'\]/);
 });
 
+test('Update Center explains Assessment release rejections without a generic AWH failure banner', async()=>{
+  const [adapter,script,router]=await Promise.all([
+    readFile(join(ROOT,'web/control-plane-adapter.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneRouter.php'),'utf8'),
+  ]);
+  for(const code of [
+    'ASSESSMENT_RELEASE_CONFLICT',
+    'ASSESSMENT_RELEASE_NOT_READY',
+    'ASSESSMENT_RELEASE_VERSION_STALE',
+    'ASSESSMENT_RELEASE_DETAILS_REQUIRED',
+    'ASSESSMENT_RELEASE_QUEUE_FAILED',
+    'ASSESSMENT_RELEASE_APPROVAL_EXPIRED',
+    'ASSESSMENT_RELEASE_INVALID',
+  ]){
+    assert.match(adapter,new RegExp(code));
+    assert.match(router,new RegExp(code));
+  }
+  assert.match(script,/function actionErrorTone\(error\)/);
+  assert.match(script,/ยังไม่เริ่มอัปเดต · รุ่นที่ใช้งานอยู่ยังคงเดิม ระบบจะตรวจสถานะล่าสุดให้อัตโนมัติ/);
+  assert.match(script,/tone=actionErrorTone\(error\)/);
+  assert.match(script,/tone==='bad'\?'ตรวจสอบ':'กำลังซิงก์'/);
+});
+
 test('Update Center module graph imports only symbols exported by the same adapter bundle', async()=>{
   const [script,adapter]=await Promise.all([
     readFile(join(ROOT,'web/updates.js'),'utf8'),

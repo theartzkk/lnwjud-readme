@@ -578,13 +578,24 @@ function confirmUpdate({title='ยืนยันการอัปเดต',de
   return new Promise((resolve)=>dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true}));
 }
 
+function actionErrorTone(error){
+  const code=String(error?.code||'').toUpperCase();
+  return /(?:_CONFLICT|_NOT_READY|_QUEUE_FAILED|_TARGET_MOVED|_VERSION_STALE|_DETAILS_REQUIRED|_APPROVAL_EXPIRED)$/.test(code)?'info':'bad';
+}
 function actionErrorText(error,button){
   const code=String(error?.code||'').toUpperCase();
   if(code==='CORE_RELEASE_NOT_READY'){
     const platform=(center?.items||[]).find((item)=>item.adapter==='PLATFORM_RELEASE');
     return 'AWH ยังอัปเดตไม่ได้ · '+ownerFacingReason(platform);
   }
-  return friendly(error);
+  const text=friendly(error);
+  if(text==='AWH ไม่สามารถดำเนินการได้ในขณะนี้'){
+    const key=String(button?.dataset?.targetKey||'');
+    const item=(center?.items||[]).find((row)=>row?.key===key);
+    const name=String(item?.name||'ระบบนี้');
+    return name+' ยังไม่เริ่มอัปเดต · รุ่นที่ใช้งานอยู่ยังคงเดิม ระบบจะตรวจสถานะล่าสุดให้อัตโนมัติ';
+  }
+  return text;
 }
 function actionButton(text,handler,className='primary-button',targetKey=null,successText='เริ่มอัปเดตแล้ว · ระบบกำลังทำงานและตรวจผลให้อัตโนมัติ',allowDuringOperation=false){
   const button=document.createElement('button');button.type='button';button.className=className;button.textContent=text;if(targetKey)button.dataset.targetKey=targetKey;
@@ -619,7 +630,7 @@ function actionButton(text,handler,className='primary-button',targetKey=null,suc
       }else{
         clearPinnedOperation(targetKey);if(localOperation?.key===targetKey)localOperation=null;
         button.dataset.operationState='error';button.textContent='ตรวจสอบสถานะ';
-        const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad',targetKey);flashControlAck(button,'ตรวจสอบ','bad');syncLiveStream();renderProgress();
+        const text=actionErrorText(error,button);const tone=actionErrorTone(error);message(text,tone);actionFeedback(button,text,tone,targetKey);flashControlAck(button,tone==='bad'?'ตรวจสอบ':'กำลังซิงก์',tone);syncLiveStream();renderProgress();
       }
     }
     finally{
