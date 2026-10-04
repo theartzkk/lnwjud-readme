@@ -50,6 +50,8 @@ test("Provider setup is discoverable, truthful, and high-risk confirmation happe
   ]);
   assert.match(html, /data-profile-section="ai"/);
   assert.match(html, /<strong>AI Providers<\/strong>/);
+  assert.match(html, /data-profile-section="ai"[^>]*>[\s\S]*?id="settings-ai-summary"/);
+  assert.match(app, /function openProfileMenu\(\)[\s\S]*loadProviderHub\(\)[\s\S]*renderSettingsOverview\(\)/);
   assert.match(app, /\+ เพิ่ม Provider/);
   assert.match(app, /id="provider-add-list"/);
   assert.match(app, /function providerHubSummary/);

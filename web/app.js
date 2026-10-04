@@ -721,6 +721,13 @@ import {
   function openProfileMenu() {
     if (!state.control?.authenticated) return;
     renderProfileIdentity();
+    if (isOwner()) {
+      if (state.providerHub) renderSettingsOverview();
+      void loadProviderHub().then((value) => {
+        state.providerHub = value;
+        renderSettingsOverview();
+      }).catch(() => message('settings-ai-summary', 'ยังโหลดสถานะ AI Providers ไม่ได้'));
+    }
     openSheet('profile-menu');
     void refreshProfileIdentity().catch(() => message('profile-menu-meta', roleLabel(state.control?.role)));
   }
