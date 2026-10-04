@@ -37,7 +37,7 @@ fi
 
 # Bounded low-risk self-healing. Never touches backups/releases/databases/artifacts.
 if [[ "$state" == "WARNING" || "$state" == "CRITICAL" ]]; then
-  AWH_STORAGE_PRESSURE=1 AWH_TMP_TARGET_FREE_BYTES="$TARGET_FREE" AWH_TMP_KEEP_NEWEST_PER_REPO=1 /opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup >/dev/null 2>&1 || true
+  AWH_STORAGE_PRESSURE=1 AWH_TMP_TARGET_FREE_BYTES="$TARGET_FREE" AWH_TMP_KEEP_NEWEST_PER_REPO=1 AWH_DURABLE_KEEP_NEWEST_PER_REPO=1 AWH_DURABLE_PRESSURE_MAX_DELETE_PER_RUN=64 /opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup >/dev/null 2>&1 || true
 fi
 if (( used >= BLOCK || avail < BLOCK_FREE )); then
   journalctl --vacuum-size=300M >/dev/null 2>&1 || true

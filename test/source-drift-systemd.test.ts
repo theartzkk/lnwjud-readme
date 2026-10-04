@@ -154,6 +154,13 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(janitor, /\/proc/);
   assert.match(janitor, /head_in_origin/);
   assert.match(janitor, /for-each-ref/);
+  assert.match(janitor, /workspace_git/);
+  assert.match(janitor, /safe\.directory=/);
+  assert.match(temp, /git_workspace/);
+  assert.match(temp, /safe\.directory=\$path/);
+  assert.match(janitor, /verified_agent_publish_workspace/);
+  assert.match(janitor, /agentPublishCandidateBytes/);
+  assert.match(janitor, /AWAIT_TYPED_DELETION_AUTHORITY/);
   assert.match(janitor, /fresh_active\s*=\s*active_projects\(\)/);
   assert.match(janitor, /row\["projectId"\]\s+in\s+fresh_active/);
   assert.match(janitor, /AWH_DURABLE_WORKTREE_ROOT.*\/var\/lib\/awh-remote\/worktrees/);
@@ -161,6 +168,11 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.ok((janitor.match(/required_capability <> 'operator\.project_mission'/g)??[]).length>=2,'coordination-only Missions must not indefinitely pin merged durable worktrees');
   assert.match(janitor, /WAITING_FOR_CAPABILITY/);
   assert.match(janitor, /head_in_canonical_main/);
+  assert.match(janitor, /durable_head_preserved/);
+  assert.match(janitor, /MAIN_ANCESTOR/);
+  assert.match(janitor, /CANONICAL_REF/);
+  assert.ok((janitor.match(/durable_head_preserved\(repo, sha\)/g)??[]).length>=2,'durable cleanup must prove canonical source preservation both when planning and immediately before deletion');
+  assert.match(janitor, /worktree", "remove"/);
   assert.match(janitor, /DURABLE_KEEP_NEWEST/);
   assert.match(janitor, /durableReclaimedLogicalBytes/);
   assert.match(guard, /RECOVER=72/);
@@ -188,6 +200,8 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(guard, /WARN_FREE=17179869184/);
   assert.match(guard, /AWH_STORAGE_PRESSURE=1/);
   assert.match(guard, /AWH_TMP_KEEP_NEWEST_PER_REPO=1/);
+  assert.match(guard, /AWH_DURABLE_KEEP_NEWEST_PER_REPO=1/);
+  assert.match(guard, /AWH_DURABLE_PRESSURE_MAX_DELETE_PER_RUN=64/);
   assert.match(guard, /awh-storage-inventory\.py/);
   assert.match(guard, /--max-age-seconds 3600/);
   assert.match(inventory, /unattributedMeaning/);

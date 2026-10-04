@@ -51,6 +51,12 @@ purge_old_files() {
 purge_old_files "$TEMP_ROOT"
 purge_old_files "$REMOTE_TEMP_ROOT"
 
+git_workspace() {
+  local path=$1
+  shift
+  git -c "safe.directory=$path" -C "$path" "$@"
+}
+
 path_in_use() {
   local path=$1 target cwd
   if command -v lsof >/dev/null 2>&1 && lsof +D "$path" >/dev/null 2>&1; then
@@ -143,9 +149,9 @@ reclaim_git_dir() {
     return 0
   fi
   local status head size
-  status=$(git -C "$d" status --porcelain=v1 2>/dev/null || printf '__UNREADABLE__')
+  status=$(git_workspace "$d" status --porcelain=v1 2>/dev/null || printf '__UNREADABLE__')
   [[ -z "$status" ]] || return 0
-  head=$(git -C "$d" rev-parse HEAD 2>/dev/null || true)
+  head=$(git_workspace "$d" rev-parse HEAD 2>/dev/null || true)
   [[ "$head" =~ ^[0-9a-f]{40}$ ]] || return 0
   git --git-dir="$canonical" cat-file -e "${head}^{commit}" 2>/dev/null || return 0
   git --git-dir="$canonical" for-each-ref --format='%(refname)' --contains "$head" refs/heads refs/tags 2>/dev/null | grep -q . || return 0
@@ -174,7 +180,7 @@ fi
 if [[ "$global_cleanup_allowed" == true && -d "$OPERATOR_STAGE_ROOT" ]]; then
   while IFS= read -r -d '' d; do
     [[ -d "$d/.git" && ! -L "$d/.git" ]] || continue
-    origin=$(git -C "$d" remote get-url origin 2>/dev/null || true)
+    origin=$(git_workspace "$d" remote get-url origin 2>/dev/null || true)
     case "$origin" in
       /srv/awh-git/*.git|file:///srv/awh-git/*.git) canonical="${origin#file://}" ;;
       "$CANONICAL_ROOT"/*.git) canonical="$origin" ;;
