@@ -61,7 +61,9 @@ final class HubCoreReleaseService
         }
         $sourcePromotion=$this->latestSourcePromotion();
         $releaseNotes=$this->deploymentReleaseNotes($sourcePromotion);
-        $releaseDetailsReady=HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes,true);
+        $sourceChainReady=!is_array($sourcePromotion)||($sourcePromotion['authority']??null)!=='CANONICAL_SHARED_REPO_CHAIN_INCOMPLETE';
+        $releaseDetailsReady=$sourceChainReady&&HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes,true);
+        $releaseBlocker=!$sourceChainReady?'CORE_RELEASE_SOURCE_CHAIN_INCOMPLETE':($releaseDetailsReady?null:'CORE_RELEASE_DETAILS_REQUIRED');
         $roadmap=is_array($releaseNotes['comingNext']??null)?$releaseNotes['comingNext']:$this->fallbackRoadmap()['comingNext'];
         $knownIssues=is_array($releaseNotes['knownIssues']??null)?$releaseNotes['knownIssues']:$this->fallbackRoadmap()['knownIssues'];
         $history=[];
@@ -75,7 +77,7 @@ final class HubCoreReleaseService
         }
         $runtimeProductionSha=$this->canonicalProductionSha();
         $trackProductionSha=$this->canonicalRefSha($this->productionBranch);
-        return ['schemaVersion'=>1,'capability'=>$this->capability,'releaseTrack'=>$this->releaseTrack,'displayName'=>$this->displayName,'runtimeProductionSha'=>$runtimeProductionSha,'trackProductionSha'=>$trackProductionSha,'sourcePromotion'=>$sourcePromotion,'releaseNotes'=>$releaseNotes,'releaseDetailsReady'=>$releaseDetailsReady,'releaseBlocker'=>$releaseDetailsReady?null:'CORE_RELEASE_DETAILS_REQUIRED','roadmap'=>$roadmap,'knownIssues'=>$knownIssues,'history'=>$history,'releases'=>$rows,'policy'=>HubTrustPolicy::describe($this->capability)];
+        return ['schemaVersion'=>1,'capability'=>$this->capability,'releaseTrack'=>$this->releaseTrack,'displayName'=>$this->displayName,'runtimeProductionSha'=>$runtimeProductionSha,'trackProductionSha'=>$trackProductionSha,'sourcePromotion'=>$sourcePromotion,'releaseNotes'=>$releaseNotes,'releaseDetailsReady'=>$releaseDetailsReady,'releaseBlocker'=>$releaseBlocker,'roadmap'=>$roadmap,'knownIssues'=>$knownIssues,'history'=>$history,'releases'=>$rows,'policy'=>HubTrustPolicy::describe($this->capability)];
     }
 
     public function request(string $token,string $csrf,array $payload,?string $now=null): array
@@ -89,6 +91,8 @@ final class HubCoreReleaseService
         $completed=$this->completedCurrentRelease($sha,(bool)$payload['cleanupTopology']);
         if(is_array($completed))return $this->idempotentResponse($completed,$sha);
         $latest=$this->latestSourcePromotion();
+        if(is_array($latest)&&($latest['authority']??null)==='CANONICAL_SHARED_REPO_CHAIN_INCOMPLETE')
+            throw new HubCoreReleaseException('Shared source chain is incomplete for this release target','CORE_RELEASE_NOT_READY');
         if(!is_array($latest)||!is_string($latest['sha']??null)||!hash_equals((string)$latest['sha'],$sha))
             throw new HubCoreReleaseException('Core release target is no longer canonical','CORE_RELEASE_TARGET_MOVED');
         $deploymentNotes=$this->deploymentReleaseNotes($latest);
@@ -393,37 +397,80 @@ final class HubCoreReleaseService
 
     private function sharedRepoDeploySnapshot(array $audit): array
     {
-        if($this->releaseTrack!=='awh')return $audit;
         $trackSha=strtolower((string)($audit['sha']??''));
         $main=$this->canonicalMainSha();$platform=$this->canonicalRefSha('platform/production');
         if(preg_match('/^[0-9a-f]{40}$/',$trackSha)!==1||!is_string($main)||!is_string($platform))return $audit;
-        if(hash_equals($trackSha,$main)||!hash_equals($main,$platform))return $audit;
-        if(!$this->sourcePromotionChainConnects($main,$trackSha))return $audit;
-        $audit['trackPromotionSha']=$trackSha;
+        if($this->releaseTrack==='awh'){
+            if(hash_equals($trackSha,$main)||!hash_equals($main,$platform))return $audit;
+            if(!$this->sourcePromotionChainConnects($main,$trackSha))return $audit;
+            $audit['trackPromotionSha']=$trackSha;
+            $audit['sha']=$main;
+            $audit['authority']='CANONICAL_SHARED_REPO_MAIN_VERIFIED';
+            return $audit;
+        }
+        if($this->releaseTrack!=='vps-platform'||hash_equals($trackSha,$main))return $audit;
+        $pendingPlatformChain=$this->sourcePromotionChain($platform,$trackSha);
+        $chain=$this->sourcePromotionChain($platform,$main);
+        if(!is_array($pendingPlatformChain)||!is_array($chain)){
+            $audit['authority']='CANONICAL_SHARED_REPO_CHAIN_INCOMPLETE';
+            return $audit;
+        }
+        $platformSegments=array_values(array_filter($chain,static fn(array $segment): bool => hash_equals((string)($segment['track']??''),'vps-platform')));
+        $latestPlatform=$platformSegments===[]?null:$platformSegments[count($platformSegments)-1];
+        if(!is_array($latestPlatform)||!hash_equals((string)($latestPlatform['target']??''),$trackSha)){
+            $audit['authority']='CANONICAL_SHARED_REPO_CHAIN_INCOMPLETE';
+            return $audit;
+        }
+        $closure=array_map(static fn(array $segment): array => [
+            'base'=>(string)$segment['base'],
+            'target'=>(string)$segment['target'],
+            'track'=>(string)$segment['track'],
+            'bundleSha256'=>(string)$segment['bundleSha256'],
+        ],$chain);
+        $chainDigest=hash('sha256',json_encode($closure,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
+        $audit['platformAnchorSha']=$trackSha;
+        $audit['anchorArtifactDigest']=$audit['artifactDigest']??null;
         $audit['sha']=$main;
-        $audit['authority']='CANONICAL_SHARED_REPO_MAIN_VERIFIED';
+        $audit['previousSha']=$platform;
+        $audit['artifactDigest']=$chainDigest;
+        $audit['sourceChainDigest']=$chainDigest;
+        $audit['sourceChainSegmentCount']=count($chain);
+        $audit['authority']='CANONICAL_SOURCE_CHAIN_VERIFIED';
         return $audit;
     }
 
-    private function sourcePromotionChainConnects(string $target,string $ancestor): bool
+    /** @return list<array{base:string,target:string,track:string,bundleSha256:string,missionExecutionId:?string,updatedAt:string}>|null */
+    private function sourcePromotionChain(string $base,string $target): ?array
     {
-        if(hash_equals($target,$ancestor))return true;
-        $q=$this->pdo->prepare("SELECT checkpoint_json FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT ".self::SOURCE_PROMOTION_CHAIN_LIMIT);
+        if(preg_match('/^[a-f0-9]{40}$/',$base)!==1||preg_match('/^[a-f0-9]{40}$/',$target)!==1)return null;
+        if(hash_equals($base,$target))return [];
+        $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT ".self::SOURCE_PROMOTION_CHAIN_LIMIT);
         $q->execute(['project'=>self::PROJECT_ID]);$byTarget=[];
         foreach($q->fetchAll() as $row){
             try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
             if(!is_array($checkpoint)||($checkpoint['repository']??null)!=='awh')continue;
-            $next=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
-            if(preg_match('/^[0-9a-f]{40}$/',$next)!==1||preg_match('/^[0-9a-f]{40}$/',$base)!==1||isset($byTarget[$next]))continue;
-            $byTarget[$next]=$base;
+            $segmentTarget=strtolower((string)($checkpoint['targetSha']??''));$segmentBase=strtolower((string)($checkpoint['expectedMainSha']??''));
+            $bundle=strtolower((string)($checkpoint['bundleSha256']??''));$notes=$checkpoint['releaseNotes']??null;
+            if(preg_match('/^[a-f0-9]{40}$/',$segmentTarget)!==1||preg_match('/^[a-f0-9]{40}$/',$segmentBase)!==1||preg_match('/^[a-f0-9]{64}$/',$bundle)!==1||!is_array($notes))continue;
+            $track=is_string($notes['releaseTrack']??null)?strtolower((string)$notes['releaseTrack']):'awh';
+            if(!isset($byTarget[$segmentTarget]))$byTarget[$segmentTarget]=[
+                'base'=>$segmentBase,'target'=>$segmentTarget,'track'=>$track,'bundleSha256'=>$bundle,
+                'missionExecutionId'=>is_string($checkpoint['missionExecutionId']??null)?strtolower((string)$checkpoint['missionExecutionId']):null,
+                'updatedAt'=>(string)$row['updated_at'],
+            ];
         }
-        $cursor=$target;$seen=[];
-        for($i=0;$i<self::SOURCE_PROMOTION_CHAIN_LIMIT;$i++){
-            if(hash_equals($cursor,$ancestor))return true;
-            if(isset($seen[$cursor])||!isset($byTarget[$cursor]))return false;
-            $seen[$cursor]=true;$cursor=(string)$byTarget[$cursor];
+        $cursor=$target;$reverse=[];$seen=[];
+        for($i=0;$i<self::SOURCE_PROMOTION_CHAIN_LIMIT&&!hash_equals($cursor,$base);$i++){
+            if(isset($seen[$cursor])||!isset($byTarget[$cursor]))return null;
+            $seen[$cursor]=true;$segment=$byTarget[$cursor];$reverse[]=$segment;$cursor=(string)$segment['base'];
         }
-        return false;
+        if(!hash_equals($cursor,$base))return null;
+        return array_reverse($reverse);
+    }
+
+    private function sourcePromotionChainConnects(string $target,string $ancestor): bool
+    {
+        return is_array($this->sourcePromotionChain($ancestor,$target));
     }
 
     private function canonicalMainSha(): ?string

@@ -755,7 +755,7 @@ rollback() {
     if test -n "$DEPLOY_AUTHORITY_EXECUTION"; then release_deploy_authority failure || ok=0; fi
     sudo rm -rf "$RELEASE" "$WEB_RELEASE" >/dev/null 2>&1 || true
     if test "$ENROLLMENT_RELEASE_CREATED" -eq 1; then sudo rm -rf "$ENROLLMENT_RELEASE" >/dev/null 2>&1 || ok=0; fi
-    sudo rm -f "$REMOTE_STAGE" "$POINTER_TMP" "$WEB_POINTER_TMP" "$ENROLLMENT_POINTER_TMP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP" "$VPS_CONNECTOR_UNIT_BACKUP" "$VPS_CONNECTOR_CONFIG_BACKUP" >/dev/null 2>&1 || true
+    sudo rm -f "$REMOTE_STAGE" "$POINTER_TMP" "$WEB_POINTER_TMP" "$ENROLLMENT_POINTER_TMP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP" "$HOSTING_IDENTITY_BACKUP" "$VPS_CONNECTOR_UNIT_BACKUP" "$VPS_CONNECTOR_CONFIG_BACKUP" >/dev/null 2>&1 || true
     if test "$NGINX_BACKUP_CREATED" -eq 1; then sudo rm -f "$NGINX_BACKUP" || ok=0; fi
     if test "$TOPOLOGY_ARCHIVED" -eq 1; then sudo rm -rf "$TOPOLOGY_ARCHIVE" || ok=0; fi
     cleanup_owner_auth_cookie_files
@@ -1453,22 +1453,27 @@ if test "$PLATFORM_HARDENING" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$
   stage HOSTING_NAMESPACE_PATHS_READY
 fi
 if test "$PLATFORM_HARDENING" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1 || test "$ACCOUNT_HOSTING" = 1; then
+  stage HOSTING_IDENTITY_BACKUP_PREPARE
   if sudo test -f "$HOSTING_IDENTITY_UNIT"; then
     HOSTING_IDENTITY_PREEXISTING=1
     sudo test ! -e "$HOSTING_IDENTITY_BACKUP"
     sudo cp -p "$HOSTING_IDENTITY_UNIT" "$HOSTING_IDENTITY_BACKUP"
     sudo chown root:root "$HOSTING_IDENTITY_BACKUP"; sudo chmod 0600 "$HOSTING_IDENTITY_BACKUP"
   fi
+  stage HOSTING_IDENTITY_BACKUP_READY
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-hosting-identity@.service" "$HOSTING_IDENTITY_UNIT"
   HOSTING_IDENTITY_INSTALLED=1
+  stage HOSTING_IDENTITY_UNIT_READY
 fi
 if test "$PLATFORM_HARDENING" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1; then
   test "$HOSTING_UNITS_PREEXISTING" -eq 1
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-hosting-operator.service" "$HOSTING_SERVICE_UNIT"
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-hosting-operator.timer" "$HOSTING_TIMER_UNIT"
   HOSTING_UNITS_INSTALLED=1
+  stage HOSTING_OPERATOR_UNIT_FILES_READY
   sudo systemctl daemon-reload
   sudo systemctl cat 'awh-hosting-identity@.service' >/dev/null
+  stage HOSTING_OPERATOR_SYSTEMD_READY
   sudo systemctl enable --now awh-hosting-operator.timer >/dev/null
   sudo systemctl is-enabled --quiet awh-hosting-operator.timer
   sudo systemctl is-active --quiet awh-hosting-operator.timer

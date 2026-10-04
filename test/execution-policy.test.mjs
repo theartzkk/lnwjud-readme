@@ -184,8 +184,13 @@ test('managed-product deploy provisions namespace roots before operator enable',
   assert.match(identityUnit,/PrivateNetwork=true/);
   const provision=script.indexOf('PRODUCT_RELEASE_STORAGE_READY');
   const preflight=script.indexOf('HOSTING_NAMESPACE_PATHS_READY');
-  const enable=script.indexOf('systemctl enable --now awh-hosting-operator.timer',preflight);
-  assert.ok(provision>0&&preflight>provision&&enable>preflight);
+  const identityBackup=script.indexOf('stage HOSTING_IDENTITY_BACKUP_READY',preflight);
+  const identityReady=script.indexOf('stage HOSTING_IDENTITY_UNIT_READY',identityBackup);
+  const unitFiles=script.indexOf('stage HOSTING_OPERATOR_UNIT_FILES_READY',identityReady);
+  const systemdReady=script.indexOf('stage HOSTING_OPERATOR_SYSTEMD_READY',unitFiles);
+  const enable=script.indexOf('systemctl enable --now awh-hosting-operator.timer',systemdReady);
+  assert.ok(provision>0&&preflight>provision&&identityBackup>preflight&&identityReady>identityBackup&&unitFiles>identityReady&&systemdReady>unitFiles&&enable>systemdReady);
+  assert.match(script,/rm -f[^\n]*"\$HOSTING_SERVICE_BACKUP"[^\n]*"\$HOSTING_TIMER_BACKUP"[^\n]*"\$HOSTING_IDENTITY_BACKUP"/);
 });
 
 test('document governance has one entry point and no parallel rules authority',async()=>{

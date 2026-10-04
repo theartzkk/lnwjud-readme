@@ -179,7 +179,28 @@ try{
     $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")
         ->execute(['execution'=>$platformPromoteExecution,'task'=>$platformPromoteTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$sha,'targetSha'=>$platformSha,'bundleSha256'=>str_repeat('7',64),'missionExecutionId'=>$platformMissionExecution,'releaseNotes'=>$platformNotes],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:00:02+00:00']);
     $platformService=HubCoreReleaseService::platformFromPdo($pdo);
-    $queuedB=$platformService->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$platformSha,'cleanupTopology'=>false],'2026-09-23T01:00:02+00:00');
+    $platformDependencySha=str_repeat('8',40);
+    $platformDependencyTask='a33b45c0-23e1-408d-ae0f-ac5eca7f6900';$platformDependencyExecution='b33b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $platformDependencyNotes=cr_release_notes($platformSha,$platformDependencySha,'awh');
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Promote platform dependency fixture','COMPLETED',NULL,NULL,100,'Guarded operator mutation completed',NULL,'queue-e2e-platform-dependency',NULL,:at,:at,NULL)")
+        ->execute(['task'=>$platformDependencyTask,'user'=>$owner,'project'=>$project,'at'=>'2026-09-23T01:00:02+00:00']);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")
+        ->execute(['execution'=>$platformDependencyExecution,'task'=>$platformDependencyTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$platformSha,'targetSha'=>$platformDependencySha,'bundleSha256'=>str_repeat('6',64),'missionExecutionId'=>$awhMissionExecution,'releaseNotes'=>$platformDependencyNotes],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:00:02+00:00']);
+    $unverifiedPlatformMain=str_repeat('5',40);
+    file_put_contents($canonicalGit.'/refs/heads/main',$unverifiedPlatformMain."\n");
+    $incompletePlatformStatus=$platformService->status($session['sessionToken']);
+    cr_assert(($incompletePlatformStatus['sourcePromotion']['sha']??null)===$platformSha&&($incompletePlatformStatus['sourcePromotion']['authority']??null)==='CANONICAL_SHARED_REPO_CHAIN_INCOMPLETE','VPS Platform keeps the verified track anchor when canonical main is not connected by durable source-promotion evidence');
+    cr_assert(($incompletePlatformStatus['releaseDetailsReady']??null)===false&&($incompletePlatformStatus['releaseBlocker']??null)==='CORE_RELEASE_SOURCE_CHAIN_INCOMPLETE','incomplete shared-source chain fails closed instead of exposing a stale Platform update');
+    $incompleteBlocked=false;
+    try{$platformService->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$platformSha,'cleanupTopology'=>false],'2026-09-23T01:00:02+00:00');}
+    catch(HubCoreReleaseException $error){$incompleteBlocked=$error->codeName==='CORE_RELEASE_NOT_READY';}
+    cr_assert($incompleteBlocked,'Owner request cannot deploy the stale Platform anchor while canonical shared-source evidence is incomplete');
+    file_put_contents($canonicalGit.'/refs/heads/main',$platformDependencySha."\n");
+    $platformDependencyStatus=$platformService->status($session['sessionToken']);
+    cr_assert(($platformDependencyStatus['sourcePromotion']['sha']??null)===$platformDependencySha&&($platformDependencyStatus['sourcePromotion']['platformAnchorSha']??null)===$platformSha&&($platformDependencyStatus['sourcePromotion']['authority']??null)==='CANONICAL_SOURCE_CHAIN_VERIFIED','VPS Platform release target advances to canonical main when a trusted cross-track dependency follows the latest Platform segment');
+    cr_assert(($platformDependencyStatus['releaseDetailsReady']??null)===true&&($platformDependencyStatus['releaseBlocker']??null)===null&&($platformDependencyStatus['releaseNotes']['releaseTrack']??null)==='vps-platform','cross-track dependency closure preserves VPS Platform release-note ownership and remains release-ready');
+    cr_assert(($platformDependencyStatus['sourcePromotion']['sourceChainSegmentCount']??0)===3&&preg_match('/^[a-f0-9]{64}$/',(string)($platformDependencyStatus['sourcePromotion']['sourceChainDigest']??''))===1,'VPS Platform shared-source closure is bound to a deterministic chain digest');
+    $queuedB=$platformService->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$platformDependencySha,'cleanupTopology'=>false],'2026-09-23T01:00:02+00:00');
     cr_assert(($queuedB['state']??null)==='WAITING_FOR_WORKER','B request is admitted while A is RUNNING');
     $queuedBExecution=(string)$queuedB['executionId'];$queuedBTask=(string)$queuedB['taskId'];
     cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($queuedBExecution))->fetchColumn()==='QUEUED','B execution persists as QUEUED behind running A');
@@ -199,7 +220,9 @@ try{
         &&$pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($queuedBTask))->fetchColumn()==='RUNNING','B transitions QUEUED to RUNNING without a second request');
     $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>'2026-09-23T01:00:06+00:00','execution'=>$queuedBExecution]);
     $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,updated_at=:at WHERE task_id=:task")->execute(['at'=>'2026-09-23T01:00:06+00:00','task'=>$queuedBTask]);
-    file_put_contents($canonicalGit.'/refs/heads/platform/production',$platformSha."\n");
+    file_put_contents($canonicalGit.'/refs/heads/platform/production',$platformDependencySha."\n");
+    $pdo->prepare('DELETE FROM control_task_executions WHERE execution_id=:execution')->execute(['execution'=>$platformDependencyExecution]);
+    $pdo->prepare('DELETE FROM control_tasks WHERE task_id=:task')->execute(['task'=>$platformDependencyTask]);
 
     // Regression: PLATFORM_ONLY may pause an older AWH release, but that paused
     // queue head must not starve an eligible VPS Platform release behind it.
