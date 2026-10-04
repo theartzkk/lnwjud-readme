@@ -194,6 +194,9 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(inventory, /\/var\/lib\/awh-hub/);
   assert.match(inventory, /\/srv\/awh-sites/);
   assert.match(inventory, /awhRemoteBreakdown/);
+  assert.match(inventory, /ThreadPoolExecutor/);
+  assert.match(inventory, /pool\.submit\(_measure, path, per_path_timeout\)/);
+  assert.match(inventory, /per_path_timeout = max\(2, min\(timeout_seconds, 8\)\)/);
   assert.match(inventory, /grp\.getgrnam\("awh-hub"\)/);
   assert.match(inventory, /os\.chown\(name, 0,/);
   assert.match(deploy, /awh-storage-inventory\.py/);

@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -38,45 +39,57 @@ AWH_REMOTE_BREAKDOWN = [
     ("npm", "/var/lib/awh-remote/.npm"),
 ]
 
+def _measure(path: str, timeout_seconds: int) -> tuple[str, int | None]:
+    command = ["/usr/bin/ionice", "-c3", "/usr/bin/nice", "-n", "19",
+               "/usr/bin/du", "-sx", "--block-size=1", "--", path]
+    try:
+        result = subprocess.run(command, check=False, capture_output=True,
+                                text=True, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        return "TIMEOUT", None
+    if result.returncode != 0:
+        return "UNREADABLE", None
+    line = result.stdout.strip().splitlines()
+    if len(line) != 1:
+        return "UNREADABLE", None
+    parts = line[0].split(maxsplit=1)
+    if len(parts) != 2:
+        return "UNREADABLE", None
+    try:
+        return "OK", int(parts[0])
+    except ValueError:
+        return "UNREADABLE", None
+
+
 def collect(rows, timeout_seconds: int):
     out = {}
-    by_path = {}
-    paths = []
+    pending = []
     for key, path in rows:
         if Path(path).exists():
             out[key] = {"path": path, "bytes": None, "state": "PENDING"}
-            by_path[os.path.realpath(path)] = key
-            paths.append(path)
+            pending.append((key, path))
         else:
             out[key] = {"path": path, "bytes": 0, "state": "ABSENT"}
-    if paths:
-        command = ["/usr/bin/ionice", "-c3", "/usr/bin/nice", "-n", "19",
-                   "/usr/bin/du", "-sx", "--block-size=1", "--", *paths]
-        timed_out = False
-        try:
-            result = subprocess.run(command, check=False, capture_output=True,
-                                    text=True, timeout=timeout_seconds)
-            stdout = result.stdout
-        except subprocess.TimeoutExpired as error:
-            timed_out = True
-            stdout = error.stdout or ""
-            if isinstance(stdout, bytes):
-                stdout = stdout.decode("utf-8", "replace")
-        for line in stdout.splitlines():
-            parts = line.split(maxsplit=1)
-            if len(parts) != 2:
-                continue
-            try:
-                size = int(parts[0])
-            except ValueError:
-                continue
-            key = by_path.get(os.path.realpath(parts[1]))
-            if key is not None:
-                out[key] = {"path": out[key]["path"], "bytes": size, "state": "OK"}
-        fallback = "TIMEOUT" if timed_out else "UNREADABLE"
-        for key, item in out.items():
-            if item["state"] == "PENDING":
-                out[key] = {"path": item["path"], "bytes": None, "state": fallback}
+
+    # Measure roots independently so one large tree cannot starve every category
+    # that follows it. Keep the scan bounded and low-priority; the hourly cache
+    # means this never becomes foreground release work.
+    per_path_timeout = max(2, min(timeout_seconds, 8))
+    if pending:
+        workers = min(2, len(pending))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(_measure, path, per_path_timeout): (key, path)
+                for key, path in pending
+            }
+            for future in as_completed(futures):
+                key, path = futures[future]
+                try:
+                    state, size = future.result()
+                except Exception:
+                    state, size = "UNREADABLE", None
+                out[key] = {"path": path, "bytes": size, "state": state}
+
     total = sum(int(item["bytes"] or 0) for item in out.values() if item["state"] == "OK")
     complete = all(item["state"] in {"OK", "ABSENT"} for item in out.values())
     return out, total, complete
