@@ -64,3 +64,19 @@ test('completed PASS is reused immediately for the same exact SHA and mode',asyn
     assert.equal(second.code,0);
   }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('join-only singleflight reruns after a completed pass but still deduplicates concurrent owners',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'awh-qa-singleflight-join-only-'));let runs=0;
+  const runner=async()=>{runs++;await sleep(120);return 0;};
+  try{
+    const [first,joined]=await Promise.all([
+      withSingleFlight({lockRoot:root,key:'awh-qa',sha:'c'.repeat(40),mode:'qa-full',runner,pollMs:20,reuseCompletedPass:false}),
+      withSingleFlight({lockRoot:root,key:'awh-qa',sha:'c'.repeat(40),mode:'qa-full',runner,pollMs:20,reuseCompletedPass:false}),
+    ]);
+    assert.equal(runs,1);
+    assert.equal([first.reused,joined.reused].filter(Boolean).length,1);
+    const later=await withSingleFlight({lockRoot:root,key:'awh-qa',sha:'c'.repeat(40),mode:'qa-full',runner,pollMs:20,reuseCompletedPass:false});
+    assert.equal(later.reused,false);
+    assert.equal(runs,2);
+  }finally{await rm(root,{recursive:true,force:true});}
+});

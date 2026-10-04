@@ -14,14 +14,14 @@ async function readableJson(path){try{return JSON.parse(await readFile(path,'utf
 function alive(pid){if(!Number.isInteger(pid)||pid<1)return false;try{process.kill(pid,0);return true;}catch{return false;}}
 function nowIso(){return new Date().toISOString();}
 
-async function sharedRoot(){
+export async function sharedRoot(){
   const explicit=process.env.AWH_QA_SINGLEFLIGHT_ROOT;
   if(explicit){await mkdir(explicit,{recursive:true,mode:0o700});return explicit;}
   const vps='/var/lib/awh-remote/qa-singleflight';
   try{await mkdir(vps,{recursive:true,mode:0o700});await access(vps,constants.W_OK);return vps;}catch{}
   const local=join(ROOT,'.awh-local','qa-singleflight');await mkdir(local,{recursive:true,mode:0o700});return local;
 }
-async function gitSourceIdentity(){
+export async function gitSourceIdentity(){
   const headRun=spawnSync('git',['rev-parse','HEAD'],{cwd:ROOT,encoding:'utf8',shell:false});
   const head=headRun.status===0?headRun.stdout.trim().toLowerCase():'unknown';
   const statusRun=spawnSync('git',['status','--porcelain=v1','--untracked-files=all'],{cwd:ROOT,encoding:'utf8',shell:false,maxBuffer:16*1024*1024});
@@ -34,7 +34,7 @@ async function gitSourceIdentity(){
   if(untrackedRun.status===0){for(const rel of untrackedRun.stdout.split('\0').filter(Boolean).sort()){hash.update(rel);try{hash.update(await readFile(join(ROOT,rel)));}catch{}}}
   return `${head}-dirty-${hash.digest('hex').slice(0,16)}`;
 }
-async function projectKey(){
+export async function projectKey(){
   try{const p=JSON.parse(await readFile(join(ROOT,'package.json'),'utf8'));return safe(p.name||'awh');}catch{return 'awh';}
 }
 async function atomicJson(path,value){const tmp=path+'.tmp-'+process.pid;await writeFile(tmp,JSON.stringify(value,null,2)+'\n',{mode:0o600});await import('node:fs/promises').then(fs=>fs.rename(tmp,path));}
@@ -49,13 +49,13 @@ async function reclaimStaleLock(lock,staleMs){
   return false;
 }
 
-export async function withSingleFlight({lockRoot,key,sha,mode='test',runner,waitTimeoutMs=20*60_000,staleMs=30*60_000,pollMs=500}){
+export async function withSingleFlight({lockRoot,key,sha,mode='test',runner,waitTimeoutMs=20*60_000,staleMs=30*60_000,pollMs=500,reuseCompletedPass=true}){
   await mkdir(lockRoot,{recursive:true,mode:0o700});
   const lock=join(lockRoot,safe(key)+'.lock');
   const resultDir=join(lockRoot,'results');await mkdir(resultDir,{recursive:true,mode:0o700});
   const result=join(resultDir,createHash('sha256').update(`${key}:${sha}:${mode}`).digest('hex')+'.json');
   const cached=await readableJson(result);
-  if(cached?.sha===sha&&cached?.mode===mode&&cached?.code===0){
+  if(reuseCompletedPass&&cached?.sha===sha&&cached?.mode===mode&&cached?.code===0){
     return {...cached,reused:true,reuseKind:'EXACT_SHA_PASS'};
   }
   const deadline=Date.now()+waitTimeoutMs;

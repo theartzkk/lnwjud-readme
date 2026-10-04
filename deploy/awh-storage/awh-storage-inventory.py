@@ -39,6 +39,13 @@ AWH_REMOTE_BREAKDOWN = [
     ("npm", "/var/lib/awh-remote/.npm"),
 ]
 
+# Large state roots get a bounded, explicit budget instead of inheriting the
+# generic 8-second ceiling. Inventory is hourly/background work, so allowing a
+# little more time here is safer than repeatedly reporting UNKNOWN capacity.
+PATH_TIMEOUT_SECONDS = {
+    "/var/lib/awh-hub": 24,
+}
+
 def _measure(path: str, timeout_seconds: int) -> tuple[str, int | None]:
     command = ["/usr/bin/ionice", "-c3", "/usr/bin/nice", "-n", "19",
                "/usr/bin/du", "-sx", "--block-size=1", "--", path]
@@ -79,7 +86,7 @@ def collect(rows, timeout_seconds: int):
         workers = min(2, len(pending))
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
-                pool.submit(_measure, path, per_path_timeout): (key, path)
+                pool.submit(_measure, path, max(per_path_timeout, PATH_TIMEOUT_SECONDS.get(path, 0))): (key, path)
                 for key, path in pending
             }
             for future in as_completed(futures):

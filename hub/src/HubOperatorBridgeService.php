@@ -163,6 +163,7 @@ final class HubOperatorBridgeService
         $id=(string)$project['project_id'];
         (new HubExecutionLifecycleService($this->pdo))->reconcile($id,$at);
         $this->reconcileStaleMissions($id,$at);
+        $this->reconcileConvergedMissions($id,$at);
         $requestedResource=is_string($requestedResourceOverride)&&$requestedResourceOverride!==''?strtoupper(trim($requestedResourceOverride)):($capability===null?'CANONICAL:PROJECT':HubCapabilityRegistryService::mutationResourceForExecution($capability,'VPS'));
         $active=$this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.state,x.mutation_scope,x.lease_expires_at,e.state AS execution_state,e.required_capability,e.executor_kind,e.checkpoint_json,t.state AS task_state,t.goal,p.name AS project_name FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at DESC LIMIT 80");
         $active->execute(['at'=>$at]);$allActiveRows=$active->fetchAll();
@@ -597,6 +598,7 @@ final class HubOperatorBridgeService
     {
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
         $this->reconcileStaleMissions($projectId,$at);
+        $this->reconcileConvergedMissions($projectId,$at);
         $activeRows=$this->activeProjectMissions($at,$projectId);
         $resumableRows=$this->resumableProjectMissions($projectId);
         $active=array_map(fn(array $row):array=>$this->missionProjection($row),$activeRows);
@@ -621,6 +623,7 @@ final class HubOperatorBridgeService
         $requestedWorkstream=is_string($request['workstream']??null)?strtolower(trim((string)$request['workstream'])):'';
         if($requestedWorkstream!==''&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$requestedWorkstream)!==1)throw new HubOperatorBridgeException('Mission workstream is invalid','OPERATOR_REQUEST_INVALID');
         $this->reconcileStaleMissions($projectId,$at);
+        $this->reconcileConvergedMissions($projectId,$at);
 
         $existing=$this->activeProjectMissions($at,$projectId);$current=null;
         foreach($existing as $row)if(self::missionMatchesCoordinationScope($row,$requestedTrack===''?null:$requestedTrack,$goal,$requestedWorkstream===''?null:$requestedWorkstream)){$current=$row;break;}
@@ -673,14 +676,21 @@ final class HubOperatorBridgeService
         $mission=$this->activeProjectMission($execution,$at,null,false);
         if($mission===null){
             $stale=$this->resumableProjectMission($execution,null,false);
-            if($stale!==null)return ['schemaVersion'=>2,'state'=>'STALE_RESUMABLE','mission'=>$this->missionProjection($stale),'observedAt'=>$at];
+            if($stale!==null){
+                $projectId=(string)$stale['project_id'];$converged=$this->reconcileConvergedMissions($projectId,$at);
+                if(in_array($execution,$converged,true))return ['schemaVersion'=>2,'state'=>'COMPLETED_BY_RUNTIME_CONVERGENCE','executionId'=>$execution,'projectId'=>$projectId,'observedAt'=>$at];
+                return ['schemaVersion'=>2,'state'=>'STALE_RESUMABLE','mission'=>$this->missionProjection($stale),'observedAt'=>$at];
+            }
             throw new HubOperatorBridgeException('Project mission is not active','OPERATOR_MISSION_NOT_ACTIVE');
         }
         $updated=strtotime((string)($mission['updated_at']??''));
         $now=strtotime($at);
         if($updated===false||$now===false||$updated<=($now-self::MISSION_STALE_SECONDS)){
-            $this->reconcileStaleMissions((string)$mission['project_id'],$at);
-            $stale=$this->resumableProjectMission($execution,(string)$mission['project_id'],true);
+            $projectId=(string)$mission['project_id'];
+            $this->reconcileStaleMissions($projectId,$at);
+            $converged=$this->reconcileConvergedMissions($projectId,$at);
+            if(in_array($execution,$converged,true))return ['schemaVersion'=>2,'state'=>'COMPLETED_BY_RUNTIME_CONVERGENCE','executionId'=>$execution,'projectId'=>$projectId,'observedAt'=>$at];
+            $stale=$this->resumableProjectMission($execution,$projectId,true);
             return ['schemaVersion'=>2,'state'=>'STALE_RESUMABLE','mission'=>$this->missionProjection($stale),'observedAt'=>$at];
         }
         $lease=gmdate('c',$now+self::MISSION_LEASE_SECONDS);
@@ -760,6 +770,83 @@ final class HubOperatorBridgeService
             }
             $this->pdo->exec('COMMIT');
         }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}throw new HubOperatorBridgeException('Stale project mission could not be reconciled','OPERATOR_MISSION_RECONCILE_FAILED');}
+    }
+
+    /** @return list<string> */
+    private function reconcileConvergedMissions(string $projectId,string $at): array
+    {
+        if(!self::uuidValid($projectId))return [];
+        $closed=[];
+        foreach($this->resumableProjectMissions($projectId) as $mission){
+            try{$evidence=$this->missionRuntimeConvergenceEvidence($mission);}catch(Throwable){$evidence=null;}
+            if(!is_array($evidence))continue;
+            $checkpoint=self::missionCheckpoint((string)($mission['checkpoint_json']??'{}'),[
+                'state'=>'COMPLETED_BY_RUNTIME_CONVERGENCE','convergedAt'=>$at,'staleReason'=>null,
+                'nextAutomaticAction'=>'NONE','sourcePromotionExecutionId'=>$evidence['sourcePromotionExecutionId'],
+                'convergedSourceSha'=>$evidence['sourceSha'],'runtimeTarget'=>$evidence['runtimeTarget'],
+                'runtimeSha'=>$evidence['runtimeSha'],
+            ]);
+            try{
+                $this->pdo->exec('BEGIN IMMEDIATE');
+                $execution=$this->pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,checkpoint_json=:checkpoint,last_error_code=NULL,updated_at=:at WHERE execution_id=:execution AND project_id=:project AND required_capability=:capability AND lease_owner=:owner AND state='WAITING_FOR_CAPABILITY'");
+                $execution->execute(['checkpoint'=>$checkpoint,'at'=>$at,'execution'=>$mission['execution_id'],'project'=>$projectId,'capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER]);
+                if($execution->rowCount()!==1){$this->pdo->exec('ROLLBACK');continue;}
+                $task=$this->pdo->prepare("UPDATE control_tasks SET state='COMPLETED',lease_expires_at=NULL,progress=100,result_summary='Project mission converged in canonical runtime target',failure_code=NULL,updated_at=:at WHERE task_id=:task AND state='WAITING_FOR_WORKER'");
+                $task->execute(['at'=>$at,'task'=>$mission['task_id']]);
+                if($task->rowCount()!==1){$this->pdo->exec('ROLLBACK');continue;}
+                $envelope=$this->pdo->prepare("UPDATE control_execution_envelopes SET state='RELEASED',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state='WAITING'");
+                $envelope->execute(['at'=>$at,'execution'=>$mission['execution_id']]);
+                if($envelope->rowCount()!==1){$this->pdo->exec('ROLLBACK');continue;}
+                $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'COMPLETED',100,'Project mission auto-closed after exact source and runtime convergence proof',:at)")
+                    ->execute(['id'=>self::uuid(),'task'=>$mission['task_id'],'at'=>$at]);
+                $this->pdo->exec('COMMIT');
+                $closed[]=(string)$mission['execution_id'];
+            }catch(Throwable){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}}
+        }
+        return $closed;
+    }
+
+    /** @param array<string,mixed> $mission @return array<string,string>|null */
+    private function missionRuntimeConvergenceEvidence(array $mission): ?array
+    {
+        $execution=strtolower((string)($mission['execution_id']??''));
+        $projectId=strtolower((string)($mission['project_id']??''));
+        if(!self::uuidValid($execution)||!self::uuidValid($projectId))return null;
+        try{$scope=(new HubScopeAuthorizer($this->pdo))->forMission($execution);}catch(HubScopeAuthorizerException){return null;}
+        $repository=is_string($scope['repository']??null)?strtolower(trim((string)$scope['repository'])):'';
+        $releaseTrack=is_string($scope['releaseTrack']??null)?strtolower(trim((string)$scope['releaseTrack'])):'';
+        $runtimeTarget=is_string($scope['runtimeTarget']??null)?trim((string)$scope['runtimeTarget']):'';
+        if($repository===''||$releaseTrack===''||preg_match('#^refs/heads/[A-Za-z0-9._/-]{1,180}$#',$runtimeTarget)!==1)return null;
+        $track=HubUpdateTargetRegistry::byReleaseTrack($releaseTrack);
+        if(!is_array($track)||($track['repository']??null)!==$repository||($track['productionRef']??null)!==$runtimeTarget)return null;
+        $repoConfig=HubUpdateTargetRegistry::repositories()[$repository]??null;
+        if(!is_array($repoConfig))return null;
+        $gitRoot=getenv('AWH_CANONICAL_GIT_ROOT');if(!is_string($gitRoot)||$gitRoot==='')$gitRoot='/srv/awh-git';
+        $gitReal=realpath($gitRoot);if(!is_string($gitReal)||!is_dir($gitReal)||is_link($gitRoot))return null;
+        $repo=$gitReal.'/'.(string)$repoConfig['directory'];$repoReal=realpath($repo);
+        if(!is_string($repoReal)||dirname($repoReal)!==$gitReal||!is_dir($repoReal)||is_link($repo))return null;
+
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.checkpoint_json,e.updated_at FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.project_id=:project AND e.required_capability='source.promote' AND e.state='COMPLETED' AND t.state='COMPLETED' AND x.state='RELEASED' ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 200");
+        $q->execute(['project'=>$projectId]);$promotion=null;
+        foreach($q->fetchAll() as $row){
+            try{$candidate=json_decode((string)$row['checkpoint_json'],true,24,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(!is_array($candidate)||($candidate['repository']??null)!==$repository||strtolower((string)($candidate['missionExecutionId']??''))!==$execution)continue;
+            $target=strtolower((string)($candidate['targetSha']??''));$notes=$candidate['releaseNotes']??null;
+            if(preg_match('/^[a-f0-9]{40}$/',$target)!==1||!is_array($notes)||strtolower((string)($notes['releaseTrack']??''))!==$releaseTrack)continue;
+            $promotion=['executionId'=>(string)$row['execution_id'],'targetSha'=>$target];break;
+        }
+        if(!is_array($promotion))return null;
+        $runtime=$this->runGitResult($repoReal,['rev-parse','--verify',$runtimeTarget]);
+        $runtimeSha=strtolower(trim((string)($runtime['stdout']??'')));
+        if(($runtime['code']??1)!==0||preg_match('/^[a-f0-9]{40}$/',$runtimeSha)!==1)return null;
+        $ancestor=$this->runGitResult($repoReal,['merge-base','--is-ancestor',(string)$promotion['targetSha'],$runtimeSha]);
+        if(($ancestor['code']??1)!==0)return null;
+        return [
+            'sourcePromotionExecutionId'=>(string)$promotion['executionId'],
+            'sourceSha'=>(string)$promotion['targetSha'],
+            'runtimeTarget'=>$runtimeTarget,
+            'runtimeSha'=>$runtimeSha,
+        ];
     }
 
     /** @return list<array<string,mixed>> */
