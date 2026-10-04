@@ -26,17 +26,30 @@ const statusLabel=(state)=>({
   DRAFT:'รอไฟล์เว็บไซต์',
   DEGRADED:'ต้องตรวจสอบ',
   ROUTED:'ตรวจพบเส้นทาง',
-  OBSERVED:'เชื่อมกับ Project แล้ว',
+  OBSERVED:'ติดตามผ่าน Project',
   ALIAS:'ชื่อทางเข้า',
 })[state]||'กำลังตรวจสอบ';
 
 const runtimeLabel=(value)=>({AUTO:'อัตโนมัติ',PHP:'PHP',NODE:'Node',STATIC:'เว็บไซต์แบบไฟล์',SERVICE:'บริการเว็บ',REDIRECT:'Redirect',UNKNOWN:'ยังไม่ระบุ'})[value]||value||'—';
-const ownershipLabel=(value)=>({MANAGED:'AWH Managed',ADOPTED:'เชื่อมกับ Project แล้ว',DISCOVERED:'ตรวจพบจากเซิร์ฟเวอร์',ALIAS:'ชื่อทางเข้า / Redirect'})[value]||'ตรวจพบ';
+const ownershipLabel=(value)=>({MANAGED:'AWH ดูแลอยู่',ADOPTED:'ติดตามผ่าน Project',DISCOVERED:'เว็บเดิม · ยังไม่ได้รับเข้าดูแล',ALIAS:'ชื่อทางเข้า'})[value]||'เว็บเดิม';
 const routeLabel=(value)=>({STATIC:'Static',PHP:'PHP',PROXY:'Reverse proxy',REDIRECT:'Redirect',UNKNOWN:'ยังไม่ระบุ'})[value]||value||'—';
 const environmentLabel=(value)=>({PRODUCTION:'ใช้งานจริง',STAGING:'ทดสอบ',PREVIEW:'ตัวอย่าง'})[value]||value||'—';
 const httpStateLabel=(value)=>({HEALTHY:'HTTP ตอบปกติ',REACHABLE:'เข้าถึงได้',DOWN:'HTTP ไม่ผ่าน',UNKNOWN:'ยังตรวจไม่ได้',SKIPPED_ARCHIVED:'เก็บเข้าคลัง'})[value]||'ยังตรวจไม่ได้';
 const dnsStateLabel=(value)=>({MATCHED:'DNS ตรง',MISSING:'DNS ไม่พบ',DIFFERENT_TARGET:'DNS ชี้คนละปลายทาง',UNKNOWN:'DNS ยังยืนยันไม่ได้'})[value]||'DNS ยังยืนยันไม่ได้';
 function reliabilityMap(kind){const rows=Array.isArray(reliability?.[kind])?reliability[kind]:[];return new Map(rows.filter((row)=>row&&row.host).map((row)=>[String(row.host).toLowerCase(),row]));}
+
+function siteDisplayName(item){
+  const name=String(item?.name||'').trim();
+  const host=String(item?.primaryHost||'').trim();
+  if(name&&host&&name.toLowerCase()!==host.toLowerCase())return name;
+  if(item?.projectName)return String(item.projectName);
+  const suffix='.'+CANONICAL_DOMAIN;
+  const short=host===CANONICAL_DOMAIN?'KRUART':host.endsWith(suffix)?host.slice(0,-suffix.length):host;
+  if(!short)return 'เว็บไซต์';
+  if(item?.environment==='STAGING')return 'เว็บทดสอบ · '+short;
+  if(item?.environment==='PREVIEW')return 'เว็บตัวอย่าง · '+short;
+  return short;
+}
 
 function slugify(value){
   return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48);
@@ -234,34 +247,40 @@ function adoptionPanel(item){
   const copy=document.createElement('div');copy.className='site-adoption-copy';
   const strong=document.createElement('strong');
   const small=document.createElement('small');
+  const explanation=document.createElement('p');
   copy.append(strong,small);wrap.append(copy);
+
   if(item.ownership==='ADOPTED'){
-    strong.textContent='เชื่อมกับ '+(item.projectName||'Project')+' แล้ว';
-    small.textContent='โหมด Observe-only · AWH อ่านสถานะได้ แต่ยังไม่แก้ Nginx หรือไฟล์ Production';
-    const release=document.createElement('button');release.type='button';release.className='secondary-button';release.textContent='ยกเลิกการเชื่อม';
+    strong.textContent='ติดตามผ่าน Project: '+(item.projectName||'Project');
+    small.textContent='ใช้เพื่อจัดระเบียบและติดตามสถานะเท่านั้น';
+    explanation.textContent='เว็บไซต์ยังใช้ไฟล์และเส้นทางเดิม AWH ไม่เปลี่ยนเว็บจากการเชื่อมนี้';
+    const release=document.createElement('button');release.type='button';release.className='secondary-button';release.textContent='หยุดติดตามผ่าน Project';
     release.addEventListener('click',async()=>{
       release.disabled=true;
-      try{await runAction(()=>observeHostingSite(item.primaryHost,item.projectId,'RELEASE'));$('hosting-message').textContent='ยกเลิกการเชื่อม Project แล้ว โดยเว็บไซต์ Production ไม่ถูกเปลี่ยน';await refreshHostingData(false);}
+      try{await runAction(()=>observeHostingSite(item.primaryHost,item.projectId,'RELEASE'));$('hosting-message').textContent='หยุดติดตามผ่าน Project แล้ว · เว็บไซต์ยังทำงานเหมือนเดิม';await refreshHostingData(false);}
       catch(error){reportError(error);$('hosting-message').textContent=friendlyError(error);}
       finally{release.disabled=false;}
     });
-    wrap.append(release);return wrap;
+    wrap.append(explanation,release);return wrap;
   }
-  strong.textContent='รับเว็บเดิมเข้าศูนย์ Hosting';
-  small.textContent='ขั้นแรกเป็น Observe-only เท่านั้น ไม่มีการย้ายไฟล์ เปลี่ยน route หรือ restart เว็บ';
+
+  strong.textContent='จัดเว็บนี้ไว้กับ Project';
+  small.textContent='ไม่จำเป็นต่อการใช้งานเว็บ';
+  explanation.textContent='ใช้เมื่อต้องการให้ AWH จำว่าเว็บนี้อยู่กับ Project ใดเท่านั้น ไม่มีการย้ายไฟล์ เปลี่ยนเส้นทาง หรือ restart เว็บ';
   const controls=document.createElement('div');controls.className='site-adoption-controls';
   const select=document.createElement('select');select.setAttribute('aria-label','เลือก Project สำหรับ '+item.primaryHost);
+  const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='เลือก Project (ถ้าต้องการ)';select.append(placeholder);
   for(const project of control?.projects||[]){const option=document.createElement('option');option.value=project.projectId;option.textContent=project.name;select.append(option);}
-  if(!select.childElementCount){const option=document.createElement('option');option.value='';option.textContent='ยังไม่มี Project';select.append(option);}
-  const adopt=document.createElement('button');adopt.type='button';adopt.className='primary-button';adopt.textContent='เชื่อมกับ Project';adopt.disabled=!select.value;
+  if((control?.projects||[]).length===0){placeholder.textContent='ยังไม่มี Project';}
+  const adopt=document.createElement('button');adopt.type='button';adopt.className='secondary-button';adopt.textContent='เพิ่มไว้ใน Project';adopt.disabled=true;
   select.addEventListener('change',()=>{adopt.disabled=!select.value;});
   adopt.addEventListener('click',async()=>{
     if(!select.value)return;adopt.disabled=true;
-    try{await runAction(()=>observeHostingSite(item.primaryHost,select.value,'ADOPT'));$('hosting-message').textContent='เชื่อมเว็บเดิมกับ Project แบบอ่านอย่างเดียวแล้ว · Production ไม่ถูกเปลี่ยน';await refreshHostingData(false);}
+    try{await runAction(()=>observeHostingSite(item.primaryHost,select.value,'ADOPT'));$('hosting-message').textContent='เพิ่มเว็บนี้ไว้ใน Project แล้ว · เว็บไซต์จริงไม่ได้ถูกเปลี่ยน';await refreshHostingData(false);}
     catch(error){reportError(error);$('hosting-message').textContent=friendlyError(error);}
     finally{adopt.disabled=!select.value;}
   });
-  controls.append(select,adopt);wrap.append(controls);return wrap;
+  controls.append(select,adopt);wrap.append(explanation,controls);return wrap;
 }
 
 function domainButton(site){
@@ -300,18 +319,16 @@ function renderHostingSummary(){
   const managed=Number(meta.managedCount??sites.length);
   const adopted=Number(meta.adoptedCount||0);
   const discovered=Number(meta.discoveredCount||0);
-  const aliases=Number(meta.aliasCount||0);
-  $('hosting-summary').textContent=total?(total+' รายการ · '+managed+' Managed · '+adopted+' เชื่อม Project'):'ยังไม่พบเว็บไซต์';
+  const legacy=adopted+discovered;
+  const attention=Array.isArray(reliability?.alerts)?reliability.alerts.length:0;
+  $('hosting-summary').textContent=total?(total+' เว็บ/ทางเข้า · '+managed+' AWH ดูแล · '+legacy+' เว็บเดิม'):'ยังไม่พบเว็บไซต์';
   const host=$('hosting-kpis');
   host.replaceChildren();
   const cards=[
-    ['เว็บไซต์/เส้นทาง',String(total),'รวมรายการที่พบจากเซิร์ฟเวอร์'],
-    ['AWH Managed',String(managed),'มี deploy / rollback authority'],
-    ['เชื่อม Project แล้ว',String(adopted),'Observe-only · ไม่เปลี่ยน route หรือไฟล์'],
-    ['เว็บเดิมที่ยังไม่เชื่อม',String(discovered),'ตรวจพบจริงจากเซิร์ฟเวอร์'],
-    ['ชื่อทางเข้า',String(aliases),'alias หรือ redirect ที่มีอยู่จริง'],
-    ['Project ยังไม่มี Hosting',String(projectsWithoutHosting.length),'พร้อมสร้างเว็บใหม่หรือเชื่อมเว็บเดิม'],
-    ['พื้นที่ว่าง',formatBytes(meta.storageAvailableBytes),Number.isFinite(Number(meta.storageUsedPercent))?('ใช้ไป '+Number(meta.storageUsedPercent).toFixed(0)+'% ของ VPS'):'กำลังรอสถานะพื้นที่'],
+    ['ทั้งหมด',String(total),'เว็บไซต์และชื่อทางเข้าที่ AWH ตรวจพบ'],
+    ['AWH ดูแลอยู่',String(managed),'อัปเดตและย้อนรุ่นได้จากศูนย์ Hosting'],
+    ['เว็บเดิม',String(legacy),'ยังทำงานตามปกติ · AWH ไม่เปลี่ยนเว็บโดยอัตโนมัติ'],
+    ['ต้องดู',String(attention),attention?'มีรายการที่ยืนยันแล้วว่าควรตรวจสอบ':'ยังไม่มีปัญหาที่ยืนยันต่อเนื่อง'],
   ];
   for(const [label,value,note] of cards){
     const card=document.createElement('div');card.className='hosting-kpi';
@@ -454,40 +471,43 @@ function renderSites(){
 
     const head=document.createElement('div');head.className='site-head';
     const titleWrap=document.createElement('div');titleWrap.className='site-title-wrap';
-    const title=document.createElement('h3');title.textContent=item.name||item.primaryHost||'เว็บไซต์';
+    const title=document.createElement('h3');title.textContent=siteDisplayName(item);
     const hostName=document.createElement('a');hostName.className='site-url';hostName.href=item.url||((item.tls===false?'http':'https')+'://'+item.primaryHost+'/');hostName.target='_blank';hostName.rel='noopener noreferrer';hostName.textContent=item.primaryHost||'—';
     titleWrap.append(title,hostName);
     const state=document.createElement('span');state.className='site-state';state.dataset.kind=item.ownership||'DISCOVERED';
     const liveOnline=item.liveState==='ONLINE';
     state.dataset.state=liveOnline?'READY':(item.state||'UNKNOWN');
-    state.textContent=item.ownership==='MANAGED'?(liveOnline?'เส้นทางพร้อม':statusLabel(item.state)):ownershipLabel(item.ownership);
+    state.textContent=item.ownership==='MANAGED'?(liveOnline?'AWH ดูแลอยู่':statusLabel(item.state)):item.ownership==='DISCOVERED'?'เว็บเดิม':item.ownership==='ADOPTED'?'ติดตามผ่าน Project':'ชื่อทางเข้า';
     head.append(titleWrap,state);card.append(head);
 
     const strip=document.createElement('div');strip.className='site-health-strip';
     const publicHost=String(item.liveHost||item.primaryHost||'').toLowerCase();const http=httpByHost.get(publicHost)||httpByHost.get(String(item.primaryHost||'').toLowerCase())||null;const dns=dnsByHost.get(String(item.primaryHost||'').toLowerCase())||null;
+    const httpOkay=http&&['HEALTHY','REACHABLE'].includes(http.state);
+    const httpLabel=http
+      ?(httpOkay?'เว็บไซต์เปิดได้':http.state==='DOWN'?'เว็บไซต์ตอบไม่สำเร็จ':httpStateLabel(http.state))
+      :(liveOnline?'เว็บไซต์เปิดได้':'กำลังตรวจเว็บไซต์');
+    const httpKind=http?(httpOkay?'ok':http.state==='UNKNOWN'||http.state==='SKIPPED_ARCHIVED'?'neutral':'attention'):(liveOnline?'ok':'neutral');
     const chips=[
-      [item.liveState==='ONLINE'?'เส้นทางพร้อม':item.liveState==='ROUTED'?'มี route':'ยังไม่พบ route',item.liveState==='ONLINE'?'ok':item.liveState==='ROUTED'?'neutral':'attention'],
-      [item.tls?'HTTPS':'HTTP',item.tls?'ok':'attention'],
-      [routeLabel(item.routeType),'neutral'],
       [environmentLabel(item.environment),'neutral'],
+      [httpLabel,httpKind],
+      [item.tls?'HTTPS พร้อม':'ยังไม่มี HTTPS',item.tls?'ok':'attention'],
     ];
-    if(http)chips.push([httpStateLabel(http.state)+(Number.isInteger(http.httpStatus)?(' '+http.httpStatus):'')+(Number.isInteger(http.latencyMs)?(' · '+http.latencyMs+' ms'):''),http.state==='HEALTHY'?'ok':http.state==='REACHABLE'||http.state==='SKIPPED_ARCHIVED'?'neutral':'attention']);
-    if(dns)chips.push([dnsStateLabel(dns.state),dns.state==='MATCHED'?'ok':dns.state==='UNKNOWN'?'neutral':'attention']);
-    if(Number.isInteger(item.certificateDaysRemaining))chips.push(['SSL '+item.certificateDaysRemaining+' วัน',item.certificateDaysRemaining<21?'attention':'ok']);
+    if(dns&&dns.state!=='MATCHED')chips.push([dnsStateLabel(dns.state),dns.state==='UNKNOWN'?'neutral':'attention']);
+    if(item.lifecycle?.state==='ARCHIVED')chips.push(['เก็บเข้าคลัง','neutral']);
     for(const [label,kind] of chips){const chip=document.createElement('span');chip.className='health-chip '+kind;chip.textContent=label;strip.append(chip);}
     card.append(strip);
 
     const note=document.createElement('div');note.className='site-event';
-    if(item.ownership==='DISCOVERED')note.textContent='ตรวจพบจาก Nginx · AWH แสดงข้อมูลแบบอ่านอย่างเดียวและยังไม่เปลี่ยนเว็บนี้';
-    else if(item.ownership==='ADOPTED')note.textContent='เชื่อมกับ '+(item.projectName||'Project')+' แบบ Observe-only · เว็บจริงยังใช้ route และไฟล์เดิมทั้งหมด';
-    else if(item.ownership==='ALIAS')note.textContent=item.redirectHost?('ชื่อทางเข้าเดิม · ส่งต่อไป '+item.redirectHost):'ชื่อทางเข้า/Redirect ที่ตรวจพบจาก Nginx';
-    else if(managed&&item.liveState==='ONLINE'&&['FAILED','DEGRADED'].includes(String(item.managementState||item.state)))note.textContent='เส้นทาง Production ยังพร้อม · เฉพาะสถานะการจัดการ AWH ต้องตรวจสอบก่อน Deploy ใหม่';
+    if(item.ownership==='DISCOVERED')note.textContent='เว็บนี้ใช้งานอยู่แล้ว AWH เพียงตรวจสุขภาพให้ ยังไม่ได้รับสิทธิ์อัปเดต เปลี่ยนไฟล์ หรือเปลี่ยนเส้นทางเว็บ';
+    else if(item.ownership==='ADOPTED')note.textContent='AWH จัดเว็บนี้ไว้กับ '+(item.projectName||'Project')+' เพื่อช่วยติดตามสถานะเท่านั้น เว็บจริงยังทำงานแบบเดิม';
+    else if(item.ownership==='ALIAS')note.textContent=item.redirectHost?('ชื่อนี้เป็นทางเข้าอีกชื่อหนึ่ง และส่งผู้ใช้ไป '+item.redirectHost):'ชื่อนี้เป็นทางเข้าเพิ่มเติมของเว็บไซต์';
+    else if(managed&&item.liveState==='ONLINE'&&['FAILED','DEGRADED'].includes(String(item.managementState||item.state)))note.textContent='เว็บไซต์ยังเปิดได้ตามปกติ แต่ AWH ต้องตรวจสถานะการจัดการก่อนอัปเดตรอบถัดไป';
     else{
       const sourceNote=sourceInstruction(managed||item);const eventNote=humanEvent(managed||item);
       note.textContent=sourceNote||eventNote||(item.routeDetected?'เส้นทางเว็บถูกตรวจพบในเซิร์ฟเวอร์':'AWH กำลังตรวจเส้นทางเว็บ');
     }
     card.append(note);
-    const adoption=adoptionPanel(item);if(adoption)card.append(adoption);
+    const adoption=adoptionPanel(item);
 
     if(managed&&managed.source?.ready!==true){
       const sourceAction=document.createElement('div');sourceAction.className='site-source-action';
@@ -507,9 +527,12 @@ function renderSites(){
     }
 
     const tech=document.createElement('details');tech.className='site-tech';
-    const summary=document.createElement('summary');summary.textContent='รายละเอียดเว็บไซต์';
+    const summary=document.createElement('summary');summary.textContent='ข้อมูลสำหรับผู้ดูแลระบบ';
     const meta=document.createElement('div');meta.className='site-meta';
     meta.append(statusChip('การดูแล: '+ownershipLabel(item.ownership)),statusChip('เส้นทางจริง: '+(item.liveState==='ONLINE'?'พร้อม + HTTPS':item.liveState==='ROUTED'?'มี route':'ยังไม่พบ route')),statusChip('ระบบ: '+runtimeLabel(item.runtimeType)),statusChip('เส้นทาง: '+routeLabel(item.routeType)),statusChip('สภาพแวดล้อม: '+environmentLabel(item.environment)));
+    if(http)meta.append(statusChip('HTTP: '+httpStateLabel(http.state)+(Number.isInteger(http.httpStatus)?(' '+http.httpStatus):'')+(Number.isInteger(http.latencyMs)?(' · '+http.latencyMs+' ms'):'')));
+    if(dns)meta.append(statusChip('DNS: '+dnsStateLabel(dns.state)));
+    if(Number.isInteger(item.certificateDaysRemaining))meta.append(statusChip('SSL: '+item.certificateDaysRemaining+' วัน'));
     if(item.ownership==='MANAGED'&&item.managementState)meta.append(statusChip('Managed state: '+statusLabel(item.managementState)));
     if(item.lifecycle?.state==='ARCHIVED')meta.append(statusChip('Lifecycle: Archived · เก็บ release/data ไว้ · ลบถาวรปิดอยู่'));
     else if(item.ownership==='MANAGED')meta.append(statusChip('Lifecycle: Active · ลบถาวรปิดอยู่'));
@@ -528,6 +551,7 @@ function renderSites(){
     if(item.source?.revisionId)meta.append(statusChip('Source: '+String(item.source.revisionId).slice(0,12)));
     if(item.currentReleaseId)meta.append(statusChip('รุ่นปัจจุบัน: '+String(item.currentReleaseId).slice(0,18)));
     tech.append(summary,meta);
+    if(adoption)tech.append(adoption);
     const history=Array.isArray(item.recentEvents)?item.recentEvents.slice(0,6):[];
     if(history.length){
       const log=document.createElement('div');log.className='site-event-log';

@@ -15,14 +15,14 @@
 <body>
 <header class="hosting-header"><a class="hosting-brand" href="./"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><strong>AWH</strong></a><div class="hosting-actions"><span id="hosting-state" role="status" aria-live="polite">กำลังตรวจความพร้อม…</span><a class="awh-back-link" href="./panel.html">ดูแลระบบ</a><button id="hosting-refresh" type="button">ตรวจอีกครั้ง</button></div></header>
 <main class="hosting-main">
-<section class="hosting-hero"><div><p class="eyebrow">AWH Hosting Center</p><h1>ทุกเว็บไซต์ในเซิร์ฟเวอร์ อยู่ที่เดียว</h1><p>เห็นเว็บไซต์ โดเมน ระบบที่ใช้ HTTPS และสถานะการดูแลจากภาพเดียว รวมเว็บเดิมที่มีอยู่แล้วและเว็บใหม่ในอนาคต</p></div><div id="hosting-summary" class="hosting-summary" role="status" aria-live="polite" aria-atomic="true">กำลังโหลด</div></section>
+<section class="hosting-hero"><div><p class="eyebrow">AWH Hosting Center</p><h1>เว็บไหนพร้อม เว็บไหน AWH ดูแลอยู่</h1><p>ดูสถานะเว็บไซต์แบบง่ายก่อน ส่วนข้อมูลระบบ เช่น DNS, Nginx และ Runtime ซ่อนไว้เมื่อยังไม่ต้องใช้</p></div><div id="hosting-summary" class="hosting-summary" role="status" aria-live="polite" aria-atomic="true">กำลังโหลด</div></section>
 
 <section id="hosting-kpis" class="hosting-kpis" aria-label="ภาพรวม Hosting"></section>
 <p id="hosting-message" class="form-message hosting-global-message" role="status"></p>
 
 <section class="hosting-panel sites-panel">
-<div class="section-heading"><div><span>Server inventory</span><h2>เว็บไซต์และ Subdomain ทั้งหมด</h2></div><small id="inventory-freshness">กำลังอ่านสถานะจากเซิร์ฟเวอร์</small></div>
-<div class="inventory-toolbar"><label class="inventory-search"><span class="sr-only">ค้นหาเว็บไซต์</span><input id="inventory-search" type="search" placeholder="ค้นหาเว็บหรือ subdomain" autocomplete="off" /></label><label class="inventory-filter"><span class="sr-only">กรองรายการ</span><select id="inventory-filter"><option value="ALL">ทั้งหมด</option><option value="MANAGED">AWH Managed</option><option value="ADOPTED">เชื่อมกับ Project แล้ว</option><option value="DISCOVERED">ตรวจพบจากเซิร์ฟเวอร์</option><option value="ALIAS">ชื่อทางเข้า / Redirect</option></select></label></div>
+<div class="section-heading"><div><span>เว็บไซต์</span><h2>เว็บไซต์ทั้งหมด</h2></div><small id="inventory-freshness">กำลังตรวจสถานะล่าสุด</small></div>
+<div class="inventory-toolbar"><label class="inventory-search"><span class="sr-only">ค้นหาเว็บไซต์</span><input id="inventory-search" type="search" placeholder="ค้นหาชื่อเว็บ" autocomplete="off" /></label><label class="inventory-filter"><span class="sr-only">กรองรายการ</span><select id="inventory-filter"><option value="ALL">ทั้งหมด</option><option value="MANAGED">AWH ดูแลอยู่</option><option value="ADOPTED">ติดตามผ่าน Project</option><option value="DISCOVERED">เว็บเดิมที่ยังไม่ได้รับเข้าดูแล</option><option value="ALIAS">ชื่อทางเข้าอื่น</option></select></label></div>
 <div id="site-list" class="site-list"></div>
 </section>
 

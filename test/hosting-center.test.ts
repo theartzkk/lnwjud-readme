@@ -19,7 +19,8 @@ test('Hosting Center exposes reconciled read-only server inventory without a sec
     readFile(new URL('../hub/src/HubInfrastructureService.php',import.meta.url),'utf8'),
   ]);
   assert.match(html,/AWH Hosting Center/);
-  assert.match(html,/เว็บไซต์และ Subdomain ทั้งหมด/);
+  assert.match(html,/เว็บไซต์ทั้งหมด/);
+  assert.match(html,/เว็บไหนพร้อม เว็บไหน AWH ดูแลอยู่/);
   assert.match(html,/id="hosting-kpis"/);
   assert.match(html,/id="domain-list"/);
   assert.match(html,/id="hosting-recovery"/);
@@ -32,13 +33,18 @@ test('Hosting Center exposes reconciled read-only server inventory without a sec
   assert.match(html,/id="hosting-summary" class="hosting-summary" role="status" aria-live="polite" aria-atomic="true"/);
   assert.match(html,/id="inventory-search"/);
   assert.match(js,/ownershipLabel/);
-  assert.match(js,/ตรวจพบจาก Nginx/);
-  assert.match(js,/readOnly|อ่านอย่างเดียว/);
+  assert.match(js,/เว็บนี้ใช้งานอยู่แล้ว/);
+  assert.match(js,/ไม่มีการย้ายไฟล์ เปลี่ยนเส้นทาง/);
   assert.match(css,/ownership-discovered/);
   assert.match(css,/ownership-adopted/);
   assert.match(js,/observeHostingSite/);
-  assert.match(js,/Observe-only/);
-  assert.match(js,/เส้นทาง Production ยังพร้อม/);
+  assert.match(js,/ไม่จำเป็นต่อการใช้งานเว็บ/);
+  assert.match(js,/เลือก Project \(ถ้าต้องการ\)/);
+  assert.match(js,/ข้อมูลสำหรับผู้ดูแลระบบ/);
+  assert.match(css,/site-adoption>p/);
+  assert.match(js,/if\(adoption\)tech\.append\(adoption\)/);
+  assert.doesNotMatch(js,/รับเว็บเดิมเข้าศูนย์ Hosting|Observe-only|ตรวจพบจาก Nginx/);
+  assert.match(js,/เว็บไซต์ยังเปิดได้ตามปกติ แต่ AWH ต้องตรวจสถานะการจัดการก่อนอัปเดตรอบถัดไป/);
   assert.equal((js.match(/function renderRecovery\(/g)||[]).length,1);
   assert.equal((js.match(/function renderTopology\(/g)||[]).length,1);
   assert.match(js,/renderOnboarding\(\)/);

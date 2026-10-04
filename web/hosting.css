@@ -130,13 +130,14 @@ a.site-url{font-weight:750}
 }
 .site-source-action{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #f0ddcf;background:#fffaf5}
 .site-source-action .secondary-button{flex:0 0 auto;text-decoration:none}
-.site-adoption{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding:12px;border:1px solid #d9e9e1;border-radius:12px;background:#f7fcf9}
+.site-adoption{display:grid;gap:9px;margin:12px 0 2px;padding:12px;border:1px solid #d9e9e1;border-radius:12px;background:#f7fcf9}
 .site-adoption-copy{display:grid;gap:3px;min-width:0}
 .site-adoption-copy strong{font-size:12px;color:#245c46}
 .site-adoption-copy small{font-size:10px;line-height:1.45;color:#667085}
-.site-adoption-controls{display:flex;align-items:center;gap:8px;min-width:min(100%,430px)}
+.site-adoption>p{margin:0;color:#667085;font-size:11px;line-height:1.55}
+.site-adoption-controls{display:flex;align-items:center;gap:8px}
 .site-adoption-controls select{min-width:180px;min-height:44px;padding:8px 10px;border:1px solid #cfd8e3;border-radius:11px;background:#fff;color:var(--hosting-text);font-size:13px}
-.site-adoption button{flex:0 0 auto}
+.site-adoption button{min-height:44px}
 .site-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .site-actions>*{min-height:44px}
 .site-tech{margin-top:10px;border-top:1px solid var(--hosting-line)}
@@ -177,10 +178,10 @@ a.site-url{font-weight:750}
   .hosting-form input,.hosting-form select{min-height:46px}
   .create-button{min-height:50px}
   .site-head{align-items:flex-start}
-  .site-source-action,.site-adoption{align-items:stretch;flex-direction:column}
-  .site-source-action .secondary-button,.site-adoption>button{width:100%;text-align:center}
-  .site-adoption-controls{display:grid;grid-template-columns:1fr;min-width:0}
-  .site-adoption-controls select,.site-adoption-controls button{width:100%}
+  .site-source-action{align-items:stretch;flex-direction:column}
+  .site-source-action .secondary-button{width:100%;text-align:center}
+  .site-adoption-controls{display:grid;grid-template-columns:1fr}
+  .site-adoption-controls select,.site-adoption-controls button,.site-adoption-body>button{width:100%}
   .site-actions{display:grid;grid-template-columns:1fr 1fr}
   .site-actions>*{width:100%}
   .site-actions .danger-button:last-child:nth-child(odd){grid-column:1/-1}
@@ -237,7 +238,7 @@ a.site-url{font-weight:750}
 .ownership-adopted{border-left:3px solid #65b88f}
 .ownership-alias{border-left:3px solid #9b8dd8}
 .site-health-strip{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
-.health-chip,.tls-chip{display:inline-flex;align-items:center;min-height:27px;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:800}
+.health-chip,.tls-chip{display:inline-flex;align-items:center;min-height:29px;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:800}
 .health-chip.ok,.tls-chip.ok{background:#ecfdf3;color:#18794e}
 .health-chip.attention,.tls-chip.attention{background:#fff7ed;color:#b45309}
 .health-chip.neutral{background:#f2f4f7;color:#667085}
@@ -269,7 +270,7 @@ a.site-url{font-weight:750}
 @media(max-width:430px){
   .hosting-kpi>small{display:none}
   .site-health-strip{gap:5px}
-  .health-chip,.tls-chip{font-size:9px}
+  .health-chip,.tls-chip{font-size:10px}
 }
 
 .hosting-global-message{margin:0 2px 8px;min-height:0}
