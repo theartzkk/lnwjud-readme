@@ -1,0 +1,1 @@
+{"name":"awh-hatchet-worker","private":true,"version":"1.0.0","type":"commonjs","engines":{"node":">=20"},"dependencies":{"@hatchet-dev/typescript-sdk":"1.34.0"}}

@@ -1,0 +1,29 @@
+[Unit]
+Description=AWH Hatchet execution worker
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/var/lib/awh-hub/provider-credentials/hatchet.key
+
+[Service]
+Type=simple
+User=awh-hub
+Group=awh-hub
+WorkingDirectory=/opt/awh-tools/hatchet-worker
+Environment=AWH_HATCHET_CREDENTIAL_FILE=/var/lib/awh-hub/provider-credentials/hatchet.key
+Environment=AWH_HATCHET_SLOTS=4
+ExecStart=/opt/awh-tools/hatchet-worker/node/bin/node /opt/awh-tools/hatchet-worker/app/worker.cjs
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=60
+StartLimitBurst=5
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/var/lib/awh-hub/provider-credentials/hatchet.key /opt/awh-tools/hatchet-worker
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
