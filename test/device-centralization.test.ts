@@ -44,6 +44,10 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /AWH_RUNTIME_NAME_MARKER/);
   assert.match(bootstrap, /AWH_RUNTIME_MCP_NAME_MARKER/);
   assert.match(bootstrap, /AWH_RUNTIME_INSTRUCTIONS_MARKER/);
+  assert.match(bootstrap, /AWH_RUNTIME_LEGACY_INSTRUCTIONS_MARKER/);
+  assert.match(bootstrap, /until the requested outcome is complete/);
+  assert.match(bootstrap, /do not end the turn merely to say you will continue/);
+  assert.match(bootstrap, /never duplicate a Mission, candidate, release, or execution/);
   assert.match(bootstrap, /AWH_RUNTIME_READY_MARKER/);
   assert.match(bootstrap, /AWH_RUNTIME_PERMISSION_MARKER/);
   assert.match(bootstrap, /--awh-permission-status/);

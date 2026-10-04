@@ -122,7 +122,8 @@ async function findApp(root: string): Promise<string | null> {
 const AWH_HEADLESS_PATCH_MARKER = 'AWH_DEVICE_RUNTIME_HEADLESS === "1"';
 const AWH_RUNTIME_NAME_MARKER = `var APP_NAME = "${AWH_RUNTIME_APP_NAME}";`;
 const AWH_RUNTIME_MCP_NAME_MARKER = `var APP_NAME2 = "${AWH_RUNTIME_APP_NAME}";`;
-const AWH_RUNTIME_INSTRUCTIONS_MARKER = 'Continue using AWH Device Runtime tools';
+const AWH_RUNTIME_LEGACY_INSTRUCTIONS_MARKER = 'Continue using AWH Device Runtime tools';
+const AWH_RUNTIME_INSTRUCTIONS_MARKER = 'Continue using AWH Device Runtime tools until the requested outcome is complete. When work is running, queued, pending, or returns a task id, keep observing the same work with wait/status and continue from its result; do not end the turn merely to say you will continue. Stop only at a verified terminal outcome or an explicit owner-required boundary such as approval, login, credential, or physical action. Reuse or join existing work and never duplicate a Mission, candidate, release, or execution.';
 const AWH_RUNTIME_READY_MARKER = 'AWH Device Runtime MCP stdio ready';
 const AWH_RUNTIME_PERMISSION_MARKER = 'AWH_PERMISSION_BOOTSTRAP_V1';
 
@@ -235,6 +236,7 @@ if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AW
     nextMain = nextMain.replace('var APP_NAME = "lnwjud";', AWH_RUNTIME_NAME_MARKER);
     nextMain = nextMain.replace('var APP_NAME2 = "lnwjud";', AWH_RUNTIME_MCP_NAME_MARKER);
     nextMain = nextMain.replaceAll('Continue using lnwjud tools', AWH_RUNTIME_INSTRUCTIONS_MARKER);
+    nextMain = nextMain.replaceAll(AWH_RUNTIME_LEGACY_INSTRUCTIONS_MARKER, AWH_RUNTIME_INSTRUCTIONS_MARKER);
     nextMain = nextMain.replaceAll('lnwjud MCP stdio ready', AWH_RUNTIME_READY_MARKER);
     nextMain = nextMain.replaceAll('lnwjud updated the live MCP tool list', 'AWH Device Runtime updated the live MCP tool list');
     nextMain = nextMain.replaceAll('? "lnwjud \\u0E2D', '? "AWH Device Runtime \\u0E2D');
