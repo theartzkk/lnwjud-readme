@@ -528,7 +528,7 @@ import {
     const provider = state.provider;
     if (!provider) { message('provider-status', 'ยังไม่ได้ตั้งค่า AI ของ AWH'); return; }
     const budget = provider.budget || {}; const credential = provider.credential || {}; const pricing = provider.pricing || {};
-    message('provider-status', provider.available ? `AI เดือนนี้ ${baht(budget.usedMicrounits)} จาก ${baht(budget.monthlyMicrounits)} · เหลือ ${baht(budget.remainingMicrounits)}` : (provider.keyConfigured ? `เชื่อม API แล้ว · ทดสอบล่าสุด ${credential.lastTestStatus === 'PASS' ? 'ผ่าน' : credential.lastTestStatus === 'FAILED' ? 'ไม่ผ่าน' : 'ยังไม่ทดสอบ'}` : 'ยังไม่ได้เชื่อม OpenAI API key'));
+    message('provider-status', provider.available ? `AI เดือนนี้ ${baht(budget.usedMicrounits)} จาก ${baht(budget.monthlyMicrounits)} · เหลือ ${baht(budget.remainingMicrounits)}` : (provider.keyConfigured ? `เชื่อม API แล้ว · ทดสอบล่าสุด ${credential.lastTestStatus === 'PASS' ? 'ผ่าน' : credential.lastTestStatus === 'FAILED' ? 'ไม่ผ่าน' : 'ยังไม่ทดสอบ'}` : 'Provider หลักยังไม่ได้เชื่อม API key'));
     $('provider-budget').value = (Number.isInteger(budget.monthlyMicrounits) ? budget.monthlyMicrounits / MICRO_BAHT : 0).toFixed(2); $('provider-warning').value = (Number.isInteger(budget.warningMicrounits) ? budget.warningMicrounits / MICRO_BAHT : 0).toFixed(2); $('provider-enabled').checked = provider.enabled === true;
     if ($('provider-routing-strategy')) $('provider-routing-strategy').value = ['SAVER','BALANCED','QUALITY'].includes(provider.routingStrategy) ? provider.routingStrategy : 'BALANCED';
     const models = provider.models || {}; for (const [id, value] of [['provider-model-fast', models.fast], ['provider-model-balanced', models.balanced], ['provider-model-strong', models.strong]]) if ($(id) && typeof value === 'string') $(id).value = value;
@@ -1038,10 +1038,25 @@ import {
       const note = document.createElement('div'); note.className = 'session-item'; note.textContent = 'AWH จะไม่แสดงลิงก์ที่ตรวจสอบไม่ได้'; list.append(note);
     }
   }
+  function providerHubSummary() {
+    const providers = Array.isArray(state.providerHub?.hub?.providers) ? state.providerHub.hub.providers : [];
+    const statuses = state.providerHub?.statuses && typeof state.providerHub.statuses === 'object' ? state.providerHub.statuses : {};
+    const ready = providers.filter((item) => {
+      const status = statuses[item.providerId] || {};
+      return status.available === true && status.credential?.lastTestStatus === 'PASS';
+    });
+    if (ready.length) {
+      const names = ready.slice(0, 2).map((item) => item.displayName || item.providerId).join(' · ');
+      return `พร้อมใช้งาน ${ready.length} Provider${names ? ' · ' + names : ''}${ready.length > 2 ? ' +' + (ready.length - 2) : ''}`;
+    }
+    const configured = providers.filter((item) => statuses[item.providerId]?.keyConfigured === true);
+    if (configured.length) return `เชื่อมแล้ว ${configured.length} Provider · ยังต้องทดสอบ`;
+    const provider = state.provider || {}; const credential = provider.credential || {};
+    return provider.available ? 'พร้อมใช้งาน · Auto' : provider.keyConfigured ? `เชื่อมแล้ว · ${credential.lastTestStatus === 'PASS' ? 'ตรวจสอบผ่าน' : 'ต้องทดสอบ'}` : 'ยังไม่เชื่อม AI Provider';
+  }
   function renderSettingsOverview() {
-    const provider = state.provider || {}; const credential = provider.credential || {}; const workers = state.ownerStatus?.workers || state.control?.workers || [];
-    const ai = provider.available ? 'พร้อมใช้งาน · Auto' : provider.keyConfigured ? `เชื่อมแล้ว · ${credential.lastTestStatus === 'PASS' ? 'ตรวจสอบผ่าน' : 'ต้องทดสอบ'}` : 'ยังไม่เชื่อม API key';
-    message('settings-ai-summary', ai);
+    const workers = state.ownerStatus?.workers || state.control?.workers || [];
+    message('settings-ai-summary', providerHubSummary());
     message('settings-device-summary', workers.length ? `${workers.filter((worker) => worker.state === 'READY' || worker.state === 'WORKING').length} เครื่องพร้อมทำงาน` : 'ยังไม่มี AWH Agent ที่พร้อมทำงาน');
     const list = $('settings-worker-list'); if (list) {
       list.replaceChildren();

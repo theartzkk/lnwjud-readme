@@ -44,16 +44,24 @@ test("iPhone dictation is one-shot and self-recovers instead of remaining stuck"
   assert.match(css, /\.awh-dictation-state/);
 });
 
-test("Provider setup is discoverable and high-risk confirmation happens in context", async () => {
-  const [app, html] = await Promise.all([read("web/app.js"), read("web/index.html")]);
+test("Provider setup is discoverable, truthful, and high-risk confirmation happens in context", async () => {
+  const [app, html, adapter] = await Promise.all([
+    read("web/app.js"), read("web/index.html"), read("web/control-plane-adapter.js"),
+  ]);
   assert.match(html, /data-profile-section="ai"/);
   assert.match(html, /<strong>AI Providers<\/strong>/);
   assert.match(app, /\+ เพิ่ม Provider/);
   assert.match(app, /id="provider-add-list"/);
+  assert.match(app, /function providerHubSummary/);
+  assert.match(app, /status\.available === true && status\.credential\?\.lastTestStatus === 'PASS'/);
+  assert.match(app, /พร้อมใช้งาน \$\{ready\.length\} Provider/);
   assert.match(app, /function requestPrivilegedPassword/);
   assert.match(app, /async function withOwnerStepUp/);
   assert.match(app, /await stepUp\(password\)/);
   assert.match(app, /withOwnerStepUp\(\(\) => updateProviderHubCredential\(item\.providerId, 'SET', secret\)/);
+  assert.match(adapter, /PROVIDER_AUTH_FAILED: 'AI Provider ปฏิเสธ API key นี้/);
+  assert.match(adapter, /PROVIDER_RATE_LIMITED: 'AI Provider จำกัดการเรียกใช้ชั่วคราว/);
+  assert.doesNotMatch(adapter, /PROVIDER_(?:AUTH_FAILED|PERMISSION_DENIED|QUOTA_EXHAUSTED|RATE_LIMITED|UNAVAILABLE|TEST_FAILED): '.*OpenAI/);
   assert.doesNotMatch(app, /เปิดโหมดผู้ดูแลขั้นสูง|pendingPrivilegedAction/);
 });
 
