@@ -7,6 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { platform, arch, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { npmLaunchSpec } from './lib/npm-runtime.mjs';
+import { gitSourceIdentity, projectKey, sharedRoot, withSingleFlight } from './test-singleflight.mjs';
 
 const MIN_NODE_MAJOR = 20;
 const AWH_BOUNDED_NODE = process.env.AWH_NODE_RUNTIME || '/opt/awh-toolchain/node/bin/node';
@@ -664,7 +665,23 @@ async function main() {
   await writeFile(join(OUTPUT_DIR, 'latest.json'), `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   await writeFile(join(OUTPUT_DIR, 'latest.log'), summary, 'utf8');
   process.stdout.write(summary);
-  process.exitCode = failed ? 1 : 0;
+  return failed ? 1 : 0;
 }
 
-if (VALID_MODES.has(mode)) await main();
+if (VALID_MODES.has(mode)) {
+  const lockRoot = await sharedRoot();
+  const sourceIdentity = await gitSourceIdentity();
+  const qaKey = `${await projectKey()}-qa`;
+  const singleFlight = await withSingleFlight({
+    lockRoot,
+    key: qaKey,
+    sha: sourceIdentity,
+    mode: `qa-${mode}`,
+    waitTimeoutMs: 30 * 60_000,
+    staleMs: 30 * 60_000,
+    reuseCompletedPass: false,
+    runner: main,
+  });
+  if (singleFlight.reused) process.stdout.write(`QA_ORCHESTRATOR_SINGLEFLIGHT=REUSED mode=${mode} sha=${sourceIdentity} result=${singleFlight.code === 0 ? 'PASS' : 'FAIL'}\n`);
+  process.exitCode = singleFlight.code;
+}

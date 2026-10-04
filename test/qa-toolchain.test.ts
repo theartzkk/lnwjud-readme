@@ -68,6 +68,17 @@ test('deep QA builds compiled runtime before tests that invoke production helper
   assert.match(source, /clean immutable release workspaces never depend on stale artifacts/);
 });
 
+test('top-level QA is single-flight per exact source identity and mode', async () => {
+  const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
+  assert.match(source, /gitSourceIdentity, projectKey, sharedRoot, withSingleFlight/);
+  assert.match(source, /const qaKey = `\$\{await projectKey\(\)\}-qa`/);
+  assert.match(source, /mode: `qa-\$\{mode\}`/);
+  assert.match(source, /reuseCompletedPass: false/);
+  assert.match(source, /runner: main/);
+  assert.match(source, /QA_ORCHESTRATOR_SINGLEFLIGHT=REUSED/);
+  assert.match(source, /waitTimeoutMs: 30 \* 60_000/);
+});
+
 
 test('local QA self-promotes to the bounded AWH Node runtime instead of failing on stale system Node', async () => {
   const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
