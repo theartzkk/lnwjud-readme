@@ -36,7 +36,7 @@ import { createDesktopCredentialStore, CredentialStoreError } from '../credentia
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
 import { deviceRuntimePermissionStatus, ensureAwhDeviceRuntime, type DeviceRuntimePermissionStatus, type DeviceBootstrapResult } from '../device-bootstrap.js';
-import { ensureRemoteDesktopConnector, remoteDesktopConnectorStatus } from '../remote-desktop-connector.js';
+import { remoteDesktopConnectorStatus } from '../remote-desktop-connector.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
 import { ControlPlaneWorkerClient } from '../control-plane-worker-client.js';
 import { ControlPlaneWorkerRuntime } from '../control-plane-worker-runtime.js';
@@ -642,8 +642,8 @@ async function ensureConnectedDeviceRuntime(): Promise<void> {
   const config = loadConfig();
   const runtime = await ensureDeviceRuntimeSingleFlight(config.dataDir);
   if (runtime.state !== 'READY' || !startupPermissionsReady) return;
-  const enrolled = await enrollmentState().catch(() => ({ enrolled: false }));
-  if (enrolled.enrolled === true) await ensureRemoteDesktopConnector().catch(() => undefined);
+  // Remote Desktop Commander is an independent fallback transport.
+  // AWH must never provision or start a second RDC runtime from inside the Agent.
 }
 
 async function healConnectedDeviceRuntime(): Promise<void> {
@@ -652,8 +652,6 @@ async function healConnectedDeviceRuntime(): Promise<void> {
   try {
     const config = loadConfig();
     if (!config.controlPlaneWorker) return;
-    const current = await remoteDesktopConnectorStatus().catch(() => null);
-    if (current?.state === 'READY') return;
     const permissions = await startupPermissionState().catch(() => null);
     if (permissions?.ready !== true) return;
     await ensureConnectedDeviceRuntime();

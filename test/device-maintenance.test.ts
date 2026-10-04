@@ -10,8 +10,9 @@ import { managedRuntimeRoots, prepareCleanReinstall, resetThisDevice } from '../
 test('clean reinstall removes only managed runtime roots while preserving identity and pairing', async()=>{
   const root=await mkdtemp(join(tmpdir(),'awh-maintenance-'));
   const dataDir=join(root,'.awh'); const home=join(root,'home'); const appSupport=join(home,'Library','Application Support','AWH');
-  await mkdir(dataDir,{recursive:true}); await mkdir(join(appSupport,'DeviceRuntime'),{recursive:true}); await mkdir(join(dataDir,'projects'),{recursive:true});
-  await writeFile(join(dataDir,'projects','keep.txt'),'keep');
+  const rdcSession=join(home,'.desktop-commander-device');
+  await mkdir(dataDir,{recursive:true}); await mkdir(join(appSupport,'DeviceRuntime'),{recursive:true}); await mkdir(join(dataDir,'projects'),{recursive:true}); await mkdir(rdcSession,{recursive:true});
+  await writeFile(join(dataDir,'projects','keep.txt'),'keep'); await writeFile(join(rdcSession,'device.json'),'rdc-keep');
   const identity=await loadOrCreateDeviceIdentity(dataDir,'Fixture Mac');
   const store=new InMemoryCredentialStore(); await store.set(DEVICE_TOKEN_CREDENTIAL_KEY,'fixture-device-token');
   const result=await prepareCleanReinstall(dataDir,store,'darwin',home,{});
@@ -19,6 +20,8 @@ test('clean reinstall removes only managed runtime roots while preserving identi
   assert.equal((await readDeviceIdentity(dataDir))?.deviceId,identity.deviceId);
   assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY),'fixture-device-token');
   assert.equal(await readFile(join(dataDir,'projects','keep.txt'),'utf8'),'keep');
+  assert.equal(await readFile(join(rdcSession,'device.json'),'utf8'),'rdc-keep');
+  assert.equal(managedRuntimeRoots('darwin',home,{}).some((entry)=>entry.includes('.desktop-commander-device')),false);
 });
 
 test('reinstall fails closed when identity and pairing no longer match', async()=>{

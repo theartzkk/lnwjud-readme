@@ -246,10 +246,17 @@ if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AW
     nextMain = nextMain.replaceAll('? "lnwjud \\u0E2D', '? "AWH Device Runtime \\u0E2D');
     if (!nextMain.includes(AWH_RUNTIME_NAME_MARKER) || !nextMain.includes(AWH_RUNTIME_MCP_NAME_MARKER) || !nextMain.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) || !nextMain.includes(AWH_RUNTIME_READY_MARKER)) throw new Error('DEVICE_RUNTIME_REBRAND_NAME_PATCH_FAILED');
     await writeFile(mainPath, nextMain, 'utf8');
+    const runtimePackagePath = join(work, 'package.json');
+    const runtimePackage = JSON.parse(await readFile(runtimePackagePath, 'utf8')) as Record<string, unknown>;
+    runtimePackage.name = 'awh-device-runtime';
+    runtimePackage.productName = 'AWH Device Runtime';
+    await writeFile(runtimePackagePath, JSON.stringify(runtimePackage, null, 2) + '\n', 'utf8');
     await rm(next, { force: true });
     await createPackageWithOptions(work, next, { unpack: '{dist/main/*.node,node_modules/@electron-internal/extract-zip/**}' });
     const patched = extractFile(next, 'dist/main/main.js').toString('utf8');
+    const patchedPackage = JSON.parse(extractFile(next, 'package.json').toString('utf8')) as Record<string, unknown>;
     if (!patched.includes(AWH_HEADLESS_PATCH_MARKER) || !patched.includes(AWH_RUNTIME_NAME_MARKER) || !patched.includes(AWH_RUNTIME_MCP_NAME_MARKER) || !patched.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) || !patched.includes(AWH_RUNTIME_READY_MARKER) || !patched.includes(AWH_RUNTIME_PERMISSION_MARKER) || patched.includes(AWH_RUNTIME_PERMISSION_V1_MARKER)) throw new Error('DEVICE_RUNTIME_PATCH_VERIFY_FAILED');
+    if (patchedPackage.name !== 'awh-device-runtime' || patchedPackage.productName !== 'AWH Device Runtime') throw new Error('DEVICE_RUNTIME_PACKAGE_IDENTITY_VERIFY_FAILED');
     await rm(backup, { force: true });
     await rename(archive, backup);
     try { await rename(next, archive); }
@@ -278,10 +285,7 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   }
   const updates: Array<[string, string, string]> = [
     ['CFBundleDisplayName', '-string', 'AWH Device Runtime'],
-    // Electron resolves its helper-app bundle names from the original
-    // CFBundleName. Keep that internal implementation key unchanged while
-    // rebranding every user-visible identity and the top-level executable.
-    ['CFBundleName', '-string', 'lnwjud'],
+    ['CFBundleName', '-string', 'AWH Device Runtime'],
     ['CFBundleExecutable', '-string', MAC_RUNTIME_EXECUTABLE],
     ['CFBundleIdentifier', '-string', 'online.kruart.awh-device-runtime'],
   ];
@@ -311,18 +315,35 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   } finally {
     await rm(iconWork, { recursive: true, force: true }).catch(() => undefined);
   }
-  // Helper bundle directory/executable names stay upstream-compatible because
-  // Electron locates them internally, but their visible Finder/System UI names
-  // are branded as AWH Device Runtime.
+  // Electron derives helper bundle names from the top-level CFBundleName.
+  // Rebrand the helper bundles and executables together so no macOS-facing
+  // process or Privacy entry falls back to the historical upstream product.
   const frameworks = join(appRoot, 'Contents', 'Frameworks');
   try {
     for (const entry of await readdir(frameworks, { withFileTypes: true })) {
       if (!entry.isDirectory() || !/^lnwjud Helper(?: \(.+\))?\.app$/.test(entry.name)) continue;
-      const helperPlist = join(frameworks, entry.name, 'Contents', 'Info.plist');
       const suffix = /^lnwjud Helper(.*)\.app$/.exec(entry.name)?.[1] ?? '';
       const helperName = `AWH Device Runtime Helper${suffix}`;
-      const helperDisplay = await execFile('/usr/bin/plutil', ['-replace', 'CFBundleDisplayName', '-string', helperName, helperPlist], appRoot, 15_000);
-      if (helperDisplay.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_HELPER_FAILED');
+      const oldHelperRoot = join(frameworks, entry.name);
+      const helperPlist = join(oldHelperRoot, 'Contents', 'Info.plist');
+      const oldHelperExecutable = join(oldHelperRoot, 'Contents', 'MacOS', `lnwjud Helper${suffix}`);
+      const newHelperExecutable = join(oldHelperRoot, 'Contents', 'MacOS', helperName);
+      try {
+        const oldExecutableInfo = await lstat(oldHelperExecutable);
+        if (oldExecutableInfo.isFile()) await rename(oldHelperExecutable, newHelperExecutable);
+      } catch {}
+      const helperUpdates: Array<[string, string, string]> = [
+        ['CFBundleDisplayName', '-string', helperName],
+        ['CFBundleName', '-string', helperName],
+        ['CFBundleExecutable', '-string', helperName],
+        ['CFBundleIdentifier', '-string', `online.kruart.awh-device-runtime.helper${suffix.toLowerCase().replace(/[^a-z0-9]+/g, '-') || '-main'}`],
+      ];
+      for (const [key, kind, value] of helperUpdates) {
+        const helperResult = await execFile('/usr/bin/plutil', ['-replace', key, kind, value, helperPlist], appRoot, 15_000);
+        if (helperResult.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_HELPER_FAILED');
+      }
+      const newHelperRoot = join(frameworks, `${helperName}.app`);
+      if (newHelperRoot !== oldHelperRoot) await rename(oldHelperRoot, newHelperRoot);
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -374,7 +395,7 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
   const executable = join(active, 'Contents', 'MacOS', MAC_RUNTIME_EXECUTABLE);
   const dataPath = join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'device-runtime');
   await mkdir(dataPath, { recursive: true, mode: 0o700 });
-  const env: NodeJS.ProcessEnv = { ...process.env, LNWJUD_DATA_PATH: dataPath };
+  const env: NodeJS.ProcessEnv = { ...process.env, AWH_DEVICE_RUNTIME_HEADLESS: '1', LNWJUD_DATA_PATH: dataPath };
   delete env.ELECTRON_RUN_AS_NODE;
   const result = await execFile(executable, [requestPermissions ? '--awh-permission-setup' : '--awh-permission-status'], active, requestPermissions ? 120_000 : 30_000, env);
   const line = result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
@@ -688,7 +709,8 @@ export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.P
       if (arch !== 'arm64' && arch !== 'x64') throw new Error('DEVICE_RUNTIME_ARCH_UNSUPPORTED');
       await installMacEngine(home, arch);
     } else await installWindowsEngine(env);
-    await ensureSystemMcpRuntime(platform, arch, home, env);
+    // AWH Device Runtime owns the full device tool surface. Remote Desktop Commander
+    // remains an independent fallback and must not be duplicated under AWH/SystemRuntime.
     // Tool Packs are provisioned lazily on first routed use; Agent bootstrap never installs them eagerly.
     const installed = true;
     const spec = await discoverLnwjudLaunchSpec(platform, home, env);

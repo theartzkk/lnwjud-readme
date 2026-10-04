@@ -25,16 +25,13 @@ export function managedRuntimeRoots(
 ):string[]{
   if(platform==='darwin'){
     const base=join(home,'Library','Application Support','AWH');
-    return ['DeviceRuntime','Engines','SystemRuntime','ToolPacks','Toolchain','RemoteWorker'].map((name)=>join(base,name)).concat(join(home,'.desktop-commander-device'));
+    return ['DeviceRuntime','Engines','SystemRuntime','ToolPacks','Toolchain','RemoteWorker'].map((name)=>join(base,name));
   }
   if(platform==='win32'){
     const local=env.LOCALAPPDATA;
-    const profile=env.USERPROFILE;
-    if(!local)return profile?[pathWin32.join(profile,'.desktop-commander-device')]:[];
+    if(!local)return [];
     const base=pathWin32.join(local,'AWH');
-    const roots=['DeviceRuntime','Engines','SystemRuntime','ToolPacks','Toolchain','RemoteWorker'].map((name)=>pathWin32.join(base,name));
-    if(profile)roots.push(pathWin32.join(profile,'.desktop-commander-device'));
-    return roots;
+    return ['DeviceRuntime','Engines','SystemRuntime','ToolPacks','Toolchain','RemoteWorker'].map((name)=>pathWin32.join(base,name));
   }
   return [];
 }

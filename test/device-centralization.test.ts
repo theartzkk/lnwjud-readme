@@ -19,6 +19,7 @@ test('production desktop is a thin AWH Agent bridge and management lives on web'
   assert.match(main, /win\.loadFile\(join\(app\.getAppPath\(\), 'desktop', 'connect\.html'\)\)/);
   assert.doesNotMatch(main, /loadFile\([^\n]*desktop[^\n]*index\.html/);
   assert.match(main, /registerBridgeIpc\(\)/);
+  assert.doesNotMatch(main, /ensureRemoteDesktopConnector/);
   assert.equal((main.match(/registerLegacyDesktopIpc\(/g) || []).length, 1);
   assert.match(main, /จัดการอุปกรณ์บนเว็บ/);
   assert.match(main, /\?awh-settings=devices/);
@@ -31,14 +32,20 @@ test('production desktop is a thin AWH Agent bridge and management lives on web'
   assert.match(verifier, /must not include the historical desktop Control Panel/);
 });
 
-test('fresh device bootstrap provisions rebranded AWH runtime and pinned system MCP on macOS and Windows', async () => {
+test('fresh device bootstrap provisions one rebranded AWH runtime without duplicating Remote Desktop Commander', async () => {
   const bootstrap = await source('src/device-bootstrap.ts');
   assert.match(bootstrap, /DEVICE_RUNTIME_RELEASE\.deviceEngine\.assets/);
   assert.match(bootstrap, /engineAsset\('win32-x64'\)/);
   assert.doesNotMatch(bootstrap, /lnwjud-(?:Portable|Setup)-\d+\.\d+\.\d+/);
   assert.match(bootstrap, /AWH Device Runtime\.exe/);
-  assert.match(bootstrap, /CFBundleName'.*lnwjud/s);
-  assert.match(bootstrap, /internal implementation key unchanged/);
+  assert.match(bootstrap, /\['CFBundleName', '-string', 'AWH Device Runtime'\]/);
+  assert.doesNotMatch(bootstrap, /\['CFBundleName', '-string', 'lnwjud'\]/);
+  assert.match(bootstrap, /AWH Device Runtime Helper/);
+  assert.match(bootstrap, /runtimePackage\.name = 'awh-device-runtime'/);
+  assert.match(bootstrap, /runtimePackage\.productName = 'AWH Device Runtime'/);
+  assert.match(bootstrap, /DEVICE_RUNTIME_PACKAGE_IDENTITY_VERIFY_FAILED/);
+  assert.match(bootstrap, /CFBundleExecutable'.*helperName/s);
+  assert.match(bootstrap, /CFBundleIdentifier'.*online\.kruart\.awh-device-runtime\.helper/s);
   assert.match(bootstrap, /CFBundleExecutable'.*MAC_RUNTIME_EXECUTABLE/s);
   assert.match(bootstrap, /CFBundleIdentifier'.*online\.kruart\.awh-device-runtime/s);
   assert.match(bootstrap, /AWH_RUNTIME_NAME_MARKER/);
@@ -48,6 +55,7 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /AWH_RUNTIME_PERMISSION_MARKER/);
   assert.match(bootstrap, /--awh-permission-status/);
   assert.match(bootstrap, /--awh-permission-setup/);
+  assert.match(bootstrap, /AWH_DEVICE_RUNTIME_HEADLESS:\s*'1'/);
   assert.match(bootstrap, /isTrustedAccessibilityClient/);
   assert.match(bootstrap, /getMediaAccessStatus\("screen"\)/);
   assert.doesNotMatch(bootstrap, /askForMediaAccess\("microphone"\)/);
@@ -70,7 +78,7 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /config\/device-runtime-release\.json/);
   assert.doesNotMatch(bootstrap, /const NODE_VERSION = '\\d+\\./);
   assert.doesNotMatch(bootstrap, /const SYSTEM_MCP_VERSION = '\\d+\\./);
-  assert.match(bootstrap, /awh-system-mcp/);
+  assert.doesNotMatch(bootstrap, /await ensureSystemMcpRuntime\(platform, arch, home, env\)/);
   assert.match(bootstrap, /pinned-audited-device-runtime/);
 });
 
