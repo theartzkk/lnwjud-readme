@@ -13,7 +13,7 @@
 .permission-list{display:grid;gap:8px}
 .permission-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e8edf1;border-radius:14px;padding:10px 12px;background:#fbfcfd}
 .permission-row>div{display:grid;gap:2px}.permission-row strong{font-size:12px}.permission-row span{font-size:10px;color:#75869a}
-.permission-row b{font-size:10px;white-space:nowrap}.permission-ok{color:#137b59}.permission-missing{color:#b55f1c}
+.permission-row b{font-size:10px;white-space:nowrap}.permission-ok{color:#137b59}.permission-missing{color:#b55f1c}.permission-optional{color:#6f7f91}
 .permission-actions{display:grid;grid-template-columns:1.1fr .9fr;gap:9px;margin-top:12px}.permission-actions .primary,.permission-actions .secondary{width:100%;min-height:42px;font-size:12px}
 @media(max-width:400px){.permission-actions{grid-template-columns:1fr}}
 

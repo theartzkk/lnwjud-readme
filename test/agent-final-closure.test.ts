@@ -46,22 +46,75 @@ test('core permission bootstrap is Accessibility plus Screen Recording only', ()
   assert.match(desktop, /osReady = runtime !== null && runtime\.accessibility === true && runtime\.screenCapture === 'granted';/);
 });
 
-test('SystemRuntime smoke classifies exit and dependency failures before timeout', () => {
+test('AWH Agent cannot provision an internal Remote Desktop Commander/SystemRuntime duplicate', () => {
+  const bootstrap = readFileSync(new URL('../src/device-bootstrap.ts', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const inventory = readFileSync(new URL('../src/worker-capability-discovery.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(bootstrap, /ensureSystemMcpRuntime|installAndVerifySystemMcpRuntime|awh-system-mcp|desktop-commander/);
+  assert.doesNotMatch(main, /remote-desktop-connector|remoteDesktop/);
+  assert.doesNotMatch(inventory, /remote-desktop-mcp|SystemRuntime|desktop-commander|desktop-commander-device/);
+});
+
+test('macOS Device Runtime patch reconciles Accessibility health and removes legacy native-host branding', () => {
   const source = readFileSync(new URL('../src/device-bootstrap.ts', import.meta.url), 'utf8');
-  assert.match(source, /DEVICE_RUNTIME_SYSTEM_DEPENDENCY_MISSING/);
-  assert.match(source, /child\.once\('exit'/);
-  assert.match(source, /DEVICE_RUNTIME_SYSTEM_SMOKE_SPAWN_FAILED/);
-  assert.match(source, /DEVICE_RUNTIME_SYSTEM_SMOKE_EXIT_/);
-  assert.match(source, /30_000/);
-  assert.match(source, /awh-system-mcp\.mjs/);
+  assert.match(source, /AWH_HEALTH_ACCESSIBILITY_RECONCILE_V1/);
+  assert.match(source, /tool === "accessibility"/);
+  assert.match(source, /list_windows/);
+  assert.match(source, /status\.hostAvailable !== false/);
+  assert.match(source, /status\.hostReady !== false/);
+  assert.match(source, /AWHDeviceRuntimeHost/);
+  assert.match(source, /NATIVE_HOST\.json/);
+  assert.match(source, /DEVICE_RUNTIME_NATIVE_HOST_MANIFEST_VERIFY_FAILED/);
+  assert.match(source, /DEVICE_RUNTIME_VERIFY_NATIVE_HOST_MANIFEST_NAME/);
+  assert.match(source, /DEVICE_RUNTIME_VERIFY_NATIVE_HOST_MANIFEST_HASH/);
+  assert.match(source, /DEVICE_RUNTIME_VERIFY_NATIVE_HOST_MANIFEST_SIZE/);
+  assert.match(source, /AWH_RUNTIME_APPROVAL_BRIDGE_MARKER, 'APPROVAL_BRIDGE'/);
+  assert.match(source, /DEVICE_RUNTIME_NATIVE_HOST_REBRAND_/);
+  assert.match(source, /DEVICE_RUNTIME_PATCH_COMMIT_VERIFY_FAILED/);
+  assert.match(source, /DEVICE_RUNTIME_REBRAND_FINAL_VERIFY_FAILED/);
+  assert.match(source, /readAsarMainFresh/);
+  assert.match(source, /readAsarHeaderFresh/);
+  assert.match(source, /\.awh-read-/);
+  assert.match(source, /codesign[\s\S]*--verify[\s\S]*--deep[\s\S]*--strict[\s\S]*180_000/);
+  assert.match(source, /codesign', \['--verify', '--deep', '--strict', appRoot\], appRoot, 180_000/);
+});
+
+test('headless Device Runtime honors one explicit exact-action owner approval exactly once', () => {
+  const source = readFileSync(new URL('../src/device-bootstrap.ts', import.meta.url), 'utf8');
+  assert.match(source, /AWH_EXACT_APPROVAL_BRIDGE_V2/);
+  assert.match(source, /AWH_EXACT_APPROVAL_INLINE_V1/);
+  assert.match(source, /AWH_RUNTIME_APPROVAL_BRIDGE_V1_MARKER/);
+  assert.match(source, /DEVICE_RUNTIME_APPROVAL_V1_FALLBACK_MIGRATION_MISMATCH/);
+  assert.match(source, /approvalToken: awhExactApprovalTokenSchema\.optional\(\)/);
+  assert.match(source, /awhExactApprovalSignature/);
+  assert.match(source, /awhIssueExactApprovalToken/);
+  assert.match(source, /awhConsumeExactApprovalToken/);
+  assert.match(source, /awhAcceptInlineExactApproval/);
+  assert.match(source, /process\.env\.AWH_DEVICE_RUNTIME_HEADLESS === \"1\"/);
+  assert.match(source, /hasExplicitUserConfirmation\(activeRoutedInput\)/);
+  assert.match(source, /awhExactInlineApprovals\.set\(signature, now \+ AWH_EXACT_APPROVAL_TTL_MS\)/);
+  assert.match(source, /owner approval was already consumed for this exact action/);
+  assert.match(source, /invalid, expired, already used, or does not match this exact action/);
+  assert.match(source, /DEVICE_RUNTIME_APPROVAL_PATCH_VERIFY_FAILED/);
+  assert.match(source, /AWH_RUNTIME_APPROVAL_BRIDGE_MARKER/);
+  assert.match(source, /AWH_RUNTIME_APPROVAL_INLINE_MARKER/);
+});
+
+test('device runtime bootstrap waits for its smoke child to exit before reporting completion', () => {
+  const client = readFileSync(new URL('../src/lnwjud-device-client.ts', import.meta.url), 'utf8');
+  const bootstrap = readFileSync(new URL('../src/device-bootstrap.ts', import.meta.url), 'utf8');
+  assert.match(client, /async closeAndWait\(timeoutMs = 4_000\): Promise<void>/);
+  assert.match(client, /this\.process\.kill\('SIGKILL'\)/);
+  assert.match(client, /taskkill.*\/T.*\/F/s);
+  assert.match(bootstrap, /finally \{ await client\.closeAndWait\(\); \}/);
 });
 
 test('desktop device runtime bootstrap is single-flight across concurrent callers', () => {
   const source = readFileSync(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
   assert.match(source, /let deviceRuntimeBootstrapInFlight: Promise<DeviceBootstrapResult> \| null = null;/);
-  assert.match(source, /async function ensureDeviceRuntimeSingleFlight\(dataDir: string\): Promise<DeviceBootstrapResult>/);
-  assert.match(source, /if \(deviceRuntimeBootstrapInFlight\) return deviceRuntimeBootstrapInFlight;/);
-  assert.match(source, /const pending = ensureAwhDeviceRuntime\(dataDir\);/);
-  assert.equal(source.match(/ensureDeviceRuntimeSingleFlight\(config\.dataDir\)/g)?.length, 4);
-  assert.equal(source.match(/ensureAwhDeviceRuntime\(config\.dataDir\)/g), null);
+  assert.match(source, /async function ensureDeviceRuntimeSingleFlight\(dataDir: string, forceRepair = false\): Promise<DeviceBootstrapResult>/);
+  assert.match(source, /const active = await deviceRuntimeBootstrapInFlight;/);
+  assert.match(source, /forceRepair \? repairAwhDeviceRuntime\(dataDir\) : ensureAwhDeviceRuntime\(dataDir\)/);
+  assert.match(source, /ensureDeviceRuntimeSingleFlight\(config\.dataDir, true\)/);
+  assert.equal(source.match(/ensureDeviceRuntimeSingleFlight\(config\.dataDir/g)?.length, 4);
 });

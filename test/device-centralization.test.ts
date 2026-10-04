@@ -72,17 +72,19 @@ test('fresh device bootstrap provisions one rebranded AWH runtime without duplic
   assert.match(bootstrap, /LSUIElement/);
   assert.match(bootstrap, /rm\(backup.*codesign/s);
   assert.match(bootstrap, /codesign/);
-  assert.match(bootstrap, /DEVICE_RUNTIME_RELEASE\.nodeRuntime\.version/);
-  assert.match(bootstrap, /DEVICE_RUNTIME_RELEASE\.version/);
-  assert.match(bootstrap, /DEVICE_RUNTIME_RELEASE\.npmIntegrity/);
   assert.match(bootstrap, /config\/device-runtime-release\.json/);
   assert.doesNotMatch(bootstrap, /const NODE_VERSION = '\\d+\\./);
   assert.doesNotMatch(bootstrap, /const SYSTEM_MCP_VERSION = '\\d+\\./);
   assert.doesNotMatch(bootstrap, /await ensureSystemMcpRuntime\(platform, arch, home, env\)/);
+  assert.doesNotMatch(bootstrap, /ensureSystemMcpRuntime|installAndVerifySystemMcpRuntime|awh-system-mcp|desktop-commander/);
+  assert.match(bootstrap, /AWH_HEALTH_ACCESSIBILITY_RECONCILE_V1/);
+  assert.match(bootstrap, /list_windows/);
+  assert.match(bootstrap, /AWHDeviceRuntimeHost/);
+  assert.match(bootstrap, /DEVICE_RUNTIME_NATIVE_HOST_REBRAND_/);
   assert.match(bootstrap, /pinned-audited-device-runtime/);
 });
 
-test('web device center owns revocation and surfaces AWH runtime plus Remote Desktop MCP readiness', async () => {
+test('web device center owns revocation and surfaces only AWH Device Runtime readiness', async () => {
   const [router, service, enrollment, adapter, app] = await Promise.all([
     source('hub/src/HubControlPlaneRouter.php'),
     source('hub/src/HubControlPlaneService.php'),
@@ -93,10 +95,11 @@ test('web device center owns revocation and surfaces AWH runtime plus Remote Des
   assert.match(router, /control\/devices\/.*\/revoke/);
   assert.match(service, /revokeDeviceForSession/);
   assert.match(service, /tool\.awh-device-runtime.*AWH Device Runtime/s);
-  assert.match(service, /tool\.remote-desktop-mcp.*Remote Desktop MCP/s);
+  assert.doesNotMatch(service, /remote-desktop-mcp|Remote Desktop MCP/);
   assert.match(enrollment, /revokeDeviceForOwnerUser/);
   assert.match(adapter, /export async function revokeDevice/);
   assert.match(app, /Device Runtime ✓/);
-  assert.match(app, /Remote Desktop MCP ✓/);
+  assert.doesNotMatch(app, /Remote Desktop MCP|remote-desktop-mcp/);
+  assert.match(app, /System ✓/);
   assert.match(app, /ยกเลิกการเชื่อมต่อ/);
 });

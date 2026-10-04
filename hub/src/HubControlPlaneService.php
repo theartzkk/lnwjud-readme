@@ -3429,7 +3429,7 @@ final class HubControlPlaneService
             'tool.pack.playwright' => 'Browser Actions', 'tool.pack.chrome-devtools' => 'Browser Diagnostics',
             'tool.pack.premiere' => 'Premiere Tools', 'tool.pack.after-effects' => 'After Effects Tools',
             'tool.adobe.photoshop' => 'Adobe Photoshop',
-            'tool.awh-device-runtime' => 'AWH Device Runtime', 'tool.remote-desktop-mcp' => 'Remote Desktop MCP',
+            'tool.awh-device-runtime' => 'AWH Device Runtime',
             'tool.awh-device-system' => 'AWH System', 'tool.awh-device-gui' => 'AWH Screen & Apps',
         ];
         $out = []; foreach ($capabilities as $capability) if (isset($labels[$capability])) $out[] = $labels[$capability];

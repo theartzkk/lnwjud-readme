@@ -34,11 +34,9 @@ test('runtime and dependency maintenance are declarative and do not require depl
   assert.match(manifest.linuxConnector.nodeRuntime.asset.sha256,/^[0-9a-f]{64}$/);
   assert.match(manifest.browserQa.playwrightVersion,/^\d+\.\d+\.\d+$/);
 
-  assert.match(bootstrap,/DEVICE_RUNTIME_RELEASE\.nodeRuntime\.version/);
-  assert.match(bootstrap,/DEVICE_RUNTIME_RELEASE\.version/);
-  assert.match(bootstrap,/DEVICE_RUNTIME_RELEASE\.npmIntegrity/);
   assert.doesNotMatch(bootstrap,/const NODE_VERSION = ['"]\d+\.\d+\.\d+/);
   assert.doesNotMatch(bootstrap,/const SYSTEM_MCP_VERSION = ['"]\d+\.\d+\.\d+/);
+  assert.doesNotMatch(bootstrap,/ensureSystemMcpRuntime|desktop-commander|awh-system-mcp/);
 
   for(const script of [nodeInstaller,connectorBootstrap,connectorInstall,connectorVerify,browserQa]){
     const body=executable(script);

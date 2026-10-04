@@ -5,12 +5,14 @@ function setMessage(id, text, kind = '') {
   const node = $(id); node.textContent = text || ''; node.className = `message ${kind}`.trim();
 }
 
-function permissionEntry(label, ok, detail) {
+function permissionEntry(label, ok, detail, required = true) {
   const row = document.createElement('div'); row.className = 'permission-row';
   const copy = document.createElement('div');
   const title = document.createElement('strong'); title.textContent = label;
   const sub = document.createElement('span'); sub.textContent = detail;
-  const state = document.createElement('b'); state.className = ok ? 'permission-ok' : 'permission-missing'; state.textContent = ok ? 'พร้อม' : 'ต้องอนุญาต';
+  const state = document.createElement('b');
+  state.className = ok ? 'permission-ok' : required ? 'permission-missing' : 'permission-optional';
+  state.textContent = ok ? 'พร้อม' : required ? 'ต้องอนุญาต' : 'ใช้เมื่อจำเป็น';
   copy.append(title, sub); row.append(copy, state); return row;
 }
 
@@ -22,14 +24,13 @@ function renderPermissions(permissions, enrolled) {
   $('permission-badge').className = `permission-badge ${ready ? 'ready' : 'required'}`;
   if (!enrolled) return;
   const runtime = permissions?.runtime;
-  const automationReady = permissions?.setupVersion === 1;
   const list = $('permission-list'); list.replaceChildren();
   if (permissions?.platform === 'darwin') {
     list.append(
-      permissionEntry('Accessibility', runtime?.accessibility === true, 'คลิก พิมพ์ และควบคุมหน้าต่าง'),
-      permissionEntry('Screen Recording', runtime?.screenCapture === 'granted', 'มองเห็นหน้าจอและตรวจงานภาพ'),
-      permissionEntry('Microphone', runtime?.microphone === 'granted', 'งานเสียงที่สั่งให้ AWH ทำ'),
-      permissionEntry('Automation', automationReady, 'ควบคุม System Events และแอปที่รองรับ'),
+      permissionEntry('Accessibility', runtime?.accessibility === true, 'จำเป็น · คลิก พิมพ์ และควบคุมหน้าต่าง'),
+      permissionEntry('Screen Recording', runtime?.screenCapture === 'granted', 'จำเป็น · มองเห็นหน้าจอและตรวจงานภาพ'),
+      permissionEntry('Microphone', runtime?.microphone === 'granted', 'ไม่บังคับ · ขอเมื่อสั่งงานเสียงเท่านั้น', false),
+      permissionEntry('Automation', runtime?.automation === 'granted', 'ไม่บังคับ · ขอเมื่อสั่งควบคุมแอปที่ต้องใช้สิทธิ์นี้', false),
     );
   }
   list.append(permissionEntry('AWH Full Device Control', permissions?.internalReady === true, 'Write · Execute · Codex · Worker'));
@@ -97,12 +98,7 @@ function render(enrollment, worker, permissions) {
   $('device-name').textContent = enrollment?.displayName || worker?.device?.displayName || 'เครื่องนี้';
   renderMode(worker);
   $('worker-status').textContent = !permissionReady ? 'รอสิทธิ์ระบบ' : worker?.enabled === true ? (worker?.running === true ? 'กำลังทำงาน' : 'พร้อมเมื่อมีคำสั่ง') : 'หยุดอยู่';
-  const remote = worker?.remoteDesktop;
-  $('remote-status').textContent = !permissionReady ? 'รอสิทธิ์ระบบ' : remote?.state === 'READY'
-    ? 'พร้อมใช้งาน'
-    : remote?.state === 'AUTHORIZATION_REQUIRED'
-      ? 'อนุมัติครั้งแรกใน Browser'
-      : remote?.state === 'STARTING' ? 'กำลังเชื่อมต่อ' : 'ยังไม่พร้อม';
+  $('remote-status').textContent = permissionReady ? 'พร้อมใช้งาน' : 'รอสิทธิ์ที่จำเป็น';
   $('open-awh').disabled = !hubConfigured || !permissionReady;
   $('login-form').hidden = enrolled || !hubConfigured;
   $('manage-device').disabled = !hubConfigured || !permissionReady;

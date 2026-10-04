@@ -5,19 +5,18 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { deviceProvidersForCapability, discoverAwhDeviceRuntime } from '../src/device-runtime.js';
 
-test('device runtime discovers dynamic loopback GUI MCP and system provider', async () => {
+test('device runtime ignores standalone RDC while preserving a dynamic loopback GUI endpoint', async () => {
   const home = await mkdtemp(join(tmpdir(), 'awh-device-runtime-'));
   const support = join(home, 'Library', 'Application Support', 'lnwjud', 'tunnel-client');
   await mkdir(support, { recursive: true });
   await writeFile(join(support, 'lnwjud.yaml'), JSON.stringify({ mcp: { server_urls: [{ url: 'http://127.0.0.1:59702/mcp' }] } }));
-  const system = join(home, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander');
   const runtime = await discoverAwhDeviceRuntime({
     home,
     platform: 'darwin',
-    pathAvailable: async (path) => path === system,
+    pathAvailable: async () => false,
     tcpReady: async (url) => url === 'http://127.0.0.1:59702/mcp',
   });
-  assert.deepEqual(runtime, { guiMcpUrl: 'http://127.0.0.1:59702/mcp', guiMcpCommand: null, guiToolkitCommand: null, systemMcpCommand: system });
+  assert.deepEqual(runtime, { guiMcpUrl: 'http://127.0.0.1:59702/mcp', guiMcpCommand: null, guiToolkitCommand: null, systemMcpCommand: null });
 });
 
 test('device runtime rejects non-loopback or unavailable GUI endpoints', async () => {
@@ -29,17 +28,16 @@ test('device runtime rejects non-loopback or unavailable GUI endpoints', async (
   assert.deepEqual(runtime, { guiMcpUrl: null, guiMcpCommand: null, guiToolkitCommand: null, systemMcpCommand: null });
 });
 
-test('device runtime discovers KRUART GUI toolkit as a provider-neutral fallback beside AWH system runtime', async () => {
+test('provider-neutral KRUART GUI discovery does not import standalone RDC into AWH', async () => {
   const home = '/Users/fixture';
   const gui = join(home, '.kruart', 'ai-control', 'kui');
-  const system = join(home, 'Library', 'Application Support', 'AWH', 'RemoteWorker', 'runtime', 'node_modules', '.bin', 'desktop-commander');
   const runtime = await discoverAwhDeviceRuntime({
     home,
     platform: 'darwin',
-    pathAvailable: async (path) => path === gui || path === system,
+    pathAvailable: async (path) => path === gui,
     tcpReady: async () => false,
   });
-  assert.deepEqual(runtime, { guiMcpUrl: null, guiMcpCommand: null, guiToolkitCommand: gui, systemMcpCommand: system });
+  assert.deepEqual(runtime, { guiMcpUrl: null, guiMcpCommand: null, guiToolkitCommand: gui, systemMcpCommand: null });
 });
 
 test('device runtime prefers the local AWH lnwjud stdio bridge when installed', async () => {
@@ -51,7 +49,7 @@ test('device runtime prefers the local AWH lnwjud stdio bridge when installed', 
     pathAvailable: async (path) => path === bridge,
     tcpReady: async () => false,
   });
-  assert.deepEqual(runtime, { guiMcpUrl: null, guiMcpCommand: bridge, guiToolkitCommand: null, systemMcpCommand: null });
+  assert.deepEqual(runtime, { guiMcpUrl: null, guiMcpCommand: bridge, guiToolkitCommand: null, systemMcpCommand: bridge });
 });
 
 test('capability selects only the provider class it actually needs', () => {

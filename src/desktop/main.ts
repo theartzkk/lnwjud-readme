@@ -30,13 +30,12 @@ import { createDiagnosticsBundle } from '../agent-diagnostics.js';
 import { readAgentWatchdogStatus, startAgentWatchdog, type AgentWatchdogHandle } from '../agent-watchdog.js';
 import { DESKTOP_UPDATE_FOUNDATION } from '../desktop-update-policy.js';
 import { effectiveDesktopUpdateChannel, launchDesktopCoreUpdateSwap, prepareDesktopCoreUpdateSwap, readDesktopCoreUpdateLastResult, resolveDesktopCoreUpdateCandidate, stageDesktopCoreUpdate, writeDesktopCoreUpdateHealth, type DesktopCoreUpdateCandidate } from '../desktop-core-update.js';
-import { prepareCleanReinstall, resetThisDevice } from '../device-maintenance.js';
+import { prepareRuntimeRepair, resetThisDevice } from '../device-maintenance.js';
 import { loadOrCreateDeviceIdentity, readDeviceIdentity, updateDeviceDisplayName } from '../device-identity.js';
 import { createDesktopCredentialStore, CredentialStoreError } from '../credential-store.js';
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
-import { deviceRuntimePermissionStatus, ensureAwhDeviceRuntime, type DeviceRuntimePermissionStatus, type DeviceBootstrapResult } from '../device-bootstrap.js';
-import { remoteDesktopConnectorStatus } from '../remote-desktop-connector.js';
+import { deviceRuntimePermissionStatus, ensureAwhDeviceRuntime, repairAwhDeviceRuntime, type DeviceRuntimePermissionStatus, type DeviceBootstrapResult } from '../device-bootstrap.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
 import { ControlPlaneWorkerClient } from '../control-plane-worker-client.js';
 import { ControlPlaneWorkerRuntime } from '../control-plane-worker-runtime.js';
@@ -103,9 +102,12 @@ const CONNECTED_RUNTIME_RECHECK_MS = 15_000;
 const PERMISSION_SETUP_VERSION = 1;
 const MAX_HANDOFF_PREVIEW_CHARS = 4_000;
 
-async function ensureDeviceRuntimeSingleFlight(dataDir: string): Promise<DeviceBootstrapResult> {
-  if (deviceRuntimeBootstrapInFlight) return deviceRuntimeBootstrapInFlight;
-  const pending = ensureAwhDeviceRuntime(dataDir);
+async function ensureDeviceRuntimeSingleFlight(dataDir: string, forceRepair = false): Promise<DeviceBootstrapResult> {
+  if (deviceRuntimeBootstrapInFlight) {
+    const active = await deviceRuntimeBootstrapInFlight;
+    if (!forceRepair) return active;
+  }
+  const pending = forceRepair ? repairAwhDeviceRuntime(dataDir) : ensureAwhDeviceRuntime(dataDir);
   deviceRuntimeBootstrapInFlight = pending;
   try {
     return await pending;
@@ -241,13 +243,10 @@ function controlPlaneWorker(config: ReturnType<typeof loadConfig>): ControlPlane
 
 async function workerState() {
   const config = loadConfig();
-  const [identity, remoteDesktop] = await Promise.all([
-    readDeviceIdentity(config.dataDir).catch(() => null),
-    remoteDesktopConnectorStatus().catch(() => ({ state: 'UNAVAILABLE', authorized: false, running: false, managed: false, reason: 'STATUS_UNAVAILABLE' } as const)),
-  ]);
+  const identity = await readDeviceIdentity(config.dataDir).catch(() => null);
   const mode = currentAgentMode(config.dataDir);
   const activity = agentRuntimeStatus();
-  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning, connection: workerConnectionState, remoteDesktop, mode, activity, emergencyHotkeyReady, lastError:lastWorkerError };
+  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning, connection: workerConnectionState, mode, activity, emergencyHotkeyReady, lastError:lastWorkerError };
 }
 
 async function checkDesktopCoreUpdate() {
@@ -372,14 +371,14 @@ async function reinstallRuntimeKeepingPairing() {
   const config = loadConfig();
   stopWorkerLoop();
   try {
-    const maintenance = await prepareCleanReinstall(config.dataDir, createDesktopCredentialStore(config.dataDir));
-    lastDeviceRuntimeBootstrap = await ensureDeviceRuntimeSingleFlight(config.dataDir);
+    const maintenance = await prepareRuntimeRepair(config.dataDir, createDesktopCredentialStore(config.dataDir));
+    lastDeviceRuntimeBootstrap = await ensureDeviceRuntimeSingleFlight(config.dataDir, true);
     const permissions = await startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState));
     if (permissions.ready) { startWorkerLoop(); void ensureConnectedDeviceRuntime().catch(() => undefined); }
     return { ok: lastDeviceRuntimeBootstrap.state === 'READY' && maintenance.pairingPreserved, maintenance, runtime: lastDeviceRuntimeBootstrap, permissionsReady: permissions.ready };
   } catch (error) {
     lastWorkerError = error instanceof Error ? error.message.replace(/[^A-Z0-9_.-]/gi, '_').slice(0,80) : 'REINSTALL_FAILED';
-    return { ok: false, error: lastWorkerError, message: 'Reinstall / Upgrade ยังตรวจ identity และ pairing ไม่ผ่าน จึงไม่ลบข้อมูลต่อ' };
+    return { ok: false, error: lastWorkerError, message: 'Repair / Upgrade ยังไม่สำเร็จ รุ่นเดิมจะถูกเก็บไว้และไม่ลบ pairing' };
   }
 }
 

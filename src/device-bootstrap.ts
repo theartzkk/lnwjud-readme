@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { createPackageWithOptions, extractAll, extractFile, getRawHeader } from '@electron/asar';
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises';
@@ -14,17 +13,7 @@ import { LnwjudDeviceClient, discoverLnwjudLaunchSpec } from './lnwjud-device-cl
 
 type RuntimeAssetSpec = { nameTemplate: string; sha256: string };
 type DeviceRuntimeReleaseManifest = {
-  package: string;
-  version: string;
-  npmIntegrity: string;
-  minimumVersion: string;
   deviceEngine: {
-    version: string;
-    minimumVersion: string;
-    sourceUrlTemplate: string;
-    assets: Record<'darwin-arm64' | 'darwin-x64' | 'win32-x64', RuntimeAssetSpec>;
-  };
-  nodeRuntime: {
     version: string;
     minimumVersion: string;
     sourceUrlTemplate: string;
@@ -48,23 +37,6 @@ const RELEASE_BASE = DEVICE_RUNTIME_RELEASE.deviceEngine.sourceUrlTemplate
 const MAC_RUNTIME_EXECUTABLE = 'AWH Device Runtime';
 const AWH_RUNTIME_APP_NAME = 'AWH Device Runtime';
 const WINDOWS_RUNTIME_EXECUTABLE = 'AWH Device Runtime.exe';
-
-const NODE_VERSION = DEVICE_RUNTIME_RELEASE.nodeRuntime.version;
-const NODE_RELEASE_BASE = DEVICE_RUNTIME_RELEASE.nodeRuntime.sourceUrlTemplate
-  .replaceAll('{version}', NODE_VERSION)
-  .replace('/{asset}', '');
-const nodeAsset = (key: 'darwin-arm64' | 'darwin-x64' | 'win32-x64') => {
-  const spec = DEVICE_RUNTIME_RELEASE.nodeRuntime.assets[key];
-  return { name: renderReleaseTemplate(spec.nameTemplate, NODE_VERSION), sha256: spec.sha256 };
-};
-const NODE_ASSETS = {
-  'darwin-arm64': nodeAsset('darwin-arm64'),
-  'darwin-x64': nodeAsset('darwin-x64'),
-  'win32-x64': nodeAsset('win32-x64'),
-} as const;
-const SYSTEM_MCP_PACKAGE = DEVICE_RUNTIME_RELEASE.package;
-const SYSTEM_MCP_VERSION = DEVICE_RUNTIME_RELEASE.version;
-const SYSTEM_MCP_INTEGRITY = DEVICE_RUNTIME_RELEASE.npmIntegrity;
 
 export interface DeviceBootstrapResult {
   state: 'READY' | 'UNSUPPORTED' | 'FAILED';
@@ -127,13 +99,33 @@ const AWH_RUNTIME_READY_MARKER = 'AWH Device Runtime MCP stdio ready';
 const AWH_RUNTIME_PERMISSION_MARKER = 'AWH_PERMISSION_BOOTSTRAP_V3';
 const AWH_RUNTIME_PERMISSION_V2_MARKER = 'var AWH_PERMISSION_BOOTSTRAP_V2 = true;';
 const AWH_RUNTIME_PERMISSION_V1_MARKER = 'var AWH_PERMISSION_BOOTSTRAP_V1 = true;';
+const AWH_RUNTIME_HEALTH_MARKER = 'AWH_HEALTH_ACCESSIBILITY_RECONCILE_V1';
+const AWH_RUNTIME_APPROVAL_BRIDGE_MARKER = 'AWH_EXACT_APPROVAL_BRIDGE_V2';
+const AWH_RUNTIME_APPROVAL_INLINE_MARKER = 'AWH_EXACT_APPROVAL_INLINE_V1';
+const AWH_RUNTIME_APPROVAL_BRIDGE_V1_MARKER = 'var AWH_EXACT_APPROVAL_BRIDGE_V1 = true;';
+const AWH_RUNTIME_NATIVE_HOST_NAME = 'AWHDeviceRuntimeHost';
+let freshAsarReadSequence = 0;
+async function withFreshAsarRead<T>(archive: string, reader: (freshArchive: string) => T): Promise<T> {
+  const fresh = archive + '.awh-read-' + String(process.pid) + '-' + String(++freshAsarReadSequence);
+  await copyFile(archive, fresh);
+  try { return reader(fresh); }
+  finally { await rm(fresh, { force: true }).catch(() => undefined); }
+}
+
+async function readAsarMainFresh(archive: string): Promise<string> {
+  return withFreshAsarRead(archive, (fresh) => extractFile(fresh, 'dist/main/main.js').toString('utf8'));
+}
+
+async function readAsarHeaderFresh(archive: string): Promise<string> {
+  return withFreshAsarRead(archive, (fresh) => getRawHeader(fresh).headerString);
+}
 
 async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
   const archive = join(appRoot, 'Contents', 'Resources', 'app.asar');
   let currentMain: string;
   try { currentMain = extractFile(archive, 'dist/main/main.js').toString('utf8'); }
   catch { throw new Error('DEVICE_RUNTIME_PATCH_SOURCE_INVALID'); }
-  if (currentMain.includes(AWH_HEADLESS_PATCH_MARKER) && currentMain.includes(AWH_RUNTIME_NAME_MARKER) && currentMain.includes(AWH_RUNTIME_MCP_NAME_MARKER) && currentMain.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) && currentMain.includes(AWH_RUNTIME_READY_MARKER) && currentMain.includes(AWH_RUNTIME_PERMISSION_MARKER)) return;
+  if (currentMain.includes(AWH_HEADLESS_PATCH_MARKER) && currentMain.includes(AWH_RUNTIME_NAME_MARKER) && currentMain.includes(AWH_RUNTIME_MCP_NAME_MARKER) && currentMain.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) && currentMain.includes(AWH_RUNTIME_READY_MARKER) && currentMain.includes(AWH_RUNTIME_PERMISSION_MARKER) && currentMain.includes(AWH_RUNTIME_HEALTH_MARKER) && currentMain.includes(AWH_RUNTIME_APPROVAL_BRIDGE_MARKER) && currentMain.includes(AWH_RUNTIME_APPROVAL_INLINE_MARKER) && currentMain.includes(AWH_RUNTIME_NATIVE_HOST_NAME)) return;
 
   const functionMarker = 'async function resolveDesktopRuntimeSecrets(dataPath) {\n';
   const electronImportMarker = 'import { app, BrowserWindow as BrowserWindow2, clipboard, ClipboardItem, crashReporter, desktopCapturer, dialog, ipcMain, Menu, nativeImage, net, Notification, safeStorage, screen, shell, Tray } from "electron";';
@@ -238,6 +230,226 @@ if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AW
         nextMain = nextMain.replace(runtimeDispatch, 'if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AWH_PERMISSION_SETUP_ARG)) {\n      // Permission helper owns this short-lived runtime process.\n    } else if (wantsMcpStdio(process.argv)) {');
       } else throw new Error('DEVICE_RUNTIME_PERMISSION_DISPATCH_CONTRACT_MISMATCH');
     }
+    if (!nextMain.includes(AWH_RUNTIME_HEALTH_MARKER)) {
+      const healthContract = '    const composed = this.backends[tool];\n    if (composed !== void 0)\n      return this.describe(tool, await this.checkDelegated(composed, statusInputFor(tool)));';
+      const healthReplacement = '    const composed = this.backends[tool];\n'
+        + '    if (composed !== void 0) {\n'
+        + '      const status = await this.checkDelegated(composed, statusInputFor(tool));\n'
+        + '      if (tool === "accessibility" && status.ready === false && status.hostAvailable !== false && status.hostReady !== false) {\n'
+        + '        const probe = await this.checkDelegated(composed, { action: "list_windows" });\n'
+        + '        if (probe.available !== false && probe.ready !== false) {\n'
+        + '          return this.describe(tool, { ...status, available: true, ready: true, reason: void 0, readinessReason: void 0, healthReconciledBy: "' + AWH_RUNTIME_HEALTH_MARKER + '" });\n'
+        + '        }\n'
+        + '      }\n'
+        + '      return this.describe(tool, status);\n'
+        + '    }';
+      const healthContractMatches = nextMain.split(healthContract).length - 1;
+      if (healthContractMatches < 1) throw new Error('DEVICE_RUNTIME_HEALTH_PATCH_CONTRACT_MISMATCH');
+      nextMain = nextMain.replaceAll(healthContract, healthReplacement);
+    }
+    if (!nextMain.includes(AWH_RUNTIME_APPROVAL_BRIDGE_MARKER) && nextMain.includes(AWH_RUNTIME_APPROVAL_BRIDGE_V1_MARKER)) {
+      nextMain = nextMain.replace(AWH_RUNTIME_APPROVAL_BRIDGE_V1_MARKER, 'var AWH_EXACT_APPROVAL_BRIDGE_V2 = true;');
+      const approvalV1Fallback = '        if (!hostApproved && this.hostMutationApprovalProvider === void 0 && hasExplicitUserConfirmation(activeRoutedInput)) {';
+      const approvalV2Fallback = '        if (!hostApproved && process.env.AWH_DEVICE_RUNTIME_HEADLESS === "1" && hasExplicitUserConfirmation(activeRoutedInput)) {';
+      if (nextMain.includes(approvalV1Fallback)) nextMain = nextMain.replace(approvalV1Fallback, approvalV2Fallback);
+      else if (!nextMain.includes(approvalV2Fallback)) throw new Error('DEVICE_RUNTIME_APPROVAL_V1_FALLBACK_MIGRATION_MISMATCH');
+      const approvalV1Denied = `          const message = this.hostMutationApprovalProvider === void 0
+            ? "Host exact-action approval is unavailable for this mutation; provide explicit user confirmation to prepare a one-shot approval token"
+            : "The host denied or could not verify exact-action approval for this mutation";`;
+      const approvalV2Denied = `          const message = process.env.AWH_DEVICE_RUNTIME_HEADLESS === "1"
+            ? "Headless exact-action approval requires explicit owner confirmation for this exact action"
+            : this.hostMutationApprovalProvider === void 0
+              ? "Host exact-action approval is unavailable for this mutation; use Desktop or a trusted host approval adapter"
+              : "The host denied or could not verify exact-action approval for this mutation";`;
+      if (nextMain.includes(approvalV1Denied)) nextMain = nextMain.replace(approvalV1Denied, approvalV2Denied);
+      else if (!nextMain.includes(approvalV2Denied)) throw new Error('DEVICE_RUNTIME_APPROVAL_V1_MESSAGE_MIGRATION_MISMATCH');
+    }
+    if (!nextMain.includes(AWH_RUNTIME_APPROVAL_BRIDGE_MARKER)) {
+      const approvalSchemaMarker = 'var approvalEnvelopeSchema = external_exports.boolean();\n';
+      if (!nextMain.includes(approvalSchemaMarker)) throw new Error('DEVICE_RUNTIME_APPROVAL_SCHEMA_CONTRACT_MISMATCH');
+      const approvalHelpers = `var approvalEnvelopeSchema = external_exports.boolean();
+var AWH_EXACT_APPROVAL_BRIDGE_V2 = true;
+var AWH_EXACT_APPROVAL_INLINE_V1 = true;
+var awhExactApprovalTokenSchema = external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/);
+var AWH_EXACT_APPROVAL_TTL_MS = 12e4;
+var AWH_EXACT_APPROVAL_MAX = 256;
+var awhExactApprovalTokens = /* @__PURE__ */ new Map();
+var awhExactInlineApprovals = /* @__PURE__ */ new Map();
+function awhExactApprovalSignature(toolName, mutationKind, input, activeWorkspaceScope, mutationWorkspaceId) {
+  return JSON.stringify({
+    toolName,
+    mutationKind,
+    summary: summarizeMutationForApproval(toolName, input, activeWorkspaceScope),
+    workspaceId: mutationWorkspaceId ?? "",
+    workspaceRoot: activeWorkspaceScope?.rootPath ?? ""
+  });
+}
+function awhPruneExactApprovalTokens(now = Date.now()) {
+  for (const [token, entry] of awhExactApprovalTokens) {
+    if (entry.expiresAt <= now) awhExactApprovalTokens.delete(token);
+  }
+  while (awhExactApprovalTokens.size >= AWH_EXACT_APPROVAL_MAX) {
+    const oldest = awhExactApprovalTokens.keys().next().value;
+    if (typeof oldest !== "string") break;
+    awhExactApprovalTokens.delete(oldest);
+  }
+}
+function awhAcceptInlineExactApproval(signature, now = Date.now()) {
+  for (const [key, expiresAt] of awhExactInlineApprovals) {
+    if (expiresAt <= now) awhExactInlineApprovals.delete(key);
+  }
+  const existing = awhExactInlineApprovals.get(signature);
+  if (typeof existing === "number" && existing > now) return false;
+  while (awhExactInlineApprovals.size >= AWH_EXACT_APPROVAL_MAX) {
+    const oldest = awhExactInlineApprovals.keys().next().value;
+    if (typeof oldest !== "string") break;
+    awhExactInlineApprovals.delete(oldest);
+  }
+  awhExactInlineApprovals.set(signature, now + AWH_EXACT_APPROVAL_TTL_MS);
+  return true;
+}
+function awhIssueExactApprovalToken(signature) {
+  awhPruneExactApprovalTokens();
+  const token = randomBytes8(32).toString("base64url");
+  awhExactApprovalTokens.set(token, { signature, expiresAt: Date.now() + AWH_EXACT_APPROVAL_TTL_MS });
+  return token;
+}
+function awhConsumeExactApprovalToken(token, signature) {
+  awhPruneExactApprovalTokens();
+  const entry = awhExactApprovalTokens.get(token);
+  if (entry === void 0) return false;
+  awhExactApprovalTokens.delete(token);
+  return entry.expiresAt > Date.now() && entry.signature === signature;
+}
+function awhReadExactApprovalToken(input) {
+  if (!isRecord38(input) || typeof input.approvalToken !== "string") return void 0;
+  const parsed = awhExactApprovalTokenSchema.safeParse(input.approvalToken);
+  return parsed.success ? parsed.data : void 0;
+}
+`;
+      nextMain = nextMain.replace(approvalSchemaMarker, approvalHelpers);
+
+      const approvalEnvelopeStart = nextMain.indexOf('function withApprovalEnvelope(tool) {\n');
+      const approvalEnvelopeEnd = nextMain.indexOf('function withGoalLeaseEnvelope(tool) {\n', approvalEnvelopeStart);
+      if (approvalEnvelopeStart < 0 || approvalEnvelopeEnd < 0) throw new Error('DEVICE_RUNTIME_APPROVAL_ENVELOPE_CONTRACT_MISMATCH');
+      const approvalEnvelopeReplacement = `function withApprovalEnvelope(tool) {
+  const extendObjectSchema = (schema) => schema.safeExtend({
+    userConfirmed: approvalEnvelopeSchema.optional(),
+    approvalToken: awhExactApprovalTokenSchema.optional()
+  });
+  const inputSchema = tool.inputSchema instanceof external_exports.ZodObject ? extendObjectSchema(tool.inputSchema) : tool.inputSchema instanceof external_exports.ZodUnion ? external_exports.union(tool.inputSchema.options.map((option) => {
+    if (!(option instanceof external_exports.ZodObject)) {
+      throw new Error(\`Tool \${tool.name} union input branches must use object schemas\`);
+    }
+    return extendObjectSchema(option);
+  })) : tool.inputSchema;
+  if (inputSchema === tool.inputSchema)
+    return tool;
+  return {
+    ...tool,
+    inputSchema,
+    parse(input) {
+      const rawConfirmation = isRecord38(input) ? input.userConfirmed : void 0;
+      const rawApprovalToken = isRecord38(input) ? input.approvalToken : void 0;
+      const parsedConfirmation = rawConfirmation === void 0 ? void 0 : approvalEnvelopeSchema.safeParse(rawConfirmation);
+      const parsedApprovalToken = rawApprovalToken === void 0 ? void 0 : awhExactApprovalTokenSchema.safeParse(rawApprovalToken);
+      if (parsedConfirmation !== void 0 && !parsedConfirmation.success)
+        return err(appError("INVALID_INPUT", "userConfirmed is invalid"));
+      if (parsedApprovalToken !== void 0 && !parsedApprovalToken.success)
+        return err(appError("INVALID_INPUT", "approvalToken is invalid"));
+      const parsed = tool.parse(stripUserConfirmationEnvelope(input));
+      if (!parsed.ok || parsedConfirmation === void 0 && parsedApprovalToken === void 0)
+        return parsed;
+      if (!isRecord38(parsed.value))
+        return err(appError("INVALID_INPUT", "Tool input must be an object"));
+      return ok({
+        ...parsed.value,
+        ...parsedConfirmation === void 0 ? {} : { userConfirmed: parsedConfirmation.data },
+        ...parsedApprovalToken === void 0 ? {} : { approvalToken: parsedApprovalToken.data }
+      });
+    }
+  };
+}
+`;
+      nextMain = nextMain.slice(0, approvalEnvelopeStart) + approvalEnvelopeReplacement + nextMain.slice(approvalEnvelopeEnd);
+
+      const stripApprovalStart = nextMain.indexOf('function stripUserConfirmationEnvelope(input) {\n');
+      const stripApprovalEnd = nextMain.indexOf('function startGoalMutationFenceHeartbeat', stripApprovalStart);
+      if (stripApprovalStart < 0 || stripApprovalEnd < 0) throw new Error('DEVICE_RUNTIME_APPROVAL_STRIP_CONTRACT_MISMATCH');
+      const stripApprovalReplacement = `function stripUserConfirmationEnvelope(input) {
+  if (!isRecord38(input))
+    return input;
+  if (!Object.prototype.hasOwnProperty.call(input, "userConfirmed") && !Object.prototype.hasOwnProperty.call(input, "approvalToken"))
+    return input;
+  return Object.fromEntries(Object.entries(input).filter(([key]) => key !== "userConfirmed" && key !== "approvalToken"));
+}
+`;
+      nextMain = nextMain.slice(0, stripApprovalStart) + stripApprovalReplacement + nextMain.slice(stripApprovalEnd);
+
+      const hostApprovalStartMarker = '      if (hostApprovalRequired && !policyAllowsScopedDestructive) {\n';
+      const hostApprovalEndMarker = '      if (mutationFenceProof !== void 0 && mutationFenceWorkspaceId !== void 0 && this.services.goalMutationFence !== void 0) {\n';
+      const hostApprovalStart = nextMain.indexOf(hostApprovalStartMarker);
+      const hostApprovalEnd = nextMain.indexOf(hostApprovalEndMarker, hostApprovalStart);
+      if (hostApprovalStart < 0 || hostApprovalEnd < 0) throw new Error('DEVICE_RUNTIME_HOST_APPROVAL_CONTRACT_MISMATCH');
+      const hostApprovalReplacement = `      if (hostApprovalRequired && !policyAllowsScopedDestructive) {
+        const exactApprovalSignature = awhExactApprovalSignature(tool.name, mutationDecision.kind, approvalExecutionInput, activeWorkspaceScope, mutationWorkspaceId);
+        const presentedApprovalToken = awhReadExactApprovalToken(activeRoutedInput);
+        let hostApproved = presentedApprovalToken !== void 0 && awhConsumeExactApprovalToken(presentedApprovalToken, exactApprovalSignature);
+        if (presentedApprovalToken !== void 0 && !hostApproved) {
+          const message = "AWH exact-action approval token is invalid, expired, already used, or does not match this exact action";
+          const response2 = mapError2(appError("PERMISSION_DENIED", message));
+          await this.activity.end(callId, "PERMISSION_DENIED", Date.now() - started, message);
+          return response2;
+        }
+        if (!hostApproved && this.hostMutationApprovalProvider !== void 0) {
+          try {
+            hostApproved = await this.hostMutationApprovalProvider({
+              toolName: tool.name,
+              mutationKind: mutationDecision.kind,
+              reason: mutationDecision.reason,
+              summary: summarizeMutationForApproval(tool.name, approvalExecutionInput, activeWorkspaceScope),
+              ...mutationWorkspaceId === void 0 ? {} : { workspaceId: mutationWorkspaceId },
+              ...activeWorkspaceScope === null ? {} : { workspaceRoot: activeWorkspaceScope.rootPath }
+            });
+          } catch {
+            hostApproved = false;
+          }
+        }
+        if (!hostApproved && process.env.AWH_DEVICE_RUNTIME_HEADLESS === "1" && hasExplicitUserConfirmation(activeRoutedInput)) {
+          if (!awhAcceptInlineExactApproval(exactApprovalSignature)) {
+            const message = "AWH exact-action owner approval was already consumed for this exact action";
+            const response2 = mapError2(appError("PERMISSION_DENIED", message));
+            await this.activity.end(callId, "PERMISSION_DENIED", Date.now() - started, message);
+            return response2;
+          }
+          hostApproved = true;
+        }
+        if (!hostApproved) {
+          const message = process.env.AWH_DEVICE_RUNTIME_HEADLESS === "1"
+            ? "Headless exact-action approval requires explicit owner confirmation for this exact action"
+            : this.hostMutationApprovalProvider === void 0
+              ? "Host exact-action approval is unavailable for this mutation; use Desktop or a trusted host approval adapter"
+              : "The host denied or could not verify exact-action approval for this mutation";
+          const response2 = mapError2(appError("PERMISSION_DENIED", message));
+          await this.activity.end(callId, "PERMISSION_DENIED", Date.now() - started, message);
+          return response2;
+        }
+      }
+`;
+      nextMain = nextMain.slice(0, hostApprovalStart) + hostApprovalReplacement + nextMain.slice(hostApprovalEnd);
+      if (!nextMain.includes(AWH_RUNTIME_APPROVAL_BRIDGE_MARKER)
+        || !nextMain.includes(AWH_RUNTIME_APPROVAL_INLINE_MARKER)
+        || !nextMain.includes('approvalToken: awhExactApprovalTokenSchema.optional()')
+        || !nextMain.includes('awhConsumeExactApprovalToken')
+        || !nextMain.includes('awhAcceptInlineExactApproval')
+        || !nextMain.includes('AWH exact-action owner approval was already consumed for this exact action')) {
+        throw new Error('DEVICE_RUNTIME_APPROVAL_PATCH_VERIFY_FAILED');
+      }
+    }
+    if (!nextMain.includes(AWH_RUNTIME_NATIVE_HOST_NAME)) {
+      if (!nextMain.includes('lnwjud-macos-host')) throw new Error('DEVICE_RUNTIME_NATIVE_HOST_PATCH_CONTRACT_MISMATCH');
+      nextMain = nextMain.replaceAll('lnwjud-macos-host', AWH_RUNTIME_NATIVE_HOST_NAME);
+    }
     nextMain = nextMain.replace('var APP_NAME = "lnwjud";', AWH_RUNTIME_NAME_MARKER);
     nextMain = nextMain.replace('var APP_NAME2 = "lnwjud";', AWH_RUNTIME_MCP_NAME_MARKER);
     nextMain = nextMain.replaceAll('Continue using lnwjud tools', AWH_RUNTIME_INSTRUCTIONS_MARKER);
@@ -255,15 +467,74 @@ if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AW
     await createPackageWithOptions(work, next, { unpack: '{dist/main/*.node,node_modules/@electron-internal/extract-zip/**}' });
     const patched = extractFile(next, 'dist/main/main.js').toString('utf8');
     const patchedPackage = JSON.parse(extractFile(next, 'package.json').toString('utf8')) as Record<string, unknown>;
-    if (!patched.includes(AWH_HEADLESS_PATCH_MARKER) || !patched.includes(AWH_RUNTIME_NAME_MARKER) || !patched.includes(AWH_RUNTIME_MCP_NAME_MARKER) || !patched.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) || !patched.includes(AWH_RUNTIME_READY_MARKER) || !patched.includes(AWH_RUNTIME_PERMISSION_MARKER) || patched.includes(AWH_RUNTIME_PERMISSION_V1_MARKER)) throw new Error('DEVICE_RUNTIME_PATCH_VERIFY_FAILED');
+    if (!patched.includes(AWH_HEADLESS_PATCH_MARKER) || !patched.includes(AWH_RUNTIME_NAME_MARKER) || !patched.includes(AWH_RUNTIME_MCP_NAME_MARKER) || !patched.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) || !patched.includes(AWH_RUNTIME_READY_MARKER) || !patched.includes(AWH_RUNTIME_PERMISSION_MARKER) || !patched.includes(AWH_RUNTIME_HEALTH_MARKER) || !patched.includes(AWH_RUNTIME_APPROVAL_BRIDGE_MARKER) || !patched.includes(AWH_RUNTIME_APPROVAL_INLINE_MARKER) || !patched.includes('approvalToken: awhExactApprovalTokenSchema.optional()') || !patched.includes('awhConsumeExactApprovalToken') || !patched.includes('awhAcceptInlineExactApproval') || !patched.includes('process.env.AWH_DEVICE_RUNTIME_HEADLESS === "1" && hasExplicitUserConfirmation(activeRoutedInput)') || !patched.includes(AWH_RUNTIME_NATIVE_HOST_NAME) || patched.includes('lnwjud-macos-host') || patched.includes(AWH_RUNTIME_PERMISSION_V1_MARKER)) throw new Error('DEVICE_RUNTIME_PATCH_VERIFY_FAILED');
     if (patchedPackage.name !== 'awh-device-runtime' || patchedPackage.productName !== 'AWH Device Runtime') throw new Error('DEVICE_RUNTIME_PACKAGE_IDENTITY_VERIFY_FAILED');
     await rm(backup, { force: true });
     await rename(archive, backup);
-    try { await rename(next, archive); }
-    catch (error) { await rename(backup, archive).catch(() => undefined); throw error; }
+    try {
+      await rename(next, archive);
+      const committed = await readAsarMainFresh(archive);
+      if (!committed.includes(AWH_HEADLESS_PATCH_MARKER)
+        || !committed.includes(AWH_RUNTIME_NAME_MARKER)
+        || !committed.includes(AWH_RUNTIME_MCP_NAME_MARKER)
+        || !committed.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER)
+        || !committed.includes(AWH_RUNTIME_READY_MARKER)
+        || !committed.includes(AWH_RUNTIME_PERMISSION_MARKER)
+        || !committed.includes(AWH_RUNTIME_HEALTH_MARKER)
+        || !committed.includes(AWH_RUNTIME_APPROVAL_BRIDGE_MARKER)
+        || !committed.includes(AWH_RUNTIME_APPROVAL_INLINE_MARKER)
+        || !committed.includes('approvalToken: awhExactApprovalTokenSchema.optional()')
+        || !committed.includes('awhConsumeExactApprovalToken')
+        || !committed.includes('awhAcceptInlineExactApproval')
+        || !committed.includes('process.env.AWH_DEVICE_RUNTIME_HEADLESS === "1" && hasExplicitUserConfirmation(activeRoutedInput)')
+        || !committed.includes(AWH_RUNTIME_NATIVE_HOST_NAME)
+        || committed.includes('lnwjud-macos-host')) {
+        throw new Error('DEVICE_RUNTIME_PATCH_COMMIT_VERIFY_FAILED');
+      }
+    } catch (error) {
+      await rm(archive, { force: true }).catch(() => undefined);
+      await rename(backup, archive).catch(() => undefined);
+      throw error;
+    }
   } finally {
     await rm(work, { recursive: true, force: true }).catch(() => undefined);
     await rm(next, { force: true }).catch(() => undefined);
+  }
+}
+
+async function rebrandMacNativeHosts(appRoot: string): Promise<void> {
+  const nativeRoot = join(appRoot, 'Contents', 'Resources', 'native-host', 'macos');
+  try {
+    for (const entry of await readdir(nativeRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const archRoot = join(nativeRoot, entry.name);
+      const legacy = join(archRoot, 'lnwjud-macos-host');
+      const branded = join(archRoot, AWH_RUNTIME_NATIVE_HOST_NAME);
+      const manifestPath = join(archRoot, 'NATIVE_HOST.json');
+      let brandedReady = false;
+      try { brandedReady = (await lstat(branded)).isFile(); } catch {}
+      if (!brandedReady) {
+        const legacyInfo = await lstat(legacy);
+        if (!legacyInfo.isFile() || legacyInfo.isSymbolicLink()) throw new Error('DEVICE_RUNTIME_NATIVE_HOST_REBRAND_INVALID');
+        await rename(legacy, branded);
+      } else {
+        await rm(legacy, { force: true }).catch(() => undefined);
+      }
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
+      if (manifest.name !== 'lnwjud-macos-host' && manifest.name !== AWH_RUNTIME_NATIVE_HOST_NAME) {
+        throw new Error('DEVICE_RUNTIME_NATIVE_HOST_MANIFEST_INVALID');
+      }
+      if (manifest.arch !== entry.name || manifest.platform !== 'darwin') {
+        throw new Error('DEVICE_RUNTIME_NATIVE_HOST_MANIFEST_INVALID');
+      }
+      manifest.name = AWH_RUNTIME_NATIVE_HOST_NAME;
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+      const verifiedManifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
+      if (verifiedManifest.name !== AWH_RUNTIME_NATIVE_HOST_NAME) throw new Error('DEVICE_RUNTIME_NATIVE_HOST_MANIFEST_VERIFY_FAILED');
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('DEVICE_RUNTIME_NATIVE_HOST_REBRAND_MISSING');
+    throw error;
   }
 }
 
@@ -271,8 +542,9 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   const archive = join(appRoot, 'Contents', 'Resources', 'app.asar');
   const backup = archive + '.awh-upstream';
   await patchMacHeadlessRuntime(appRoot);
+  await rebrandMacNativeHosts(appRoot);
   const plist = join(appRoot, 'Contents', 'Info.plist');
-  const asarIntegrity = createHash('sha256').update(getRawHeader(archive).headerString).digest('hex');
+  const asarIntegrity = createHash('sha256').update(await readAsarHeaderFresh(archive)).digest('hex');
   const oldExecutable = join(appRoot, 'Contents', 'MacOS', 'lnwjud');
   const newExecutable = join(appRoot, 'Contents', 'MacOS', MAC_RUNTIME_EXECUTABLE);
   try {
@@ -349,8 +621,20 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   await rm(backup, { force: true }).catch(() => undefined);
-  const sign = await execFile('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', appRoot], appRoot, 120_000);
+  const sign = await execFile('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', appRoot], appRoot, 180_000);
   if (sign.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_SIGN_FAILED');
+  const finalMain = await readAsarMainFresh(archive);
+  if (!finalMain.includes(AWH_HEADLESS_PATCH_MARKER)
+    || !finalMain.includes(AWH_RUNTIME_NAME_MARKER)
+    || !finalMain.includes(AWH_RUNTIME_MCP_NAME_MARKER)
+    || !finalMain.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER)
+    || !finalMain.includes(AWH_RUNTIME_READY_MARKER)
+    || !finalMain.includes(AWH_RUNTIME_PERMISSION_MARKER)
+    || !finalMain.includes(AWH_RUNTIME_HEALTH_MARKER)
+    || !finalMain.includes(AWH_RUNTIME_NATIVE_HOST_NAME)
+    || finalMain.includes('lnwjud-macos-host')) {
+    throw new Error('DEVICE_RUNTIME_REBRAND_FINAL_VERIFY_FAILED');
+  }
 }
 
 function macBridge(): string {
@@ -418,280 +702,190 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
   };
 }
 
-async function installMacEngine(home: string, arch: 'arm64' | 'x64'): Promise<boolean> {
+async function macEngineVerificationFailure(appRoot: string, arch: 'arm64' | 'x64'): Promise<string | null> {
+  try {
+    const executable = join(appRoot, 'Contents', 'MacOS', MAC_RUNTIME_EXECUTABLE);
+    if (!(await lstat(executable)).isFile()) return 'DEVICE_RUNTIME_VERIFY_EXECUTABLE_MISSING';
+    const archive = join(appRoot, 'Contents', 'Resources', 'app.asar');
+    const main = await readAsarMainFresh(archive);
+    const markers: Array<[string, string]> = [
+      [AWH_HEADLESS_PATCH_MARKER, 'HEADLESS'],
+      [AWH_RUNTIME_NAME_MARKER, 'RUNTIME_NAME'],
+      [AWH_RUNTIME_MCP_NAME_MARKER, 'MCP_NAME'],
+      [AWH_RUNTIME_INSTRUCTIONS_MARKER, 'INSTRUCTIONS'],
+      [AWH_RUNTIME_READY_MARKER, 'READY'],
+      [AWH_RUNTIME_PERMISSION_MARKER, 'PERMISSION'],
+      [AWH_RUNTIME_HEALTH_MARKER, 'HEALTH'],
+      [AWH_RUNTIME_APPROVAL_BRIDGE_MARKER, 'APPROVAL_BRIDGE'],
+      [AWH_RUNTIME_APPROVAL_INLINE_MARKER, 'APPROVAL_INLINE'],
+      [AWH_RUNTIME_NATIVE_HOST_NAME, 'NATIVE_HOST_NAME'],
+    ];
+    for (const [marker, name] of markers) if (!main.includes(marker)) return 'DEVICE_RUNTIME_VERIFY_MARKER_' + name + '_MISSING';
+    if (main.includes('lnwjud-macos-host')) return 'DEVICE_RUNTIME_VERIFY_LEGACY_NATIVE_STRING_PRESENT';
+    const hostRoot = join(appRoot, 'Contents', 'Resources', 'native-host', 'macos', arch);
+    const host = join(hostRoot, AWH_RUNTIME_NATIVE_HOST_NAME);
+    const hostInfo = await lstat(host);
+    if (!hostInfo.isFile()) return 'DEVICE_RUNTIME_VERIFY_NATIVE_HOST_MISSING';
+    try {
+      if ((await lstat(join(hostRoot, 'lnwjud-macos-host'))).isFile()) return 'DEVICE_RUNTIME_VERIFY_LEGACY_NATIVE_FILE_PRESENT';
+    } catch {}
+    const hostManifest = JSON.parse(await readFile(join(hostRoot, 'NATIVE_HOST.json'), 'utf8')) as Record<string, unknown>;
+    if (hostManifest.name !== AWH_RUNTIME_NATIVE_HOST_NAME) return 'DEVICE_RUNTIME_VERIFY_NATIVE_HOST_MANIFEST_NAME';
+    if (hostManifest.platform !== 'darwin' || hostManifest.arch !== arch) return 'DEVICE_RUNTIME_VERIFY_NATIVE_HOST_MANIFEST_PLATFORM';
+    if (typeof hostManifest.sha256 !== 'string' || await sha256File(host) !== hostManifest.sha256) return 'DEVICE_RUNTIME_VERIFY_NATIVE_HOST_MANIFEST_HASH';
+    if (typeof hostManifest.sizeBytes !== 'number' || hostInfo.size !== hostManifest.sizeBytes) return 'DEVICE_RUNTIME_VERIFY_NATIVE_HOST_MANIFEST_SIZE';
+    const signed = await execFile('/usr/bin/codesign', ['--verify', '--deep', '--strict', appRoot], appRoot, 180_000);
+    if (signed.code !== 0) return 'DEVICE_RUNTIME_VERIFY_CODESIGN_' + String(signed.code);
+    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message.replace(/[^A-Z0-9_.-]/gi, '_').slice(0, 100) : 'UNKNOWN';
+    return 'DEVICE_RUNTIME_VERIFY_EXCEPTION_' + message;
+  }
+}
+
+async function verifyMacEngineBundle(appRoot: string, arch: 'arm64' | 'x64'): Promise<boolean> {
+  return (await macEngineVerificationFailure(appRoot, arch)) === null;
+}
+
+async function installMacEngine(home: string, arch: 'arm64' | 'x64', forceRepair = false): Promise<boolean> {
   const asset = MAC_ASSETS[arch];
   const root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud');
   await mkdir(root, { recursive: true, mode: 0o700 });
   const current = join(root, 'current');
-  // Preserve an already-qualified AWH engine instead
-  // of replacing it with a second upstream copy merely because its directory
-  // name carries an AWH suffix.
-  try {
-    const link = (await readlink(current)).trim();
-    const active = isAbsolute(link) ? link : join(root, link);
-    if (active.includes(LNWJUD_VERSION)) {
-      const branded = join(active, 'Contents', 'MacOS', MAC_RUNTIME_EXECUTABLE);
-      const legacy = join(active, 'Contents', 'MacOS', 'lnwjud');
-      let usable = false;
-      try { usable = (await lstat(branded)).isFile(); } catch {}
-      if (!usable) { try { usable = (await lstat(legacy)).isFile(); } catch {} }
-      if (usable) {
-        await rebrandMacEngine(active);
+  const target = join(root, LNWJUD_VERSION);
+
+  if (!forceRepair) {
+    try {
+      const link = (await readlink(current)).trim();
+      const active = isAbsolute(link) ? link : join(root, link);
+      if (active.includes(LNWJUD_VERSION) && await verifyMacEngineBundle(active, arch)) {
         await installMacBridge(home);
         return false;
       }
-    }
-  } catch {}
-  const target = join(root, LNWJUD_VERSION);
-  const runtimeExecutable = join(target, 'Contents', 'MacOS', MAC_RUNTIME_EXECUTABLE);
-  try {
-    if ((await lstat(runtimeExecutable)).isFile()) {
-      await rebrandMacEngine(target);
+    } catch {}
+    if (await verifyMacEngineBundle(target, arch)) {
+      const nextLink = current + '.next';
+      await rm(nextLink, { force: true }).catch(() => undefined);
+      await symlink(target, nextLink, 'dir');
+      await rename(nextLink, current);
       await installMacBridge(home);
       return false;
     }
-  } catch {}
+  }
+
   const work = await mkdtemp(join(tmpdir(), 'awh-lnwjud-'));
+  const staged = join(root, '.' + LNWJUD_VERSION + '.staged-' + process.pid);
+  const rollback = join(root, LNWJUD_VERSION + '.rollback');
+  const currentNext = current + '.next';
+  let oldCurrent: string | null = null;
+  let movedOld = false;
   try {
     const archive = join(work, asset.name);
-    await download(`${RELEASE_BASE}/${asset.name}`, archive);
+    await download(RELEASE_BASE + '/' + asset.name, archive);
     if ((await sha256File(archive)) !== asset.sha256) throw new Error('DEVICE_RUNTIME_INTEGRITY_FAILED');
-    const extracted = join(work, 'extracted'); await mkdir(extracted, { recursive: true, mode: 0o700 });
+    const extracted = join(work, 'extracted');
+    await mkdir(extracted, { recursive: true, mode: 0o700 });
     const unzip = await execFile('/usr/bin/ditto', ['-x', '-k', archive, extracted], work, 180_000);
     if (unzip.code !== 0) throw new Error('DEVICE_RUNTIME_EXTRACT_FAILED');
-    const app = await findApp(extracted); if (!app) throw new Error('DEVICE_RUNTIME_PACKAGE_INVALID');
-    await rm(target, { recursive: true, force: true }); await rename(app, target);
-    await rebrandMacEngine(target);
-    const current = join(root, 'current'); const previous = join(root, 'previous');
-    let old: string | null = null; try { old = await readlink(current); } catch {}
-    try { const info = await lstat(current); if (info.isSymbolicLink() || info.isFile() || info.isDirectory()) await rm(current, { recursive: true, force: true }); } catch {}
-    await symlink(target, current, 'dir');
-    if (old) { try { await rm(previous, { recursive: true, force: true }); await symlink(old.trim(), previous, 'dir'); } catch {} }
-    await installMacBridge(home);
-    return true;
-  } finally { await rm(work, { recursive: true, force: true }); }
+    const app = await findApp(extracted);
+    if (!app) throw new Error('DEVICE_RUNTIME_PACKAGE_INVALID');
+
+    await rebrandMacEngine(app);
+    const stagedFailure = await macEngineVerificationFailure(app, arch);
+    if (stagedFailure) throw new Error('DEVICE_RUNTIME_STAGED_VERIFY_FAILED_' + stagedFailure);
+    await rm(staged, { recursive: true, force: true });
+    const copy = await execFile('/usr/bin/ditto', [app, staged], work, 180_000);
+    if (copy.code !== 0) throw new Error('DEVICE_RUNTIME_STAGED_COPY_FAILED_' + String(copy.code));
+    const copiedFailure = await macEngineVerificationFailure(staged, arch);
+    if (copiedFailure) throw new Error('DEVICE_RUNTIME_STAGED_COPY_VERIFY_FAILED_' + copiedFailure);
+
+    try { oldCurrent = (await readlink(current)).trim(); } catch { oldCurrent = null; }
+    await rm(rollback, { recursive: true, force: true }).catch(() => undefined);
+    try {
+      const info = await lstat(target);
+      if (info.isDirectory() || info.isFile() || info.isSymbolicLink()) {
+        await rename(target, rollback);
+        movedOld = true;
+      }
+    } catch {}
+
+    try {
+      await rename(staged, target);
+      await rm(currentNext, { force: true }).catch(() => undefined);
+      await symlink(target, currentNext, 'dir');
+      try {
+        const currentInfo = await lstat(current);
+        if (!currentInfo.isSymbolicLink()) await rm(current, { recursive: true, force: true });
+      } catch {}
+      await rename(currentNext, current);
+      await installMacBridge(home);
+      const postSwapFailure = await macEngineVerificationFailure(target, arch);
+      if (postSwapFailure) throw new Error('DEVICE_RUNTIME_POST_SWAP_VERIFY_FAILED_' + postSwapFailure);
+
+      const previous = join(root, 'previous');
+      const previousNext = previous + '.next';
+      await rm(previousNext, { force: true }).catch(() => undefined);
+      if (movedOld) {
+        await symlink(rollback, previousNext, 'dir');
+        try {
+          const previousInfo = await lstat(previous);
+          if (!previousInfo.isSymbolicLink()) await rm(previous, { recursive: true, force: true });
+        } catch {}
+        await rename(previousNext, previous);
+      }
+      return true;
+    } catch (error) {
+      await rm(target, { recursive: true, force: true }).catch(() => undefined);
+      if (movedOld) await rename(rollback, target).catch(() => undefined);
+      if (oldCurrent) {
+        await rm(currentNext, { force: true }).catch(() => undefined);
+        await symlink(oldCurrent, currentNext, 'dir').catch(() => undefined);
+        await rename(currentNext, current).catch(() => undefined);
+      }
+      throw error;
+    }
+  } finally {
+    await rm(staged, { recursive: true, force: true }).catch(() => undefined);
+    await rm(currentNext, { force: true }).catch(() => undefined);
+    await rm(work, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
-async function installWindowsEngine(env: NodeJS.ProcessEnv): Promise<boolean> {
+async function installWindowsEngine(env: NodeJS.ProcessEnv, forceRepair = false): Promise<boolean> {
   const local = env.LOCALAPPDATA;
   if (!local) throw new Error('DEVICE_RUNTIME_LOCALAPPDATA_MISSING');
   const root = pathWin32.join(local, 'AWH', 'Engines', 'device-runtime', LNWJUD_VERSION);
   const installed = pathWin32.join(root, WINDOWS_RUNTIME_EXECUTABLE);
-  try { if ((await lstat(installed)).isFile()) return false; } catch {}
+  if (!forceRepair) {
+    try { if ((await lstat(installed)).isFile()) return false; } catch {}
+  }
   await mkdir(root, { recursive: true, mode: 0o700 });
   const staged = installed + '.download';
+  const rollback = installed + '.rollback';
   await rm(staged, { force: true });
+  let movedOld = false;
   try {
-    await download(`${RELEASE_BASE}/${WINDOWS_ASSET.name}`, staged);
+    await download(RELEASE_BASE + '/' + WINDOWS_ASSET.name, staged);
     if ((await sha256File(staged)) !== WINDOWS_ASSET.sha256) throw new Error('DEVICE_RUNTIME_INTEGRITY_FAILED');
-    await rm(installed, { force: true });
-    await rename(staged, installed);
-    return true;
-  } finally { await rm(staged, { force: true }); }
-}
-
-interface PrivateNodeRuntime { node: string; npmCli: string; }
-
-function toolchainRoot(platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv, arch: string): string {
-  if (platform === 'darwin') return join(home, 'Library', 'Application Support', 'AWH', 'Toolchain', `node-${NODE_VERSION}-${arch}`);
-  const local = env.LOCALAPPDATA;
-  if (!local) throw new Error('DEVICE_RUNTIME_LOCALAPPDATA_MISSING');
-  return pathWin32.join(local, 'AWH', 'Toolchain', `node-${NODE_VERSION}-${arch}`);
-}
-
-async function installPrivateNode(platform: NodeJS.Platform, arch: string, home: string, env: NodeJS.ProcessEnv): Promise<PrivateNodeRuntime> {
-  const key = `${platform}-${arch}` as keyof typeof NODE_ASSETS;
-  const asset = NODE_ASSETS[key];
-  if (!asset) throw new Error('DEVICE_RUNTIME_NODE_ARCH_UNSUPPORTED');
-  const target = toolchainRoot(platform, home, env, arch);
-  const node = platform === 'win32' ? pathWin32.join(target, 'node.exe') : join(target, 'bin', 'node');
-  const npmCli = platform === 'win32'
-    ? pathWin32.join(target, 'node_modules', 'npm', 'bin', 'npm-cli.js')
-    : join(target, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  try {
-    if ((await lstat(node)).isFile() && (await lstat(npmCli)).isFile()) return { node, npmCli };
-  } catch {}
-  await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-  const work = await mkdtemp(join(tmpdir(), 'awh-node-'));
-  try {
-    const archive = join(work, asset.name);
-    await download(`${NODE_RELEASE_BASE}/${asset.name}`, archive);
-    if ((await sha256File(archive)) !== asset.sha256) throw new Error('DEVICE_RUNTIME_NODE_INTEGRITY_FAILED');
-    const extracted = join(work, 'extracted'); await mkdir(extracted, { recursive: true, mode: 0o700 });
-    if (platform === 'darwin') {
-      const untar = await execFile('/usr/bin/tar', ['-xzf', archive, '-C', extracted], work, 180_000);
-      if (untar.code !== 0) throw new Error('DEVICE_RUNTIME_NODE_EXTRACT_FAILED');
-    } else {
-      const systemRoot = env.SystemRoot || env.SYSTEMROOT || 'C:\\Windows';
-      const powershell = pathWin32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-      const command = `Expand-Archive -LiteralPath '${archive.replace(/'/g, "''")}' -DestinationPath '${extracted.replace(/'/g, "''")}' -Force`;
-      const unzip = await execFile(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], work, 180_000);
-      if (unzip.code !== 0) throw new Error('DEVICE_RUNTIME_NODE_EXTRACT_FAILED');
-    }
-    const source = join(extracted, asset.name.replace(/\.(?:tar\.gz|zip)$/i, ''));
-    const sourceInfo = await lstat(source); if (!sourceInfo.isDirectory()) throw new Error('DEVICE_RUNTIME_NODE_PACKAGE_INVALID');
-    await rm(target, { recursive: true, force: true });
-    await rename(source, target);
-    if (!(await lstat(node)).isFile() || !(await lstat(npmCli)).isFile()) throw new Error('DEVICE_RUNTIME_NODE_PACKAGE_INVALID');
-    return { node, npmCli };
-  } finally { await rm(work, { recursive: true, force: true }); }
-}
-
-function systemRuntimeRoot(platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv): string {
-  if (platform === 'darwin') return join(home, 'Library', 'Application Support', 'AWH', 'SystemRuntime', 'runtime');
-  const local = env.LOCALAPPDATA;
-  if (!local) throw new Error('DEVICE_RUNTIME_LOCALAPPDATA_MISSING');
-  return pathWin32.join(local, 'AWH', 'SystemRuntime', 'runtime');
-}
-
-function systemMcpEntry(platform: NodeJS.Platform, runtime: string): string {
-  return platform === 'win32'
-    ? pathWin32.join(runtime, 'awh-system-mcp.mjs')
-    : join(runtime, 'awh-system-mcp.mjs');
-}
-
-async function writeSystemMcpShim(runtime: string): Promise<void> {
-  const source = [
-    "const fmt=(xs)=>xs.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ');",
-    "for(const k of ['log','info','warn','error','debug']) console[k]=(...xs)=>process.stderr.write('[DC '+k.toUpperCase()+'] '+fmt(xs)+'\\n');",
-    "global.disableOnboarding=true;",
-    "const { StdioServerTransport } = await import('./node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js');",
-    "const { server } = await import('./node_modules/@wonderwhy-er/desktop-commander/dist/server.js');",
-    "await server.connect(new StdioServerTransport());",
-    '',
-  ].join('\n');
-  await writeFile(join(runtime, 'awh-system-mcp.mjs'), source, { encoding: 'utf8', mode: 0o600 });
-}
-
-async function installSystemMcpBridge(platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv, runtime: string, node: string): Promise<void> {
-  await writeSystemMcpShim(runtime);
-  const entry = systemMcpEntry(platform, runtime);
-  if (platform === 'darwin') {
-    const bin = join(home, '.awh', 'bin'); await mkdir(bin, { recursive: true, mode: 0o700 });
-    const wrapper = join(bin, 'awh-system-mcp');
-    await writeFile(wrapper, `#!/bin/sh\nset -eu\nexec "${node}" "${entry}" "$@"\n`, { encoding: 'utf8', mode: 0o700 });
-    await chmod(wrapper, 0o700);
-  } else {
-    const local = env.LOCALAPPDATA; if (!local) throw new Error('DEVICE_RUNTIME_LOCALAPPDATA_MISSING');
-    const bin = pathWin32.join(local, 'AWH', 'bin'); await mkdir(bin, { recursive: true, mode: 0o700 });
-    const wrapper = pathWin32.join(bin, 'awh-system-mcp.cmd');
-    await writeFile(wrapper, `@echo off\r\n"${node}" "${entry}" %*\r\n`, { encoding: 'utf8', mode: 0o600 });
-  }
-}
-
-async function verifySystemMcpRuntime(node: string, entry: string, cwd: string, env: NodeJS.ProcessEnv): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(node, [entry], { cwd, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env });
-    let buffer = '';
-    let stderr = '';
-    let initialized = false;
-    let settled = false;
-    const finish = (error?: Error): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      child.kill();
-      if (error) reject(error); else resolve();
-    };
-    const classifyExit = (code: number | null, signal: NodeJS.Signals | null): Error => {
-      if (/ERR_MODULE_NOT_FOUND|Cannot find module/i.test(stderr)) return new Error('DEVICE_RUNTIME_SYSTEM_DEPENDENCY_MISSING');
-      if (signal) return new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_SIGNAL_' + signal.replace(/[^A-Z0-9]/gi, '_').toUpperCase());
-      if (typeof code === 'number') return new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_EXIT_' + code);
-      return new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_EXIT_UNKNOWN');
-    };
-    const timer = setTimeout(() => finish(new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_TIMEOUT')), 30_000);
-    child.once('error', () => finish(new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_SPAWN_FAILED')));
-    child.once('exit', (code, signal) => { if (!settled) finish(classifyExit(code, signal)); });
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk: string) => {
-      stderr = (stderr + chunk).slice(-64 * 1024);
-    });
-    child.stdout.setEncoding('utf8');
-    child.stdout.on('data', (chunk: string) => {
-      if (settled) return;
-      buffer += chunk;
-      if (buffer.length > 256 * 1024) return finish(new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_OVERFLOW'));
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        if (!line.trim().startsWith('{')) continue;
-        let message: unknown;
-        try { message = JSON.parse(line); } catch { continue; }
-        if (!message || typeof message !== 'object' || Array.isArray(message)) continue;
-        const row = message as Record<string, unknown>;
-        if (row.id === 1 && !initialized) {
-          const result = row.result as Record<string, unknown> | undefined;
-          const server = result?.serverInfo as Record<string, unknown> | undefined;
-          if (server?.version !== SYSTEM_MCP_VERSION) return finish(new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_VERSION_MISMATCH'));
-          initialized = true;
-          child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} }) + '\n');
-          child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }) + '\n');
-        } else if (row.id === 2) {
-          const result = row.result as Record<string, unknown> | undefined;
-          const tools = result?.tools;
-          if (!Array.isArray(tools) || tools.length < 10) return finish(new Error('DEVICE_RUNTIME_SYSTEM_TOOLS_MISSING'));
-          return finish();
-        }
-      }
-    });
-    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'awh-device-bootstrap', version: '1' } } }) + '\n');
-  });
-}
-
-async function installAndVerifySystemMcpRuntime(platform: NodeJS.Platform, runtime: string, privateNode: PrivateNodeRuntime, env: NodeJS.ProcessEnv): Promise<void> {
-  await mkdir(runtime, { recursive: true, mode: 0o700 });
-  await writeFile(join(runtime, 'package.json'), JSON.stringify({ name: 'awh-system-runtime', private: true, version: '1.0.0', dependencies: { [SYSTEM_MCP_PACKAGE]: SYSTEM_MCP_VERSION } }, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
-  const install = await execFile(privateNode.node, [privateNode.npmCli, 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', `${SYSTEM_MCP_PACKAGE}@${SYSTEM_MCP_VERSION}`], runtime, 300_000, { ...env, npm_config_update_notifier: 'false', npm_config_fund: 'false', npm_config_audit: 'false' });
-  if (install.code !== 0) throw new Error('DEVICE_RUNTIME_SYSTEM_INSTALL_FAILED');
-  const packagePath = platform === 'win32'
-    ? pathWin32.join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'package.json')
-    : join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'package.json');
-  const entry = systemMcpEntry(platform, runtime);
-  const installed = JSON.parse(await readFile(packagePath, 'utf8')) as { version?: unknown };
-  if (installed.version !== SYSTEM_MCP_VERSION) throw new Error('DEVICE_RUNTIME_SYSTEM_VERSION_MISMATCH');
-  const lock = JSON.parse(await readFile(join(runtime, 'package-lock.json'), 'utf8')) as { packages?: Record<string, { version?: string; integrity?: string }> };
-  const row = lock.packages?.['node_modules/@wonderwhy-er/desktop-commander'];
-  if (row?.version !== SYSTEM_MCP_VERSION || row.integrity !== SYSTEM_MCP_INTEGRITY) throw new Error('DEVICE_RUNTIME_SYSTEM_INTEGRITY_FAILED');
-  await writeSystemMcpShim(runtime);
-  await verifySystemMcpRuntime(privateNode.node, entry, runtime, env);
-}
-
-async function ensureSystemMcpRuntime(platform: NodeJS.Platform, arch: string, home: string, env: NodeJS.ProcessEnv): Promise<boolean> {
-  if (platform === 'win32' && arch !== 'x64') throw new Error('DEVICE_RUNTIME_SYSTEM_ARCH_UNSUPPORTED');
-  if (platform === 'darwin' && arch !== 'arm64' && arch !== 'x64') throw new Error('DEVICE_RUNTIME_SYSTEM_ARCH_UNSUPPORTED');
-  const privateNode = await installPrivateNode(platform, arch, home, env);
-  const runtime = systemRuntimeRoot(platform, home, env);
-  const packagePath = platform === 'win32'
-    ? pathWin32.join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'package.json')
-    : join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'package.json');
-  const entry = systemMcpEntry(platform, runtime);
-  let current = '';
-  try {
-    const parsed = JSON.parse(await readFile(packagePath, 'utf8')) as { version?: unknown };
-    current = typeof parsed.version === 'string' ? parsed.version : '';
-  } catch {}
-  if (current === SYSTEM_MCP_VERSION) {
+    await rm(rollback, { force: true }).catch(() => undefined);
     try {
-      await installSystemMcpBridge(platform, home, env, runtime, privateNode.node);
-      await verifySystemMcpRuntime(privateNode.node, entry, runtime, env);
-      return false;
-    } catch {
-      const staged = runtime + '.repair';
-      const previous = runtime + '.previous';
-      await rm(staged, { recursive: true, force: true });
-      await installAndVerifySystemMcpRuntime(platform, staged, privateNode, env);
-      await rm(previous, { recursive: true, force: true });
-      await rename(runtime, previous);
-      try { await rename(staged, runtime); }
-      catch (error) { await rename(previous, runtime).catch(() => undefined); throw error; }
-      await installSystemMcpBridge(platform, home, env, runtime, privateNode.node);
-      await verifySystemMcpRuntime(privateNode.node, entry, runtime, env);
+      if ((await lstat(installed)).isFile()) {
+        await rename(installed, rollback);
+        movedOld = true;
+      }
+    } catch {}
+    try {
+      await rename(staged, installed);
+      if (!(await lstat(installed)).isFile()) throw new Error('DEVICE_RUNTIME_POST_SWAP_VERIFY_FAILED');
       return true;
+    } catch (error) {
+      await rm(installed, { force: true }).catch(() => undefined);
+      if (movedOld) await rename(rollback, installed).catch(() => undefined);
+      throw error;
     }
+  } finally {
+    await rm(staged, { force: true }).catch(() => undefined);
   }
-  await installAndVerifySystemMcpRuntime(platform, runtime, privateNode, env);
-  await installSystemMcpBridge(platform, home, env, runtime, privateNode.node);
-  return true;
 }
 
 async function readinessFile(dataDir: string, result: DeviceBootstrapResult): Promise<void> {
@@ -699,7 +893,7 @@ async function readinessFile(dataDir: string, result: DeviceBootstrapResult): Pr
   await writeFile(join(dataDir, 'device-runtime-readiness.json'), JSON.stringify({ schemaVersion: 1, ...result, verifiedAt: new Date().toISOString(), source: 'pinned-audited-device-runtime' }, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
 }
 
-export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.Platform = process.platform, arch: string = process.arch, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<DeviceBootstrapResult> {
+export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.Platform = process.platform, arch: string = process.arch, home = homedir(), env: NodeJS.ProcessEnv = process.env, forceRepair = false): Promise<DeviceBootstrapResult> {
   if (!['darwin', 'win32'].includes(platform)) {
     const result: DeviceBootstrapResult = { state: 'UNSUPPORTED', version: null, installed: false, verified: false, reason: 'PLATFORM_NOT_SUPPORTED' };
     await readinessFile(dataDir, result); return result;
@@ -707,8 +901,8 @@ export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.P
   try {
     if (platform === 'darwin') {
       if (arch !== 'arm64' && arch !== 'x64') throw new Error('DEVICE_RUNTIME_ARCH_UNSUPPORTED');
-      await installMacEngine(home, arch);
-    } else await installWindowsEngine(env);
+      await installMacEngine(home, arch, forceRepair);
+    } else await installWindowsEngine(env, forceRepair);
     // AWH Device Runtime owns the full device tool surface. Remote Desktop Commander
     // remains an independent fallback and must not be duplicated under AWH/SystemRuntime.
     // Tool Packs are provisioned lazily on first routed use; Agent bootstrap never installs them eagerly.
@@ -717,7 +911,8 @@ export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.P
     if (!spec) throw new Error('DEVICE_RUNTIME_LAUNCHER_MISSING');
     const smokeRoot = join(dataDir, 'device-runtime-smoke');
     const client = await LnwjudDeviceClient.open(smokeRoot);
-    try { await client.callTool('health', { operation: 'check_all' }, 20_000); } finally { client.close(); }
+    try { await client.callTool('health', { operation: 'check_all' }, 20_000); }
+    finally { await client.closeAndWait(); }
     const result: DeviceBootstrapResult = { state: 'READY', version: LNWJUD_VERSION, installed, verified: true, reason: null };
     await readinessFile(dataDir, result); return result;
   } catch (error) {
@@ -725,4 +920,8 @@ export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.P
     const result: DeviceBootstrapResult = { state: 'FAILED', version: null, installed: false, verified: false, reason };
     await readinessFile(dataDir, result).catch(() => undefined); return result;
   }
+}
+
+export async function repairAwhDeviceRuntime(dataDir: string, platform: NodeJS.Platform = process.platform, arch: string = process.arch, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<DeviceBootstrapResult> {
+  return ensureAwhDeviceRuntime(dataDir, platform, arch, home, env, true);
 }

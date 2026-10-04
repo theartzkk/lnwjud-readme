@@ -82,7 +82,7 @@ test('external CLI discovery reports inventory only and never grants an executio
 });
 
 
-test('macOS device runtime discovery exposes AWH system plus KRUART GUI inventory only when both are installed', async () => {
+test('legacy RDC and GUI toolkit artifacts do not impersonate AWH Device Runtime', async () => {
   const home = '/Users/fixture';
   const paths = new Set([
     '/Users/fixture/.kruart/ai-control/kui',
@@ -94,7 +94,7 @@ test('macOS device runtime discovery exposes AWH system plus KRUART GUI inventor
     commandAvailable: async () => false,
     pathAvailable: async (path) => paths.has(path),
   });
-  assert.deepEqual(tools, ['tool.awh-device-gui', 'tool.awh-device-system', 'tool.remote-desktop-mcp']);
+  assert.deepEqual(tools, []);
 });
 
 test('macOS GUI inventory is not advertised without an executable AWH system provider', async () => {
@@ -108,7 +108,7 @@ test('macOS GUI inventory is not advertised without an executable AWH system pro
   assert.deepEqual(tools, []);
 });
 
-test('standalone AWH Device Runtime is advertised without Remote Desktop Commander', async () => {
+test('standalone AWH Device Runtime advertises GUI and system capability classes without RDC', async () => {
   const macHome = '/Users/fixture';
   const macBridge = '/Users/fixture/.awh/bin/awh-mcp-stdio';
   const macTools = await discoverWorkerTools({
@@ -119,7 +119,7 @@ test('standalone AWH Device Runtime is advertised without Remote Desktop Command
   assert.deepEqual(macTools, ['tool.awh-device-gui', 'tool.awh-device-runtime', 'tool.awh-device-system']);
 
   const winLocal = 'C:\\Users\\Fixture\\AppData\\Local';
-  const winEngine = pathWin32.join(winLocal, 'Programs', 'lnwjud', 'lnwjud.exe');
+  const winEngine = pathWin32.join(winLocal, 'AWH', 'Engines', 'device-runtime', '5.5.0', 'AWH Device Runtime.exe');
   const winTools = await discoverWorkerTools({
     platform: 'win32', env: { LOCALAPPDATA: winLocal },
     commandAvailable: async () => false,
@@ -129,33 +129,34 @@ test('standalone AWH Device Runtime is advertised without Remote Desktop Command
 });
 
 
-test('Remote Desktop MCP inventory requires both the pinned runtime and a persisted authorization session', async () => {
+test('standalone Remote Desktop Commander artifacts never enter AWH heartbeat inventory', async () => {
   const macHome = '/Users/fixture';
-  const macRuntime = '/Users/fixture/.awh/bin/awh-system-mcp';
-  const macSession = '/Users/fixture/.desktop-commander-device/device.json';
-  const withoutSession = await discoverWorkerTools({
+  const macArtifacts = new Set([
+    '/Users/fixture/.awh/bin/awh-system-mcp',
+    '/Users/fixture/.local/share/bay-remote/node_modules/.bin/desktop-commander',
+    '/Users/fixture/.desktop-commander-device/device.json',
+  ]);
+  const mac = await discoverWorkerTools({
     platform: 'darwin', env: { HOME: macHome },
     commandAvailable: async () => false,
-    pathAvailable: async (path) => path === macRuntime,
+    pathAvailable: async (path) => macArtifacts.has(path),
   });
-  assert.equal(withoutSession.includes('tool.remote-desktop-mcp'), false);
-  const withSession = await discoverWorkerTools({
-    platform: 'darwin', env: { HOME: macHome },
-    commandAvailable: async () => false,
-    pathAvailable: async (path) => path === macRuntime || path === macSession,
-  });
-  assert.equal(withSession.includes('tool.remote-desktop-mcp'), true);
+  assert.equal(mac.some((tool) => tool.includes('remote-desktop')), false);
+  assert.equal(mac.some((tool) => tool.startsWith('tool.awh-device-')), false);
 
   const profile = 'C:\\Users\\Fixture';
   const local = profile + '\\AppData\\Local';
-  const winRuntime = pathWin32.join(local, 'AWH', 'SystemRuntime', 'runtime', 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js');
-  const winSession = pathWin32.join(profile, '.desktop-commander-device', 'device.json');
+  const winArtifacts = new Set([
+    pathWin32.join(local, 'AWH', 'SystemRuntime', 'runtime', 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js'),
+    pathWin32.join(profile, '.desktop-commander-device', 'device.json'),
+  ]);
   const win = await discoverWorkerTools({
     platform: 'win32', env: { LOCALAPPDATA: local, USERPROFILE: profile },
     commandAvailable: async () => false,
-    pathAvailable: async (path) => path === winRuntime || path === winSession,
+    pathAvailable: async (path) => winArtifacts.has(path),
   });
-  assert.equal(win.includes('tool.remote-desktop-mcp'), true);
+  assert.equal(win.some((tool) => tool.includes('remote-desktop')), false);
+  assert.equal(win.some((tool) => tool.startsWith('tool.awh-device-')), false);
 });
 
 

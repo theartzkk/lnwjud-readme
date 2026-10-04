@@ -231,4 +231,40 @@ export class LnwjudDeviceClient {
     force.unref?.();
     this.process.once('exit', () => clearTimeout(force));
   }
+
+  async closeAndWait(timeoutMs = 4_000): Promise<void> {
+    if (this.process.exitCode !== null || this.process.signalCode !== null) {
+      this.close();
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
+        resolve();
+      };
+      const deadline = setTimeout(() => {
+        if (this.process.exitCode === null && this.process.signalCode === null) {
+          const pid = this.process.pid;
+          if (process.platform === 'win32' && pid) {
+            try {
+              const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { shell: false, windowsHide: true, stdio: 'ignore' });
+              killer.unref();
+            } catch {}
+          } else {
+            try { this.process.kill('SIGKILL'); } catch {}
+          }
+        }
+        const bounded = setTimeout(finish, 750);
+        bounded.unref?.();
+        this.process.once('exit', () => { clearTimeout(bounded); finish(); });
+      }, Math.max(500, Math.min(timeoutMs, 10_000)));
+      deadline.unref?.();
+      this.process.once('exit', finish);
+      this.close();
+      if (this.process.exitCode !== null || this.process.signalCode !== null) finish();
+    });
+  }
 }

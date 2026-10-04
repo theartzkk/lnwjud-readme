@@ -43,18 +43,17 @@ async function removeRuntimeRoots(platform:NodeJS.Platform,home:string,env:NodeJ
   return removed;
 }
 
-export async function prepareCleanReinstall(
+export async function prepareRuntimeRepair(
   dataDir:string,
   credentialStore:CredentialStore,
-  platform:NodeJS.Platform=process.platform,
-  home=homedir(),
-  env:NodeJS.ProcessEnv=process.env,
 ):Promise<DeviceMaintenanceResult>{
   const identity=await readDeviceIdentity(dataDir);
   const token=await credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
   if(Boolean(identity)!==Boolean(token))throw new Error('AWH_REINSTALL_IDENTITY_PAIRING_MISMATCH');
-  const runtimeRootsRemoved=await removeRuntimeRoots(platform,home,env);
-  return {schemaVersion:1,mode:'REINSTALL',pairingPreserved:Boolean(identity&&token),deviceId:identity?.deviceId??null,runtimeRootsRemoved};
+  // Repair/update is non-destructive: the installer stages and verifies a full
+  // replacement before atomically swapping the runtime. Destructive cleanup is
+  // reserved for Reset this device only.
+  return {schemaVersion:1,mode:'REINSTALL',pairingPreserved:Boolean(identity&&token),deviceId:identity?.deviceId??null,runtimeRootsRemoved:0};
 }
 
 export async function resetThisDevice(

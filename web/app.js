@@ -885,10 +885,9 @@ import {
         const capabilities = Array.isArray(worker.capabilities) ? worker.capabilities.filter((value) => typeof value === 'string') : [];
         const tools = Array.isArray(worker.detectedTools) ? worker.detectedTools.filter((value) => typeof value === 'string').slice(0, 5) : [];
         const runtimeReady = capabilities.includes('tool.awh-device-runtime');
-        const remoteReady = capabilities.includes('tool.remote-desktop-mcp');
         const readiness = [
           runtimeReady ? 'Device Runtime ✓' : 'Device Runtime —',
-          remoteReady ? 'Remote Desktop MCP ✓' : runtimeReady ? 'Remote Desktop MCP · รออนุมัติครั้งแรก' : 'Remote Desktop MCP —',
+          capabilities.includes('tool.awh-device-system') ? 'System ✓' : 'System —',
           capabilities.includes('tool.awh-device-gui') ? 'Screen & Apps ✓' : 'Screen & Apps —',
         ].join(' · ');
         const toolSummary = tools.length ? ` · ${tools.join(', ')}` : '';
