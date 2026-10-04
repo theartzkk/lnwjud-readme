@@ -66,6 +66,8 @@ test('deep QA builds compiled runtime before tests that invoke production helper
   const tests = source.indexOf("await scriptCheck('tests', 'test'");
   assert.ok(build >= 0 && tests >= 0 && build < tests);
   assert.match(source, /clean immutable release workspaces never depend on stale artifacts/);
+  assert.match(source, /scriptCheck\('tests', 'test', 'unit and security test suite passed', 30 \* 60_000\)/);
+  assert.match(source, /align it with the single-flight stale window/);
 });
 
 test('top-level QA is single-flight per exact source identity and mode', async () => {

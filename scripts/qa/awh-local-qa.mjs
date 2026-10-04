@@ -600,7 +600,8 @@ async function main() {
       // Production-helper tests import compiled dist modules under plain Node.
       // Build first so clean immutable release workspaces never depend on stale artifacts.
       await scriptCheck('build', 'build', 'production TypeScript build passed');
-      await scriptCheck('tests', 'test', 'unit and security test suite passed');
+      // The full serialized suite is intentionally broader than FAST QA and can exceed the generic 15-minute child timeout on loaded CI/owner hosts. Keep the bound finite, but align it with the single-flight stale window so a healthy progressing suite is not killed before its coordination lease can expire.
+      await scriptCheck('tests', 'test', 'unit and security test suite passed', 30 * 60_000);
     }
     await finalUatShellCheck();
   } else {
