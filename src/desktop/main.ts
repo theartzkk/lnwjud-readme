@@ -319,6 +319,10 @@ function packagedAgentRuntime(): boolean {
 }
 
 function packagedWatchdogScriptPath(): string {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  if (packagedAgentRuntime() && typeof resourcesPath === 'string' && resourcesPath.trim()) {
+    return join(resourcesPath, 'app.asar', 'dist', 'agent-watchdog.js');
+  }
   return join(dirname(fileURLToPath(import.meta.url)), '..', 'agent-watchdog.js');
 }
 

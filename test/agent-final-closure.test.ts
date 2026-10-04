@@ -44,6 +44,8 @@ test('packaged Agent starts its production watchdog before app ready and keeps s
   assert.match(source, /if \(agentWatchdog\) return \{ supported: true, state: 'READY' \};/);
   assert.match(source, /startCrashWatchdog\(\);[\s\S]*mainWindow = await createWindow\(false\);/);
   assert.match(source, /function packagedWatchdogScriptPath\(\): string/);
+  assert.match(source, /resourcesPath.*process as NodeJS\.Process/);
+  assert.match(source, /join\(resourcesPath, 'app\.asar', 'dist', 'agent-watchdog\.js'\)/);
   assert.match(source, /fileURLToPath\(import\.meta\.url\)/);
   assert.match(source, /startAgentWatchdog\(config\.dataDir, process\.execPath, packagedWatchdogScriptPath\(\)\)/);
   assert.doesNotMatch(source, /startAgentWatchdog\(config\.dataDir, process\.execPath, join\(app\.getAppPath\(\), 'dist', 'agent-watchdog\.js'\)\)/);
