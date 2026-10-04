@@ -70,10 +70,12 @@ text=text.replace('add_header Cache-Control "no-store" always;', 'add_header Cac
 text=text.replace('return 301 https://kruart.online$request_uri;', 'return 308 https://kruart.online$request_uri;')
 
 marker='server_name 157-85-108-142.sslip.io;'
+legacy_host='157-85-108-142.sslip.io'
 compat='location ^~ /api/v1/control/'
 if marker not in text:
-    raise SystemExit('legacy ssl server authority missing')
-if compat not in text:
+    if legacy_host in text:
+        raise SystemExit('legacy ssl server authority malformed')
+elif compat not in text:
     pattern=re.compile(r'''server\s*\{\s*
 \s*listen\s+443\s+ssl\s+http2;\s*
 \s*server_name\s+157-85-108-142\.sslip\.io;\s*
