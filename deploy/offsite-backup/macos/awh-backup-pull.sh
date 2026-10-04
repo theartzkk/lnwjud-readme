@@ -92,7 +92,7 @@ if manifest.get('kind')!='BAY_ASSESSMENT_VERIFIED_SNAPSHOT': raise SystemExit(10
 if sha(manifest_path)!=meta.get('manifestSha256'): raise SystemExit(11)
 db=root/'assessment.sqlite'
 if sha(db)!=meta.get('databaseSha256'): raise SystemExit(12)
-con=sqlite3.connect(f'file:{db}?mode=ro',uri=True)
+con=sqlite3.connect(f'file:{db}?mode=ro&immutable=1',uri=True)
 try:
     row=con.execute('PRAGMA quick_check').fetchone()
 finally:
