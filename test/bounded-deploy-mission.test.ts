@@ -25,6 +25,12 @@ test('durable candidate clones resolve canonical main from exact remote ref when
   assert.throws(()=>canonicalMainFromObserved('',`${remote}\trefs/heads/not-main\n`),/MISSION_CANONICAL_MAIN_UNRESOLVED/);
 });
 
+test('bounded deploy mission observes canonical remote main before stale local refs',async()=>{
+  const source=await readFile(new URL('../scripts/ops/bounded-deploy-mission.mjs',import.meta.url),'utf8');
+  const fn=source.slice(source.indexOf('async function canonicalMainSha(){'),source.indexOf('async function operatorRequest'));
+  assert.ok(fn.indexOf("ls-remote")<fn.indexOf("rev-parse"));
+});
+
 test('bounded deploy mission has one explicit owner approval and a deterministic default deploy mode',()=>{
   assert.equal(missionModeFromArgs([]),'--platform-hardening');
   assert.equal(missionModeFromArgs(['--identity-convergence']),'--identity-convergence');

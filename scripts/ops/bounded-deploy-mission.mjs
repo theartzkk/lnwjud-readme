@@ -154,12 +154,14 @@ export function canonicalMainFromObserved(localSha,remoteOutput){
 }
 
 async function canonicalMainSha(){
-  const local=await run('git',['rev-parse','--verify','refs/heads/main']);
-  if(local.code===0){try{return canonicalMainFromObserved(local.tail,'');}catch{}}
+  // Canonical remote is mutable Production source authority. A local main ref may
+  // be stale when another governed worktree promoted source moments earlier.
   const remote=await canonicalRemote();
   const live=await run('git',['ls-remote','--exit-code',remote,'refs/heads/main']);
-  if(live.code!==0)throw new Error('MISSION_CANONICAL_MAIN_UNRESOLVED');
-  return canonicalMainFromObserved('',live.tail);
+  if(live.code===0){try{return canonicalMainFromObserved('',live.tail);}catch{}}
+  const local=await run('git',['rev-parse','--verify','refs/heads/main']);
+  if(local.code===0){try{return canonicalMainFromObserved(local.tail,'');}catch{}}
+  throw new Error('MISSION_CANONICAL_MAIN_UNRESOLVED');
 }
 
 async function operatorRequest(command,payload,{confirm=false}={}){
