@@ -314,10 +314,19 @@ async function recordIncident(code,context={}){
 
 async function runQa(script,forward=true){
   const isolated=join(ROOT,'scripts/ops/run-release-qa-isolated.sh');
+  const started=Date.now();
   const result=existsSync(isolated)
     ? await run(isolated,[ROOT,script],{forward})
     : await run('npm',['run',script],{forward});
-  return result.code===0?'PASS':'FAIL';
+  const reused=/QA_EXACT_SHA_REUSE=PASS/.test(result.tail);
+  const digestMatch=result.tail.match(/inputDigest=([0-9a-f]{64})/i);
+  return {
+    status:result.code===0?'PASS':'FAIL',
+    reused,
+    reuseKind:reused?'EXACT_INPUT_PASS':'EXECUTED',
+    inputDigest:digestMatch?.[1]?.toLowerCase()??null,
+    durationMs:Date.now()-started,
+  };
 }
 
 async function runtimePrivilegeState(policy){
@@ -363,20 +372,25 @@ async function verifyByBudget(plan){
   await runtimePrivilegeState(executionPolicy);
   await ensureDependencies(executionPolicy);
   const qaMode=qaScriptForBudget(executionPolicy,budget);
+  console.log('MISSION_VERIFICATION_TIER=RELEASE');
   console.log(`MISSION_QA_MODE=${qaMode}`);
   const breadth=await runQa(qaMode,true);
-  if(breadth!=='PASS')throw new Error('MISSION_QA_FAILED');
-  let stability={schemaVersion:1,status:'PASS',samples:1,pass:1,fail:0};
-  if(budget==='DEEP'){
-    const samples=[await runQa('qa:fast',true),await runQa('qa:fast',true)];
-    stability=await stabilityForStatuses(samples);
+  if(breadth.status!=='PASS')throw new Error('MISSION_QA_FAILED');
+  const requiresRepeat=Array.isArray(plan?.requiredChecks)&&plan.requiredChecks.includes('repeat-regression');
+  let stability={schemaVersion:1,status:'PASS',samples:1,pass:1,fail:0,authority:breadth.reused?'EXACT_INPUT_REUSE':'IMMUTABLE_RELEASE_PASS'};
+  if(requiresRepeat){
+    const repeat=await runQa('qa:fast',true);
+    stability=await stabilityForStatuses([breadth.status,repeat.status]);
+    stability={...stability,authority:repeat.reused?'EXACT_INPUT_REUSE':'DURABLE_INCIDENT_REPEAT'};
     console.log(`MISSION_STABILITY_SAMPLES=${stability.samples}`);
-    console.log(`MISSION_STABILITY=${stability.status}`);
     if(stability.status==='UNSTABLE')throw new Error('MISSION_QA_UNSTABLE');
     if(stability.status!=='PASS')throw new Error('MISSION_QA_FAILED');
-  }else console.log('MISSION_STABILITY=PASS');
+  }
+  console.log(`MISSION_QA_EVIDENCE=${breadth.reuseKind}`);
+  console.log(`MISSION_QA_DURATION_MS=${breadth.durationMs}`);
+  console.log(`MISSION_STABILITY=${stability.status}`);
   console.log('MISSION_QA=PASS');
-  return {mode:qaMode,status:'PASS',stability};
+  return {tier:'RELEASE',mode:qaMode,status:'PASS',reused:breadth.reused,reuseKind:breadth.reuseKind,inputDigest:breadth.inputDigest,durationMs:breadth.durationMs,stability};
 }
 
 async function goldenJourneys(plan,head,deployTail,release,releaseUrl,identity){

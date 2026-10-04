@@ -33,17 +33,66 @@ file_sha256() {
     return 2
   fi
 }
+text_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 | awk '{print $NF}'
+  else
+    echo "No SHA-256 tool is available" >&2
+    return 2
+  fi
+}
+files_digest() {
+  for rel in "$@"; do
+    test -f "$ROOT/$rel" || { echo "Verification input is missing: $rel" >&2; return 2; }
+    printf '%s\n' "$rel"
+    file_sha256 "$ROOT/$rel"
+  done | text_sha256
+}
 LOCK_HASH=$(file_sha256 "$ROOT/package-lock.json")
+CONFIG_HASH=$(files_digest \
+  config/execution-policy.json \
+  config/kruart-engineering-eval.json \
+  config/ecosystem-platform-policy.json \
+  config/ecosystem-release-contract.json)
+TEST_SUITE_HASH=$(files_digest \
+  package.json \
+  scripts/qa/awh-local-qa.mjs \
+  scripts/qa/test-singleflight.mjs \
+  scripts/qa/run-hub-tests.mjs \
+  hub/src/HubVerificationIntelligence.php)
+RUNNER_HASH=$(file_sha256 "$ROOT/scripts/ops/run-release-qa-isolated.sh")
+PHP_VERSION=$(php -r 'echo PHP_VERSION;' 2>/dev/null || printf unavailable)
+RUNTIME_HASH=$(printf '%s\n' "$NODE_VERSION" "$NPM_VERSION" "$PHP_VERSION" "$(uname -s 2>/dev/null || printf unknown)" "$(uname -m 2>/dev/null || printf unknown)" | text_sha256)
+INPUT_DIGEST=$(printf '%s\n' "$SHA" "$SCRIPT" "$LOCK_HASH" "$CONFIG_HASH" "$TEST_SUITE_HASH" "$RUNNER_HASH" "$RUNTIME_HASH" | text_sha256)
 CACHE_ROOT=${AWH_RELEASE_QA_CACHE_ROOT:-${HOME:-/tmp}/.cache/awh/release-qa}
-CACHE_KEY="${SHA}-${SCRIPT_SAFE}-${NODE_VERSION}-${NPM_VERSION}-${LOCK_HASH}"
+CACHE_KEY="${SHA}-${SCRIPT_SAFE}-${INPUT_DIGEST}"
 CACHE_FILE="$CACHE_ROOT/${CACHE_KEY}.pass"
 EVIDENCE_ROOT=${AWH_RELEASE_QA_EVIDENCE_ROOT:-$CACHE_ROOT/evidence}
-EVIDENCE_PREFIX="$EVIDENCE_ROOT/${SHA}-${SCRIPT_SAFE}"
+EVIDENCE_PREFIX="$EVIDENCE_ROOT/${SHA}-${SCRIPT_SAFE}-${INPUT_DIGEST}"
 mkdir -p "$CACHE_ROOT" "$EVIDENCE_ROOT"
 chmod 700 "$CACHE_ROOT" 2>/dev/null || true
-if test -f "$CACHE_FILE"; then
-  echo "QA_EXACT_SHA_REUSE=PASS sha=$SHA script=$SCRIPT"
+cache_matches() {
+  test -f "$CACHE_FILE" &&
+  grep -Fxq 'schemaVersion=2' "$CACHE_FILE" &&
+  grep -Fxq "sha=$SHA" "$CACHE_FILE" &&
+  grep -Fxq "script=$SCRIPT" "$CACHE_FILE" &&
+  grep -Fxq "inputDigest=$INPUT_DIGEST" "$CACHE_FILE" &&
+  grep -Fxq "lock=$LOCK_HASH" "$CACHE_FILE" &&
+  grep -Fxq "config=$CONFIG_HASH" "$CACHE_FILE" &&
+  grep -Fxq "testSuite=$TEST_SUITE_HASH" "$CACHE_FILE" &&
+  grep -Fxq "runner=$RUNNER_HASH" "$CACHE_FILE" &&
+  grep -Fxq "runtime=$RUNTIME_HASH" "$CACHE_FILE"
+}
+if cache_matches; then
+  echo "QA_EXACT_SHA_REUSE=PASS sha=$SHA script=$SCRIPT inputDigest=$INPUT_DIGEST"
   exit 0
+fi
+if test -f "$CACHE_FILE"; then
+  echo "QA_EXACT_SHA_CACHE=INVALID sha=$SHA script=$SCRIPT inputDigest=$INPUT_DIGEST" >&2
 fi
 QA_ROOT=$(mktemp -d "/tmp/awh-release-qa-${SCRIPT_SAFE}-XXXXXX")
 cleanup() {
@@ -96,6 +145,6 @@ if test "$QA_STATUS" -ne 0; then
 fi
 umask 077
 TMP_CACHE="${CACHE_FILE}.tmp.$$"
-printf 'sha=%s\nscript=%s\nnode=%s\nnpm=%s\nlock=%s\n' "$SHA" "$SCRIPT" "$NODE_VERSION" "$NPM_VERSION" "$LOCK_HASH" > "$TMP_CACHE"
+printf 'schemaVersion=2\nsha=%s\nscript=%s\ninputDigest=%s\nnode=%s\nnpm=%s\nphp=%s\nlock=%s\nconfig=%s\ntestSuite=%s\nrunner=%s\nruntime=%s\n' "$SHA" "$SCRIPT" "$INPUT_DIGEST" "$NODE_VERSION" "$NPM_VERSION" "$PHP_VERSION" "$LOCK_HASH" "$CONFIG_HASH" "$TEST_SUITE_HASH" "$RUNNER_HASH" "$RUNTIME_HASH" > "$TMP_CACHE"
 mv "$TMP_CACHE" "$CACHE_FILE"
-echo "QA_EXACT_SHA_CACHE=STORED sha=$SHA script=$SCRIPT"
+echo "QA_EXACT_SHA_CACHE=STORED sha=$SHA script=$SCRIPT inputDigest=$INPUT_DIGEST"

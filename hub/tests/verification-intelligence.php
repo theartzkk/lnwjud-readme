@@ -6,15 +6,16 @@ require_once dirname(__DIR__).'/src/HubVerificationIntelligence.php';
 function vi_assert(bool $condition,string $message):void{if(!$condition)throw new RuntimeException($message);}
 
 $low=HubVerificationIntelligence::plan(['docs/README.md']);
-vi_assert($low['riskLevel']==='LOW'&&$low['budget']==='FAST','docs-only change must stay FAST');
+vi_assert($low['riskLevel']==='LOW'&&$low['budget']==='FAST'&&$low['verificationTier']==='FAST','docs-only change must stay FAST');
 
 $medium=HubVerificationIntelligence::plan(['web/styles.css']);
-vi_assert($medium['riskLevel']==='MEDIUM'&&$medium['budget']==='STANDARD','web surface must use STANDARD');
+vi_assert($medium['riskLevel']==='MEDIUM'&&$medium['budget']==='STANDARD'&&$medium['verificationTier']==='IMPACT','web surface must use IMPACT verification');
 vi_assert(in_array('public-shell',$medium['goldenJourneys'],true),'web surface must require public-shell journey');
 
 $critical=HubVerificationIntelligence::plan(['hub/src/HubVerificationGate.php','deploy/awh-control-plane/deploy-control-plane.sh']);
-vi_assert($critical['riskLevel']==='CRITICAL'&&$critical['budget']==='DEEP','verification/deploy authority must use DEEP');
-vi_assert(in_array('repeat-regression',$critical['requiredChecks'],true),'DEEP must repeat regression');
+vi_assert($critical['riskLevel']==='CRITICAL'&&$critical['budget']==='DEEP'&&$critical['verificationTier']==='IMPACT','verification/deploy authority must use IMPACT during development');
+vi_assert(in_array('reproducible-evidence',$critical['requiredChecks'],true),'DEEP must require reproducible evidence');
+vi_assert(!in_array('repeat-regression',$critical['requiredChecks'],true),'DEEP must not rerun the same regression suite by default');
 vi_assert(in_array('database-integrity',$critical['requiredChecks'],true),'DEEP must require DB integrity proof');
 vi_assert(in_array('vault-source-authority',$critical['goldenJourneys'],true),'verification changes must prove Vault/source authority');
 

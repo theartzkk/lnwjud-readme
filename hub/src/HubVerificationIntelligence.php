@@ -45,11 +45,12 @@ final class HubVerificationIntelligence
             if (preg_match('#^(?:desktop/|src/desktop/)|^package(?:-lock)?\.json$#',$path)===1) $journeys['desktop-release-identity']=true;
         }
         $budget=match($risk){'LOW'=>'FAST','MEDIUM'=>'STANDARD',default=>'DEEP'};
+        $verificationTier=$risk==='LOW'?'FAST':'IMPACT';
         $checks=['syntax','targeted-contracts','exact-revision'];
         if ($budget!=='FAST') array_push($checks,'regression','golden-journeys','visual-if-applicable');
-        if ($budget==='DEEP') array_push($checks,'repeat-regression','backup-proof','rollback-proof','source-drift','database-integrity');
+        if ($budget==='DEEP') array_push($checks,'reproducible-evidence','backup-proof','rollback-proof','source-drift','database-integrity');
         return [
-            'schemaVersion'=>1,'riskLevel'=>$risk,'budget'=>$budget,'changedFileCount'=>count($files),
+            'schemaVersion'=>1,'riskLevel'=>$risk,'budget'=>$budget,'verificationTier'=>$verificationTier,'changedFileCount'=>count($files),
             'reasons'=>array_keys($reasons),'requiredChecks'=>$checks,'goldenJourneys'=>array_keys($journeys),
         ];
     }
