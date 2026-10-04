@@ -19,10 +19,12 @@ function viewportHarness(width: number, height: number) {
     addEventListener(name: string, fn: () => void) { listeners.set(name, fn); },
   };
   const window = {
-    innerWidth: width, innerHeight: height,
-    visualViewport: { height, addEventListener(name: string, fn: () => void) { listeners.set(`visual:${name}`, fn); } },
+    innerWidth: width, innerHeight: height, scrollY: 0,
+    visualViewport: { height, offsetTop: 0, addEventListener(name: string, fn: () => void) { listeners.set(`visual:${name}`, fn); } },
     addEventListener(name: string, fn: () => void) { listeners.set(`window:${name}`, fn); },
     setTimeout(fn: () => void) { fn(); },
+    requestAnimationFrame(fn: () => void) { fn(); return 1; },
+    scrollTo(options: { top?: number }) { this.scrollY = options?.top || 0; },
   };
   vm.runInNewContext(dashboard.slice(start, end), { document, window, HTMLElement: Element });
   return {
@@ -32,6 +34,9 @@ function viewportHarness(width: number, height: number) {
     resize(value: number, event = 'visual:resize') {
       window.innerHeight = value; window.visualViewport.height = value; listeners.get(event)!();
     },
+    pan(value: number) { window.visualViewport.offsetTop = value; listeners.get('visual:scroll')!(); },
+    outerScroll(value: number) { window.scrollY = value; listeners.get('visual:scroll')!(); },
+    scrollY() { return window.scrollY; },
   };
 }
 
@@ -59,7 +64,20 @@ for (const [width, height] of [[390, 844], [430, 932]]) {
   });
 }
 
+test('390x844: Safari visual viewport pan is projected immediately and outer page stays locked', () => {
+  const h = viewportHarness(390, 844);
+  h.focus();
+  h.pan(96);
+  assert.equal(h.properties.get('--awh-visual-viewport-top'), '96px');
+  h.outerScroll(180);
+  assert.equal(h.scrollY(), 0, 'focused Work keeps outer layout viewport pinned');
+  h.resize(534);
+  assert.equal(h.classes.has('awh-keyboard-open'), true);
+});
+
 test('focus-only CSS cannot hide navigation after software keyboard dismissal', () => {
   const css = readFileSync(new URL('../web/styles.css', import.meta.url), 'utf8');
   assert.doesNotMatch(css, /:has\(#goal-input:focus\)/);
+  assert.match(css, /top:\s*var\(--awh-visual-viewport-top,0px\)/);
+  assert.match(css, /position:\s*fixed/);
 });

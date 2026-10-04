@@ -401,6 +401,17 @@ body.work-active.product-dashboard-active .app-main {
   overflow: visible;
 }
 @media (max-width: 680px) {
+  body.work-active:not(.product-dashboard-active) { overscroll-behavior: none; }
+  body.work-active:not(.product-dashboard-active) .app-shell {
+    position: fixed;
+    z-index: 1;
+    top: var(--awh-visual-viewport-top,0px);
+    right: 0;
+    left: 0;
+    width: 100%;
+    height: var(--awh-visual-viewport-height,100dvh);
+    max-height: var(--awh-visual-viewport-height,100dvh);
+  }
   body.work-active .app-main { width: calc(100% - 20px); padding-bottom: 74px; }
   body.work-active .workspace-heading { min-height: 58px; grid-template-columns: auto minmax(0,1fr) auto; }
   body.work-active .workspace-home { padding-right: 5px; }
@@ -627,3 +638,20 @@ body.work-active .capability-plan[open]{padding:8px 10px}
 .install-guide-steps strong { font-size: .95rem; }
 .install-guide-steps span { color: var(--muted); font-size: .82rem; line-height: 1.45; margin-top: 2px; }
 .install-guide-done { width: 100%; }
+
+/* Mobile/provider UX: direct Provider discovery and in-context privileged confirmation. */
+.provider-hub-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.provider-hub-heading>div{min-width:0}.provider-hub-heading h3{margin-bottom:5px}
+.provider-add-panel{display:grid;gap:9px;margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface-raised)}
+.provider-add-panel[hidden]{display:none!important}.provider-add-panel>strong{font-size:13px}
+.provider-add-panel>small{line-height:1.5}.provider-add-list{display:grid;gap:7px}
+.provider-add-option{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;min-height:50px;padding:9px 11px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.provider-add-option:hover,.provider-add-option:focus-visible{border-color:var(--accent);outline:none}
+.provider-add-option span{font-size:13px;font-weight:800}.provider-add-option small{color:var(--muted);font-size:10px;text-align:right}
+.provider-hub-card{scroll-margin-block:24px}.provider-hub-credential input{font-size:16px}
+.awh-stepup-overlay{position:fixed;z-index:500;inset:0;display:grid;place-items:center;padding:18px;background:rgba(20,32,51,.34);backdrop-filter:blur(6px)}
+.awh-stepup-card{display:grid;gap:10px;width:min(440px,100%);padding:20px;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:0 24px 72px rgba(20,32,51,.22)}
+.awh-stepup-card h2{margin:0;font-size:21px}.awh-stepup-card p{margin:0;line-height:1.55}.awh-stepup-card input{min-height:48px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);font:inherit;font-size:16px;outline:none}
+.awh-stepup-card input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}
+.awh-stepup-card .form-actions{justify-content:flex-end}
+@media(max-width:540px){.provider-hub-heading{align-items:stretch;flex-direction:column}.provider-hub-heading .secondary-button{width:100%}.provider-add-option{grid-template-columns:1fr}.provider-add-option small{text-align:left}.awh-stepup-overlay{align-items:end;padding:0}.awh-stepup-card{width:100%;padding:18px 14px calc(18px + env(safe-area-inset-bottom));border-radius:22px 22px 0 0}}

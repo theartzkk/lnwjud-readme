@@ -84,8 +84,11 @@ export function useAwhChatRuntime() {
 
   const snapshot = useSyncExternalStore(subscribe, snapshotFromBridge, () => emptySnapshot);
   const messages = useMemo(() => runtimeMessages(snapshot), [snapshot]);
+  // iOS Safari can keep a continuous Web Speech session alive after the user
+  // stops speaking. AWH uses one-shot dictation and lets the composer watchdog
+  // finish/abort a stalled session instead of leaving the microphone stuck.
   const dictation = useMemo(() => WebSpeechDictationAdapter.isSupported()
-    ? new WebSpeechDictationAdapter({ language: "th-TH", continuous: true, interimResults: true })
+    ? new WebSpeechDictationAdapter({ language: "th-TH", continuous: false, interimResults: true })
     : undefined, []);
 
   const onNew = useCallback(async (message: any) => {

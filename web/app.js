@@ -6,7 +6,7 @@ import {
   bindSchoolIdentity, exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadBayCommunicationStatus, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus, loadSchoolIdentityBindings, loadSchoolIdentityCandidates,
   loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadProviderHub, loadGroqProviderStatus, loadDecisionProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
-  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokeDevice, revokePerson, revokeSchoolIdentity, saveCurrentContext, submitWorkMessage,
+  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokeDevice, revokePerson, revokeSchoolIdentity, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, testGroqProviderConnection, testDecisionProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateProviderHubCredential, testProviderHubConnection, updateGroqProviderCredential, updateDecisionProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
@@ -205,7 +205,52 @@ import {
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
   function safeText(value, fallback = '') { return typeof value === 'string' && value.trim() ? value.trim() : fallback; }
   function date(value) { const time = Date.parse(value || ''); return Number.isFinite(time) ? new Date(time).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''; }
+  let privilegedPromptPromise = null;
+  function requestPrivilegedPassword(label = 'รายการนี้') {
+    if (privilegedPromptPromise) return privilegedPromptPromise;
+    privilegedPromptPromise = new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'awh-stepup-overlay';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-labelledby', 'awh-stepup-title');
+      const card = document.createElement('form');
+      card.className = 'awh-stepup-card';
+      card.innerHTML = '<span class="eyebrow">SECURITY</span><h2 id="awh-stepup-title">ยืนยันก่อนทำรายการสำคัญ</h2><p class="muted"></p><label for="awh-stepup-password">รหัสผ่าน AWH ปัจจุบัน</label><input id="awh-stepup-password" type="password" autocomplete="current-password" required /><p class="form-message" role="status"></p><div class="form-actions"><button class="secondary-button" type="button" data-stepup-cancel>ยกเลิก</button><button class="primary-button" type="submit">ยืนยันและทำต่อ</button></div>';
+      card.querySelector('.muted').textContent = `${label} เป็นรายการที่ต้องยืนยันตัวตนอีกครั้งเพื่อป้องกันการเปลี่ยนแปลงที่มีความเสี่ยงสูง`;
+      const input = card.querySelector('#awh-stepup-password');
+      const finish = (value) => {
+        overlay.remove();
+        resolve(value);
+      };
+      card.querySelector('[data-stepup-cancel]').addEventListener('click', () => finish(null));
+      overlay.addEventListener('click', (event) => { if (event.target === overlay) finish(null); });
+      card.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const value = input.value;
+        if (!value) return;
+        input.value = '';
+        finish(value);
+      });
+      overlay.append(card);
+      document.body.append(overlay);
+      window.setTimeout(() => input.focus(), 0);
+    }).finally(() => { privilegedPromptPromise = null; });
+    return privilegedPromptPromise;
+  }
+  // Kept as the compatibility path for actions that do not need an in-context
+  // challenge. Privileged Owner actions use withOwnerStepUp below.
   async function withPrivilegedRetry(action) { return action(); }
+  async function withOwnerStepUp(action, label = 'รายการนี้') {
+    try { return await action(); }
+    catch (error) {
+      if (error?.code !== 'STEP_UP_REQUIRED') throw error;
+      const password = await requestPrivilegedPassword(label);
+      if (!password) throw new Error('ยกเลิกการยืนยันแล้ว');
+      await stepUp(password);
+      return action();
+    }
+  }
   function selectedProject() { return state.control?.projects?.find((project) => project.projectId === state.selectedProjectId) || null; }
   function preferredProjectId(projects) {
     const available = new Set(projects.map((project) => project.projectId));
@@ -491,12 +536,123 @@ import {
     if ($('provider-project-routing')) $('provider-project-routing').value = state.providerRouting?.routingMode || 'AUTO';
     const usage = $('provider-usage'); if (usage) { usage.replaceChildren(); const rows = Array.isArray(provider.usageByProject) ? provider.usageByProject : []; for (const row of rows) { const item = document.createElement('li'); item.textContent = `${row.projectName || 'Project'} · ${baht(row.estimatedMicrounits || 0)}`; usage.append(item); } if (!usage.childElementCount) usage.textContent = 'ยังไม่มีการใช้งานที่คิดค่าใช้จ่าย'; }
   }
-  function renderProviderHub(){
-    const host=$('provider-hub-list');if(!host)return;host.replaceChildren();const hub=state.providerHub?.hub;const statuses=state.providerHub?.statuses||{};
-    if(!hub||!Array.isArray(hub.providers)){host.textContent='ยังโหลด AI Providers ไม่ได้';return;}const policy=$('provider-hub-policy');if(policy)policy.textContent='Free-first · Cloud only · Paid ใช้ได้เฉพาะงบที่ Owner อนุมัติ';
-    for(const item of hub.providers){const status=statuses[item.providerId]||{};const credential=status.credential||{};const card=document.createElement('div');card.className='session-item provider-hub-card';const title=document.createElement('strong');title.textContent=item.displayName||item.providerId;const detail=document.createElement('span');const ready=status.available===true&&credential.lastTestStatus==='PASS';detail.textContent=ready?'พร้อมใช้งาน':status.keyConfigured?(credential.lastTestStatus==='FAILED'?'เชื่อมแล้ว · ทดสอบไม่ผ่าน':'เชื่อมแล้ว · รอทดสอบ'):'ยังไม่ได้เชื่อม API key';const models=document.createElement('small');models.className='muted';const production=(item.models||[]).filter((m)=>m.lifecycle==='production').map((m)=>m.displayName||m.modelId);models.textContent=(item.costClass==='included'?'Free/Included · ':'')+(production.length?production.join(' · '):'รอ qualification');
-      const form=document.createElement('form');form.className='compact-form provider-hub-credential';form.dataset.provider=item.providerId;const input=document.createElement('input');input.type='password';input.maxLength=4096;input.autocomplete='off';input.spellcheck=false;input.placeholder=(item.displayName||item.providerId)+' API key';const connect=document.createElement('button');connect.type='submit';connect.className='secondary-button';connect.textContent=status.keyConfigured?'แทนที่ key':'เชื่อม';const test=document.createElement('button');test.type='button';test.className='text-button';test.textContent='ทดสอบ';test.disabled=!status.keyConfigured;const remove=document.createElement('button');remove.type='button';remove.className='text-button';remove.textContent='ยกเลิก';remove.disabled=!status.keyConfigured;const msg=document.createElement('p');msg.className='form-message';msg.setAttribute('role','status');form.append(input,connect,test,remove,msg);card.append(title,detail,models,form);host.append(card);
-      const refresh=async()=>{state.providerHub=await loadProviderHub();renderProviderHub();};form.addEventListener('submit',async(event)=>{event.preventDefault();if(!input.value.trim()){msg.textContent='วาง API key ก่อน';return;}msg.textContent='กำลังเชื่อมและตรวจอย่างปลอดภัย…';try{await withPrivilegedRetry(()=>updateProviderHubCredential(item.providerId,'SET',input.value),'การเปลี่ยน AI credential');await testProviderHubConnection(item.providerId);input.value='';await refresh();}catch(error){input.value='';msg.textContent=error instanceof Error?error.message:'ยังเชื่อมไม่ได้';}});test.addEventListener('click',async()=>{msg.textContent='กำลังทดสอบ…';try{await testProviderHubConnection(item.providerId);await refresh();}catch(error){msg.textContent=error instanceof Error?error.message:'ทดสอบไม่ผ่าน';}});remove.addEventListener('click',async()=>{msg.textContent='กำลังยกเลิก…';try{await withPrivilegedRetry(()=>updateProviderHubCredential(item.providerId,'REMOVE'),'การลบ AI credential');await refresh();}catch(error){msg.textContent=error instanceof Error?error.message:'ยังยกเลิกไม่ได้';}});
+  function renderProviderHub() {
+    const host = $('provider-hub-list');
+    if (!host) return;
+    host.replaceChildren();
+    const hub = state.providerHub?.hub;
+    const statuses = state.providerHub?.statuses || {};
+    if (!hub || !Array.isArray(hub.providers)) {
+      host.textContent = 'ยังโหลด AI Providers ไม่ได้';
+      return;
+    }
+    const policy = $('provider-hub-policy');
+    if (policy) policy.textContent = 'Free-first · Cloud only · Paid ใช้ได้เฉพาะงบที่ Owner อนุมัติ';
+
+    const addList = $('provider-add-list');
+    if (addList) {
+      addList.replaceChildren();
+      for (const item of hub.providers) {
+        const status = statuses[item.providerId] || {};
+        const choose = document.createElement('button');
+        choose.type = 'button';
+        choose.className = 'provider-add-option';
+        choose.dataset.provider = item.providerId;
+        choose.innerHTML = '<span></span><small></small>';
+        choose.querySelector('span').textContent = item.displayName || item.providerId;
+        choose.querySelector('small').textContent = status.keyConfigured ? 'เชื่อมแล้ว · เปิดเพื่อตั้งค่าใหม่' : (item.costClass === 'included' ? 'Free/Included · พร้อมเพิ่ม key' : 'พร้อมเพิ่ม API key');
+        choose.addEventListener('click', () => {
+          const card = document.getElementById('provider-card-' + item.providerId);
+          const panel = $('provider-add-panel');
+          if (panel) panel.hidden = true;
+          card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          window.setTimeout(() => card?.querySelector('input[type="password"]')?.focus(), 280);
+        });
+        addList.append(choose);
+      }
+      if (!hub.providers.length) addList.textContent = 'ยังไม่มี Provider adapter ที่พร้อมใช้งานในรุ่นนี้';
+    }
+
+    for (const item of hub.providers) {
+      const status = statuses[item.providerId] || {};
+      const credential = status.credential || {};
+      const card = document.createElement('div');
+      card.className = 'session-item provider-hub-card';
+      card.id = 'provider-card-' + item.providerId;
+      const title = document.createElement('strong');
+      title.textContent = item.displayName || item.providerId;
+      const detail = document.createElement('span');
+      const ready = status.available === true && credential.lastTestStatus === 'PASS';
+      detail.textContent = ready ? 'พร้อมใช้งาน' : status.keyConfigured
+        ? (credential.lastTestStatus === 'FAILED' ? 'เชื่อมแล้ว · ทดสอบไม่ผ่าน' : 'เชื่อมแล้ว · รอทดสอบ')
+        : 'ยังไม่ได้เชื่อม API key';
+      const models = document.createElement('small');
+      models.className = 'muted';
+      const production = (item.models || []).filter((model) => model.lifecycle === 'production').map((model) => model.displayName || model.modelId);
+      models.textContent = (item.costClass === 'included' ? 'Free/Included · ' : '') + (production.length ? production.join(' · ') : 'รอ qualification');
+
+      const form = document.createElement('form');
+      form.className = 'compact-form provider-hub-credential';
+      form.dataset.provider = item.providerId;
+      const input = document.createElement('input');
+      input.type = 'password';
+      input.maxLength = 4096;
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.placeholder = (item.displayName || item.providerId) + ' API key';
+      const connect = document.createElement('button');
+      connect.type = 'submit';
+      connect.className = 'secondary-button';
+      connect.textContent = status.keyConfigured ? 'แทนที่ key' : 'เชื่อม';
+      const test = document.createElement('button');
+      test.type = 'button';
+      test.className = 'text-button';
+      test.textContent = 'ทดสอบ';
+      test.disabled = !status.keyConfigured;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'text-button';
+      remove.textContent = 'ยกเลิก';
+      remove.disabled = !status.keyConfigured;
+      const msg = document.createElement('p');
+      msg.className = 'form-message';
+      msg.setAttribute('role', 'status');
+      form.append(input, connect, test, remove, msg);
+      card.append(title, detail, models, form);
+      host.append(card);
+
+      const refresh = async () => {
+        state.providerHub = await loadProviderHub();
+        renderProviderHub();
+      };
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const secret = input.value.trim();
+        if (!secret) { msg.textContent = 'วาง API key ก่อน'; return; }
+        msg.textContent = 'กำลังเชื่อมและทดสอบ…';
+        connect.disabled = true;
+        try {
+          await withOwnerStepUp(() => updateProviderHubCredential(item.providerId, 'SET', secret), 'การเชื่อม ' + (item.displayName || item.providerId));
+          await testProviderHubConnection(item.providerId);
+          input.value = '';
+          await refresh();
+        } catch (error) {
+          input.value = '';
+          connect.disabled = false;
+          msg.textContent = error instanceof Error ? error.message : 'ยังเชื่อมไม่ได้';
+        }
+      });
+      test.addEventListener('click', async () => {
+        msg.textContent = 'กำลังทดสอบ…';
+        try { await testProviderHubConnection(item.providerId); await refresh(); }
+        catch (error) { msg.textContent = error instanceof Error ? error.message : 'ทดสอบไม่ผ่าน'; }
+      });
+      remove.addEventListener('click', async () => {
+        if (!window.confirm(`ยกเลิกการเชื่อม ${item.displayName || item.providerId} ใช่หรือไม่?`)) return;
+        msg.textContent = 'กำลังยกเลิก…';
+        try { await withOwnerStepUp(() => updateProviderHubCredential(item.providerId, 'REMOVE'), 'การยกเลิก ' + (item.displayName || item.providerId)); await refresh(); }
+        catch (error) { msg.textContent = error instanceof Error ? error.message : 'ยังยกเลิกไม่ได้'; }
+      });
     }
   }
 
@@ -592,7 +748,7 @@ import {
         const projectBox = document.createElement('div'); projectBox.className='person-projects'; projectBox.dataset.user=person.userId;
         for (const project of state.control?.projects || []) { const row=document.createElement('label'); row.className='check-row'; const input=document.createElement('input'); input.type='checkbox'; input.value=project.projectId; input.checked=Array.isArray(person.projectIds)&&person.projectIds.includes(project.projectId); const text=document.createElement('span'); text.textContent=project.name; row.append(input,text); projectBox.append(row); }
         const actions=document.createElement('div'); actions.className='task-actions'; const save=document.createElement('button'); save.type='button'; save.className='secondary-button'; save.textContent='บันทึกสิทธิ์'; const revoke=document.createElement('button'); revoke.type='button'; revoke.className='text-button'; revoke.textContent='ปิดบัญชี';
-        save.addEventListener('click', async()=>{ const projectIds=[...projectBox.querySelectorAll('input:checked')].map(n=>n.value); save.disabled=true; try { await withPrivilegedRetry(()=>updatePersonAccess(person.userId,role.value,projectIds),'การเปลี่ยนสิทธิ์ผู้ใช้งาน'); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','บันทึกสิทธิ์แล้ว'); } catch(error){ message('people-message',error instanceof Error?error.message:'ยังบันทึกสิทธิ์ไม่ได้'); } finally { save.disabled=false; } });
+        save.addEventListener('click', async()=>{ const projectIds=[...projectBox.querySelectorAll('input:checked')].map(n=>n.value); save.disabled=true; try { await withOwnerStepUp(()=>updatePersonAccess(person.userId,role.value,projectIds),'การเปลี่ยนสิทธิ์ผู้ใช้งาน'); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','บันทึกสิทธิ์แล้ว'); } catch(error){ message('people-message',error instanceof Error?error.message:'ยังบันทึกสิทธิ์ไม่ได้'); } finally { save.disabled=false; } });
         revoke.addEventListener('click', async()=>{ revoke.disabled=true; try { if(!window.confirm(`ปิดบัญชี “${person.displayName}” ใช่หรือไม่? เซสชันที่ใช้งานอยู่จะถูกเพิกถอนทันที`)){revoke.disabled=false;return;} await revokePerson(person.userId); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','ปิดบัญชีแล้ว'); } catch(error){ message('people-message',error instanceof Error?error.message:'ยังปิดบัญชีไม่ได้'); revoke.disabled=false; } });
         actions.append(save,revoke); editor.append(role,projectBox,actions); item.append(editor);
       }
@@ -612,7 +768,7 @@ import {
       const role=document.createElement('select'); for(const [value,text] of [['STAFF','สมาชิก'],['VIEWER','ดูอย่างเดียว'],['ADMIN','ผู้ดูแลแพลตฟอร์ม']]){const option=document.createElement('option');option.value=value;option.textContent=text;option.selected=(request.personType==='STAFF'&&value==='STAFF')||(request.personType!=='STAFF'&&value==='VIEWER');role.append(option);}
       const projects=document.createElement('div'); projects.className='person-projects'; for(const project of state.control?.projects||[]){const row=document.createElement('label');row.className='check-row';const input=document.createElement('input');input.type='checkbox';input.value=project.projectId;const text=document.createElement('span');text.textContent=project.name;row.append(input,text);projects.append(row);}
       const actions=document.createElement('div'); actions.className='task-actions'; const approve=document.createElement('button');approve.type='button';approve.className='secondary-button';approve.textContent='อนุมัติ';const reject=document.createElement('button');reject.type='button';reject.className='text-button';reject.textContent='ปฏิเสธ';
-      approve.addEventListener('click',async()=>{approve.disabled=true;try{await withPrivilegedRetry(()=>reviewAccountRequest(request.requestId,'APPROVE',role.value,[...projects.querySelectorAll('input:checked')].map(n=>n.value)),'การอนุมัติสิทธิ์ผู้ใช้งาน');state.accountRequests=(await listAccountRequests()).requests||[];state.people=(await listPeople()).people||[];renderPeople();message('people-message','อนุมัติบัญชีแล้ว ผู้สมัครใช้รหัสผ่านที่ตั้งไว้เข้าสู่ระบบได้ทันที');}catch(error){message('people-message',error instanceof Error?error.message:'ยังอนุมัติไม่ได้');approve.disabled=false;}});
+      approve.addEventListener('click',async()=>{approve.disabled=true;try{await withOwnerStepUp(()=>reviewAccountRequest(request.requestId,'APPROVE',role.value,[...projects.querySelectorAll('input:checked')].map(n=>n.value)),'การอนุมัติสิทธิ์ผู้ใช้งาน');state.accountRequests=(await listAccountRequests()).requests||[];state.people=(await listPeople()).people||[];renderPeople();message('people-message','อนุมัติบัญชีแล้ว ผู้สมัครใช้รหัสผ่านที่ตั้งไว้เข้าสู่ระบบได้ทันที');}catch(error){message('people-message',error instanceof Error?error.message:'ยังอนุมัติไม่ได้');approve.disabled=false;}});
       reject.addEventListener('click',async()=>{reject.disabled=true;try{await reviewAccountRequest(request.requestId,'REJECT','VIEWER',[]);state.accountRequests=(await listAccountRequests()).requests||[];renderAccountRequests();message('people-message','ปฏิเสธคำขอแล้ว');}catch(error){message('people-message',error instanceof Error?error.message:'ยังปฏิเสธไม่ได้');reject.disabled=false;}});
       actions.append(approve,reject);controls.append(role,projects,actions);item.append(title,meta,controls);list.append(item);
     }
@@ -639,13 +795,13 @@ import {
         const controls=document.createElement('div'); controls.className='task-actions';
         if(school.verified){
           const revoke=document.createElement('button'); revoke.type='button'; revoke.className='text-button'; revoke.textContent='ยกเลิกการเชื่อม';
-          revoke.addEventListener('click',async()=>{revoke.disabled=true;try{await withPrivilegedRetry(()=>revokeSchoolIdentity(person.userId),'การยกเลิกตัวตนโรงเรียน');await refreshSchoolAccessSurfaces();message('school-identity-message','ยกเลิกการเชื่อมแล้ว');}catch(error){message('school-identity-message',error instanceof Error?error.message:'ยังยกเลิกการเชื่อมไม่ได้');revoke.disabled=false;}});
+          revoke.addEventListener('click',async()=>{revoke.disabled=true;try{await withOwnerStepUp(()=>revokeSchoolIdentity(person.userId),'การยกเลิกตัวตนโรงเรียน');await refreshSchoolAccessSurfaces();message('school-identity-message','ยกเลิกการเชื่อมแล้ว');}catch(error){message('school-identity-message',error instanceof Error?error.message:'ยังยกเลิกการเชื่อมไม่ได้');revoke.disabled=false;}});
           controls.append(revoke);
         } else {
           const select=document.createElement('select'); const blank=document.createElement('option');blank.value='';blank.textContent='เลือกบุคลากรจาก BAY';select.append(blank);
           for(const candidate of state.schoolIdentityCandidates){const option=document.createElement('option');option.value=String(candidate.bayUserId);option.textContent=candidate.displayName+(candidate.positionName?' · '+candidate.positionName:'');select.append(option);}
           const link=document.createElement('button');link.type='button';link.className='secondary-button';link.textContent='เชื่อม BAY';
-          link.addEventListener('click',async()=>{const bayUserId=Number(select.value);if(!Number.isInteger(bayUserId)||bayUserId<1){message('school-identity-message','เลือกบุคลากรจาก BAY ก่อน');return;}link.disabled=true;try{await withPrivilegedRetry(()=>bindSchoolIdentity(person.userId,bayUserId),'การเชื่อมตัวตนโรงเรียน');await refreshSchoolAccessSurfaces();message('school-identity-message','เชื่อมตัวตน BAY แล้ว');}catch(error){message('school-identity-message',error instanceof Error?error.message:'ยังเชื่อม BAY ไม่ได้');link.disabled=false;}});
+          link.addEventListener('click',async()=>{const bayUserId=Number(select.value);if(!Number.isInteger(bayUserId)||bayUserId<1){message('school-identity-message','เลือกบุคลากรจาก BAY ก่อน');return;}link.disabled=true;try{await withOwnerStepUp(()=>bindSchoolIdentity(person.userId,bayUserId),'การเชื่อมตัวตนโรงเรียน');await refreshSchoolAccessSurfaces();message('school-identity-message','เชื่อมตัวตน BAY แล้ว');}catch(error){message('school-identity-message',error instanceof Error?error.message:'ยังเชื่อม BAY ไม่ได้');link.disabled=false;}});
           controls.append(select,link);
         }
         item.append(controls);
@@ -721,7 +877,20 @@ import {
     section.innerHTML = '<h3>การเชื่อมต่อ AI</h3><p class="muted">API key จะถูกส่งครั้งเดียวผ่าน HTTPS และเก็บเฉพาะฝั่ง server; AWH จะไม่แสดงหรือส่งคืน key นี้</p><form id="provider-credential-form" class="compact-form"><label for="provider-api-key">OpenAI API key</label><input id="provider-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">บันทึกหรือแทนที่ key</button><button id="provider-credential-remove" class="text-button" type="button">ลบ key</button><button id="provider-connection-test" class="text-button" type="button">ทดสอบการเชื่อมต่อ</button></div></form><div class="compact-form"><h4>Jev · Decision Layer</h4><p id="jev-status" class="muted">กำลังตรวจสถานะ Jev</p><form id="jev-credential-form" class="compact-form"><label for="jev-api-key">TypeSafe AI API key</label><input id="jev-api-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">เชื่อม Jev</button><button id="jev-credential-remove" class="text-button" type="button">ยกเลิกการเชื่อม</button><button id="jev-connection-test" class="text-button" type="button">ทดสอบ Jev</button></div></form><p id="jev-message" class="form-message" role="status"></p><small class="muted">Jev ใช้เฉพาะช่วยจำแนกงานที่ AWH route เดิมยังไม่ชัด และไม่มีสิทธิ์อนุมัติ Deploy, Permission หรือ Owner action</small></div><form id="provider-project-routing-form" class="compact-form"><label for="provider-project-routing">AI สำหรับโปรเจกต์ที่เลือก</label><select id="provider-project-routing"><option value="AUTO">Auto (ตามค่า AWH)</option><option value="FAST">ประหยัด · Luna</option><option value="BALANCED">สมดุล · Terra</option><option value="STRONG">งานสำคัญ · Sol</option></select><button class="secondary-button" type="submit">บันทึกการเลือกของโปรเจกต์</button></form><p id="provider-credential-message" class="form-message" role="status"></p>';
     // Credential setup is the only prerequisite for a first-time owner. Keep it
     // before routing and budget controls so it is reachable immediately on mobile.
-    const hubSection=document.createElement('section');hubSection.className='account-form';hubSection.id='provider-hub-settings';hubSection.innerHTML='<h3>AI Providers</h3><p id="provider-hub-policy" class="muted">กำลังโหลดนโยบาย AI…</p><p class="muted">เชื่อมและดูสถานะ AI ทุกเจ้าในที่เดียว · Provider ใหม่ที่ AWH รองรับจะปรากฏที่นี่อัตโนมัติ</p><div id="provider-hub-list" class="session-list"></div>';policy.before(hubSection);policy.before(section);section.querySelector('#provider-credential-form').hidden=true;section.querySelector('h3').textContent='AI ขั้นสูง';
+    const hubSection = document.createElement('section');
+    hubSection.className = 'account-form';
+    hubSection.id = 'provider-hub-settings';
+    hubSection.innerHTML = '<div class="provider-hub-heading"><div><h3>AI Providers</h3><p id="provider-hub-policy" class="muted">กำลังโหลดนโยบาย AI…</p></div><button id="provider-add-toggle" class="secondary-button" type="button">+ เพิ่ม Provider</button></div><p class="muted">เชื่อม AI ที่ AWH รองรับจากจุดเดียว · เมื่อมี adapter ใหม่ในระบบ รายการนี้จะเพิ่มให้อัตโนมัติ</p><div id="provider-add-panel" class="provider-add-panel" hidden><strong>เลือก Provider ที่ต้องการเชื่อม</strong><small class="muted">AWH จะแสดงเฉพาะ Provider ที่มี adapter จริงและผ่าน registry ของระบบ</small><div id="provider-add-list" class="provider-add-list"></div></div><div id="provider-hub-list" class="session-list"></div>';
+    policy.before(hubSection);
+    policy.before(section);
+    section.querySelector('#provider-credential-form').hidden = true;
+    section.querySelector('h3').textContent = 'AI ขั้นสูง';
+    $('provider-add-toggle').addEventListener('click', () => {
+      const panel = $('provider-add-panel');
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) renderProviderHub();
+    });
     const groqSection = document.createElement('section'); groqSection.className = 'account-form'; groqSection.id = 'groq-provider-settings';
     groqSection.innerHTML = '<h3>Groq Free · AI หลักแบบไม่เสียค่า API</h3><p id="groq-status" class="muted">กำลังตรวจสถานะ Groq</p><p class="muted">ใช้ Groq บน Cloud เท่านั้น ไม่รันโมเดลบน Mac, Windows หรือ VPS และจะไม่ fallback ไป API แบบเสียเงินเอง</p><form id="groq-credential-form" class="compact-form"><label for="groq-api-key">Groq API key</label><input id="groq-api-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">เชื่อม Groq</button><button id="groq-credential-remove" class="text-button" type="button">ยกเลิกการเชื่อม</button><button id="groq-connection-test" class="text-button" type="button">ทดสอบและเปิดใช้</button></div></form><p id="groq-message" class="form-message" role="status"></p><small class="muted">Key ถูกเก็บใน server credential store และไม่ถูกแสดงกลับบนหน้าเว็บ</small>';
     section.after(groqSection);groqSection.hidden=true;
@@ -729,7 +898,7 @@ import {
       event.preventDefault(); const field = $('groq-api-key'); if (!field.value.trim()) { message('groq-message', 'วาง Groq API key ก่อน'); return; }
       message('groq-message', 'กำลังบันทึกและตรวจ Groq อย่างปลอดภัย…');
       try {
-        await withPrivilegedRetry(()=>updateGroqProviderCredential('SET', field.value),'การเปลี่ยน Groq credential');
+        await withOwnerStepUp(()=>updateGroqProviderCredential('SET', field.value),'การเปลี่ยน Groq credential');
         const tested = await testGroqProviderConnection();
         state.groqProvider = (await loadGroqProviderStatus()).provider; renderGroqProvider();
         message('groq-message', tested.connection?.status === 'PASS' ? 'Groq Free พร้อมใช้งานแล้ว' : 'บันทึก key แล้ว แต่ยังเปิดใช้ไม่สำเร็จ');
@@ -738,7 +907,7 @@ import {
     });
     $('groq-credential-remove').addEventListener('click', async () => {
       message('groq-message', 'กำลังยกเลิก Groq…');
-      try { const data = await withPrivilegedRetry(()=>updateGroqProviderCredential('REMOVE'),'การลบ Groq credential'); state.groqProvider = data.provider; renderGroqProvider(); message('groq-message', 'ยกเลิก Groq แล้ว'); }
+      try { const data = await withOwnerStepUp(()=>updateGroqProviderCredential('REMOVE'),'การลบ Groq credential'); state.groqProvider = data.provider; renderGroqProvider(); message('groq-message', 'ยกเลิก Groq แล้ว'); }
       catch (error) { message('groq-message', error instanceof Error ? error.message : 'ยังยกเลิก Groq ไม่ได้'); }
     });
     $('groq-connection-test').addEventListener('click', async () => {
@@ -748,14 +917,14 @@ import {
     });
     $('provider-credential-form').addEventListener('submit', async (event) => {
       event.preventDefault(); const field = $('provider-api-key'); message('provider-credential-message', 'กำลังบันทึก key อย่างปลอดภัย…');
-      try { const data = await withPrivilegedRetry(()=>updateProviderCredential('SET', field.value),'การเปลี่ยน API credential'); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'บันทึก key แล้ว'); }
+      try { const data = await withOwnerStepUp(()=>updateProviderCredential('SET', field.value),'การเปลี่ยน API credential'); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'บันทึก key แล้ว'); }
       catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ยังบันทึก key ไม่ได้'); }
       finally { field.value = ''; }
     });
     $('provider-credential-remove').addEventListener('click', async () => {
       if (!window.confirm('ลบ API key ที่เชื่อมต่อกับ AWH ใช่หรือไม่?')) return;
       message('provider-credential-message', 'กำลังลบ key…');
-      try { const data = await withPrivilegedRetry(()=>updateProviderCredential('REMOVE'),'การลบ API credential'); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'ลบ key แล้ว'); }
+      try { const data = await withOwnerStepUp(()=>updateProviderCredential('REMOVE'),'การลบ API credential'); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'ลบ key แล้ว'); }
       catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ยังลบ key ไม่ได้'); }
     });
     $('provider-connection-test').addEventListener('click', async () => {
@@ -766,13 +935,13 @@ import {
     $('jev-credential-form').addEventListener('submit', async (event) => {
       event.preventDefault(); const field = $('jev-api-key'); if (!field.value.trim()) { message('jev-message', 'วาง TypeSafe AI API key ก่อน'); return; }
       message('jev-message', 'กำลังบันทึก Jev key อย่างปลอดภัย…');
-      try { const data = await withPrivilegedRetry(()=>updateDecisionProviderCredential('SET', field.value),'การเปลี่ยน Jev credential'); state.decisionProvider = data.decisionProvider; renderDecisionProvider(); message('jev-message', 'เชื่อม Jev แล้ว'); }
+      try { const data = await withOwnerStepUp(()=>updateDecisionProviderCredential('SET', field.value),'การเปลี่ยน Jev credential'); state.decisionProvider = data.decisionProvider; renderDecisionProvider(); message('jev-message', 'เชื่อม Jev แล้ว'); }
       catch (error) { message('jev-message', error instanceof Error ? error.message : 'ยังเชื่อม Jev ไม่ได้'); }
       finally { field.value = ''; }
     });
     $('jev-credential-remove').addEventListener('click', async () => {
       message('jev-message', 'กำลังยกเลิกการเชื่อม Jev…');
-      try { const data = await withPrivilegedRetry(()=>updateDecisionProviderCredential('REMOVE'),'การลบ Jev credential'); state.decisionProvider = data.decisionProvider; renderDecisionProvider(); message('jev-message', 'ยกเลิก Jev แล้ว · AWH ใช้ routing เดิม'); }
+      try { const data = await withOwnerStepUp(()=>updateDecisionProviderCredential('REMOVE'),'การลบ Jev credential'); state.decisionProvider = data.decisionProvider; renderDecisionProvider(); message('jev-message', 'ยกเลิก Jev แล้ว · AWH ใช้ routing เดิม'); }
       catch (error) { message('jev-message', error instanceof Error ? error.message : 'ยังยกเลิก Jev ไม่ได้'); }
     });
     $('jev-connection-test').addEventListener('click', async () => {
@@ -918,7 +1087,8 @@ import {
     const online = workers.filter((worker) => worker?.online || ['READY', 'WORKING', 'ONLINE'].includes(worker?.state)).length;
     message('settings-worker-message', online > 0 ? `มีอุปกรณ์เสริมพร้อมรับงาน ${online} เครื่อง · งาน Cloud ทำต่อได้โดยไม่ต้องเปิดเครื่อง` : 'งานบนเว็บทำต่อได้ตามปกติ · ใช้ AWH Agent เฉพาะงานที่ต้องเข้าถึงไฟล์หรือแอปบนคอมพิวเตอร์เครื่องนั้น');
     renderCapabilitySurface();
-    renderCoreReleaseSurface();
+    // Core Release is owned by Control Panel/Update Center. The legacy Settings
+    // renderer was removed, so do not call a non-existent projection here.
     void loadDesktopRelease();
     const readiness = state.systemReadiness;
     if (readiness) {
@@ -2159,13 +2329,13 @@ import {
   $('observability-credential-form')?.addEventListener('submit', async (event) => {
     event.preventDefault(); const field = $('observability-api-key'); const button = event.currentTarget.querySelector('button[type="submit"]'); if (!field?.value.trim()) { message('observability-message', 'วาง Honeycomb API key ก่อน'); return; }
     button.disabled = true; message('observability-message', 'กำลังบันทึก key อย่างปลอดภัย…');
-    try { const data = await withPrivilegedRetry(()=>updateObservabilityCredential('SET', field.value),'การเชื่อม Honeycomb'); state.observability = data.observability; renderObservability(); message('observability-message', 'บันทึกแล้ว ระบบกำลังเปิด telemetry อัตโนมัติ'); refreshObservabilitySoon(); }
+    try { const data = await withOwnerStepUp(()=>updateObservabilityCredential('SET', field.value),'การเชื่อม Honeycomb'); state.observability = data.observability; renderObservability(); message('observability-message', 'บันทึกแล้ว ระบบกำลังเปิด telemetry อัตโนมัติ'); refreshObservabilitySoon(); }
     catch (error) { message('observability-message', error instanceof Error ? error.message : 'ยังเชื่อม Honeycomb ไม่ได้'); }
     finally { field.value = ''; button.disabled = false; }
   });
   $('observability-credential-remove')?.addEventListener('click', async () => {
     message('observability-message', 'กำลังหยุดการเชื่อม…');
-    try { const data = await withPrivilegedRetry(()=>updateObservabilityCredential('REMOVE'),'การยกเลิก Honeycomb'); state.observability = data.observability; renderObservability(); message('observability-message', 'หยุดการเชื่อมแล้ว และกำลังกลับสู่ local preflight'); refreshObservabilitySoon(); }
+    try { const data = await withOwnerStepUp(()=>updateObservabilityCredential('REMOVE'),'การยกเลิก Honeycomb'); state.observability = data.observability; renderObservability(); message('observability-message', 'หยุดการเชื่อมแล้ว และกำลังกลับสู่ local preflight'); refreshObservabilitySoon(); }
     catch (error) { message('observability-message', error instanceof Error ? error.message : 'ยังหยุดการเชื่อมไม่ได้'); }
   });
   $('system-check-inline')?.addEventListener('click', () => $('system-check')?.click());
@@ -2265,7 +2435,7 @@ import {
     const password=$('person-create-password').value; if(password!==$('person-create-confirm').value){message('people-message','ยืนยันรหัสผ่านให้ตรงกัน');return;}
     const projectIds=[...$('people-create-projects').querySelectorAll('input:checked')].map(node=>node.value);
     const button=$('people-create-form').querySelector('button[type="submit"]'); button.disabled=true; message('people-message','กำลังสร้างบัญชี…');
-    try { await withPrivilegedRetry(()=>createPerson({displayName:$('person-create-name').value.trim(),username:$('person-create-username').value.trim(),password,email:$('person-create-email').value.trim()||null,phone:$('person-create-phone').value.trim()||null,personType:$('person-create-type').value,role:$('person-create-role').value,projectIds,mustChangePassword:false}),'การสร้างบัญชีสิทธิ์สูง'); $('people-create-form').reset(); projectChecks('people-create-projects'); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','สร้างบัญชีแล้ว ใช้ชื่อผู้ใช้และรหัสผ่านนี้เข้าสู่ AWH ได้ทันที'); }
+    try { await withOwnerStepUp(()=>createPerson({displayName:$('person-create-name').value.trim(),username:$('person-create-username').value.trim(),password,email:$('person-create-email').value.trim()||null,phone:$('person-create-phone').value.trim()||null,personType:$('person-create-type').value,role:$('person-create-role').value,projectIds,mustChangePassword:false}),'การสร้างบัญชีสิทธิ์สูง'); $('people-create-form').reset(); projectChecks('people-create-projects'); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','สร้างบัญชีแล้ว ใช้ชื่อผู้ใช้และรหัสผ่านนี้เข้าสู่ AWH ได้ทันที'); }
     catch(error){message('people-message',error instanceof Error?error.message:'ยังสร้างบัญชีไม่ได้');} finally{button.disabled=false;}
   });
 
@@ -2305,7 +2475,7 @@ import {
 
   $('recovery-codes-create').addEventListener('click', async () => {
     const output = $('recovery-codes'); output.hidden = false; output.textContent = 'กำลังสร้างรหัสกู้คืน…';
-    try { const data = await withPrivilegedRetry(()=>createRecoveryCodes(),'การสร้างรหัสกู้คืน'); output.textContent = Array.isArray(data.recoveryCodes) ? data.recoveryCodes.join('\n') : 'ไม่สามารถสร้างรหัสกู้คืนได้'; }
+    try { const data = await withOwnerStepUp(()=>createRecoveryCodes(),'การสร้างรหัสกู้คืน'); output.textContent = Array.isArray(data.recoveryCodes) ? data.recoveryCodes.join('\n') : 'ไม่สามารถสร้างรหัสกู้คืนได้'; }
     catch (error) { output.textContent = error instanceof Error ? error.message : 'ไม่สามารถสร้างรหัสกู้คืนได้'; }
   });
 

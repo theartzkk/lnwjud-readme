@@ -29,6 +29,33 @@ test("AWH Chat presentation reuses the existing AWH authority", async () => {
   assert.doesNotMatch(bridge + runtime + thread, /indexedDB|new WebSocket|EventSource/);
 });
 
+test("iPhone dictation is one-shot and self-recovers instead of remaining stuck", async () => {
+  const [runtime, thread, css] = await Promise.all([
+    read("web/chat-island/runtime.tsx"), read("web/chat-island/thread.tsx"), read("web/chat-island/chat.css"),
+  ]);
+  assert.match(runtime, /continuous:\s*false/);
+  assert.doesNotMatch(runtime, /continuous:\s*true/);
+  assert.match(thread, /function DictationSafety/);
+  assert.match(thread, /12_000/);
+  assert.match(thread, /aui\.composer\.stopDictation\(\)/);
+  assert.match(thread, /visibilitychange/);
+  assert.match(thread, /กำลังฟัง… แตะ ■ เพื่อหยุด/);
+  assert.match(css, /\.awh-dictation-state/);
+});
+
+test("Provider setup is discoverable and high-risk confirmation happens in context", async () => {
+  const [app, html] = await Promise.all([read("web/app.js"), read("web/index.html")]);
+  assert.match(html, /data-profile-section="ai"/);
+  assert.match(html, /<strong>AI Providers<\/strong>/);
+  assert.match(app, /\+ เพิ่ม Provider/);
+  assert.match(app, /id="provider-add-list"/);
+  assert.match(app, /function requestPrivilegedPassword/);
+  assert.match(app, /async function withOwnerStepUp/);
+  assert.match(app, /await stepUp\(password\)/);
+  assert.match(app, /withOwnerStepUp\(\(\) => updateProviderHubCredential\(item\.providerId, 'SET', secret\)/);
+  assert.doesNotMatch(app, /เปิดโหมดผู้ดูแลขั้นสูง|pendingPrivilegedAction/);
+});
+
 test("Chat shell exposes modern assistant UX without raw tool logs by default", async () => {
   const [thread, css, html] = await Promise.all([
     read("web/chat-island/thread.tsx"), read("web/chat-island/chat.css"), read("web/index.html"),

@@ -143,6 +143,31 @@ function ComposerAssist({ snapshot }: { snapshot: AwhChatSnapshot }) {
   </div>;
 }
 
+function DictationSafety() {
+  const aui = useAui();
+  const active = useAuiState((s) => s.composer.dictation != null);
+  React.useEffect(() => {
+    if (!active) return;
+    let stopped = false;
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      void aui.composer.stopDictation();
+    };
+    const watchdog = window.setTimeout(stop, 12_000);
+    const onVisibility = () => { if (document.hidden) stop(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearTimeout(watchdog);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [active, aui]);
+
+  return active
+    ? <span className="awh-dictation-state" role="status" aria-live="polite">กำลังฟัง… แตะ ■ เพื่อหยุด</span>
+    : null;
+}
+
 function ChatComposer({ snapshot }: { snapshot: AwhChatSnapshot }) {
   const addClipboardFiles = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const files = Array.from(event.clipboardData.files || []);
@@ -155,6 +180,7 @@ function ChatComposer({ snapshot }: { snapshot: AwhChatSnapshot }) {
       <ComposerPrimitive.Input className="awh-composer-input" rows={1}
         submitMode="enter" placeholder={snapshot.ready ? "ถามหรือสั่ง AWH…" : "เลือกโปรเจกต์ก่อน"}
         onPaste={addClipboardFiles} />
+      <DictationSafety />
       <ComposerPrimitive.DictationTranscript className="awh-dictation-transcript" />
       <div className="awh-composer-bar">
         <div className="awh-composer-tools">

@@ -287,17 +287,33 @@ function mountMobileNavigation() {
   const updateKeyboardViewport = () => {
     const viewport = window.visualViewport;
     const currentHeight = viewport?.height || window.innerHeight;
+    const currentTop = Math.max(0, Math.round(viewport?.offsetTop || 0));
     const editing = isKeyboardEditing();
     if (!editing) keyboardViewportBaseline = currentHeight;
     const lostHeight = Math.max(0, keyboardViewportBaseline - currentHeight);
     const keyboardOpen = editing && (lostHeight > 96 || currentHeight < keyboardViewportBaseline * 0.82);
     document.body.classList.toggle('awh-keyboard-open', keyboardOpen);
     document.documentElement.style.setProperty('--awh-visual-viewport-height', `${Math.round(currentHeight)}px`);
+    document.documentElement.style.setProperty('--awh-visual-viewport-top', `${currentTop}px`);
+    // Safari may pan the layout viewport as soon as a textarea receives focus.
+    // Work already owns its own scrolling viewport, so keep the outer page fixed
+    // and let the visual viewport variables place the chat shell immediately.
+    if (editing && typeof window.scrollTo === 'function' && Math.abs(window.scrollY || 0) > 0) {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+  };
+  const stabilizeKeyboardFocus = () => {
+    updateKeyboardViewport();
+    if (!isKeyboardEditing()) return;
+    window.requestAnimationFrame?.(() => updateKeyboardViewport());
+    window.setTimeout(updateKeyboardViewport, 60);
+    window.setTimeout(updateKeyboardViewport, 180);
+    window.setTimeout(updateKeyboardViewport, 360);
   };
   window.addEventListener('resize', updateKeyboardViewport, { passive: true });
   window.visualViewport?.addEventListener('resize', updateKeyboardViewport, { passive: true });
   window.visualViewport?.addEventListener('scroll', updateKeyboardViewport, { passive: true });
-  document.addEventListener('focusin', updateKeyboardViewport, { passive: true });
+  document.addEventListener('focusin', stabilizeKeyboardFocus, { passive: true });
   document.addEventListener('focusout', () => window.setTimeout(updateKeyboardViewport, 0), { passive: true });
   window.addEventListener('orientationchange', () => window.setTimeout(() => {
     keyboardViewportBaseline = window.visualViewport?.height || window.innerHeight;
