@@ -15,7 +15,12 @@ let searchTerm='';
 let stopLiveUpdates=null;
 let liveConnected=false;
 let liveUpdatedAt=0;
+let liveWatchdogTimer=null;
 let lastLiveUiSignature='';
+const LIVE_SIGNAL_STALE_MS=18000;
+const LIVE_WATCHDOG_MS=5000;
+const ACTIVE_REFRESH_MS=10000;
+const IDLE_REFRESH_MS=60000;
 const actionInFlightTargets=new Set();
 const targetFeedback=new Map();
 const OWNER_OPERATION_STORAGE_KEY='awh-update-center-owner-operations-v2';
@@ -1009,13 +1014,34 @@ function progressEventFresh(event,maxAgeMs=20000){
   return Number.isFinite(at)&&(Date.now()-at)>=0&&(Date.now()-at)<=maxAgeMs;
 }
 
+function liveSignalFresh(maxAgeMs=LIVE_SIGNAL_STALE_MS){
+  return liveConnected&&Number.isFinite(liveUpdatedAt)&&liveUpdatedAt>0&&(Date.now()-liveUpdatedAt)<=maxAgeMs;
+}
+
 function hasActiveUpdate(){
   return Boolean(localOperation)||pinnedOperations.size>0||primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
 }
 
 function stopLiveStream(){
   if(stopLiveUpdates){stopLiveUpdates();stopLiveUpdates=null;}
-  liveConnected=false;
+  liveConnected=false;liveUpdatedAt=0;
+}
+function markLiveSignal(){liveConnected=true;liveUpdatedAt=Date.now();}
+function stopLiveWatchdog(){if(liveWatchdogTimer){clearInterval(liveWatchdogTimer);liveWatchdogTimer=null;}}
+function startLiveWatchdog(){
+  if(liveWatchdogTimer)return;
+  liveWatchdogTimer=window.setInterval(()=>{
+    if(document.hidden||!hasActiveUpdate())return;
+    if(liveSignalFresh())return;
+    stopLiveStream();ensureLiveStream();
+    if(!refreshing)void refresh({reason:'watchdog'});
+  },LIVE_WATCHDOG_MS);
+}
+function recoverLiveView(){
+  if(document.hidden)return;
+  stopLiveStream();
+  if(!refreshing)void refresh({reason:'resume'});
+  else scheduleRefresh();
 }
 
 function liveUiSignature(snapshot){
@@ -1032,7 +1058,7 @@ function ensureLiveStream(){
     const normalized=normalizeUpdateCenter(snapshot);
     const nextSignature=liveUiSignature(normalized);
     const changed=nextSignature!==lastLiveUiSignature;
-    liveConnected=true;liveUpdatedAt=Date.now();center=normalized;lastLiveUiSignature=nextSignature;
+    markLiveSignal();center=normalized;lastLiveUiSignature=nextSignature;
     $('updates-freshness').textContent='สด · '+new Date(snapshot.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     reconcilePinnedOperations();
     if(pinnedOperations.size===0&&!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
@@ -1041,11 +1067,15 @@ function ensureLiveStream(){
   },()=>{
     liveConnected=false;
     scheduleRefresh();
+  },()=>{
+    markLiveSignal();
+    if(hasActiveUpdate())renderProgress();
   });
 }
 
 function syncLiveStream(){
-  if(hasActiveUpdate())ensureLiveStream();else stopLiveStream();
+  if(hasActiveUpdate()){ensureLiveStream();startLiveWatchdog();}
+  else{stopLiveStream();stopLiveWatchdog();}
 }
 
 function renderProgress(){
@@ -1073,9 +1103,12 @@ function renderProgress(){
   if(queuedOnly){meter.removeAttribute('aria-valuenow');meter.setAttribute('aria-valuetext','รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ');}
   else{meter.setAttribute('aria-valuenow',String(Math.round(progress)));meter.setAttribute('aria-valuetext',Math.round(progress)+' เปอร์เซ็นต์');}
   const event=item?.progressEvent||null;
-  const eventFresh=liveConnected&&progressEventFresh(event);
+  const signalFresh=liveSignalFresh();
+  const eventFresh=signalFresh&&progressEventFresh(event);
   $('operation-progress-message').textContent=queuedOnly?'รับคำสั่งแล้ว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':ownerProgressMessage(item,event,waiting);
-  $('operation-progress-live').textContent=(eventFresh?'● สด · ':(liveConnected?'● เชื่อมต่ออยู่ · ':'สำรอง · '))+relativeLiveTime(event?.occurredAt||null);
+  $('operation-progress-live').textContent=eventFresh
+    ? '● สด · '+relativeLiveTime(event?.occurredAt||null)
+    : (signalFresh?'● เชื่อมต่อสด · กำลังรอขั้นตอนถัดไป':'↻ กำลังซิงก์สถานะล่าสุด');
   if(queueHost){
     const names=[...new Set([...queued.map((row)=>row.name),...queuedPins.map((operation)=>operation.name)].filter(Boolean))];
     queueHost.hidden=names.length===0;
@@ -1406,8 +1439,11 @@ function scheduleRefresh(){
   clearTimeout(refreshTimer);
   const active=hasActiveUpdate()||primaryItems().some((item)=>item.state==='REMOTE_CHECK_REQUIRED');
   syncLiveStream();
-  const delay=active?(liveConnected?45000:12000):90000;
-  refreshTimer=setTimeout(()=>{if(!document.hidden)void refresh();},delay);
+  const delay=active?ACTIVE_REFRESH_MS:IDLE_REFRESH_MS;
+  refreshTimer=setTimeout(()=>{
+    if(document.hidden){scheduleRefresh();return;}
+    void refresh({reason:'fallback-poll'});
+  },delay);
 }
 async function refresh(options={}){
   if(refreshing)return;
@@ -1477,7 +1513,11 @@ document.querySelectorAll('.filter-chip').forEach((button)=>button.addEventListe
   document.querySelectorAll('.filter-chip').forEach((chip)=>{const active=chip===button;chip.classList.toggle('is-active',active);chip.setAttribute('aria-pressed',active?'true':'false');});
   flashControlAck(button,'✓','info');render();
 }));
-document.addEventListener('visibilitychange',()=>{if(document.hidden){stopLiveStream();return;}void refresh();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){stopLiveStream();return;}recoverLiveView();});
+window.addEventListener('pageshow',()=>recoverLiveView(),{passive:true});
+window.addEventListener('focus',()=>recoverLiveView(),{passive:true});
+window.addEventListener('online',()=>recoverLiveView(),{passive:true});
+window.addEventListener('pagehide',()=>{stopLiveStream();stopLiveWatchdog();},{passive:true});
 window.__AWH_UPDATE_CENTER_BOOT_OK__=true;
 try{sessionStorage.removeItem('awh-update-center-boot-__AWH_WEB_RELEASE_ID__');}catch{}
 void refresh({initial:true});

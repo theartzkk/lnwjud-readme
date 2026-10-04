@@ -394,14 +394,25 @@ export async function submitCloudTask({ projectId, kind, revision, profile = nul
 export async function loadOwnerSelfServiceStatus() { return controlRequest('/api/v1/control/owner/status'); }
 export async function loadInfrastructureSummary() { return controlRequest('/api/v1/control/infrastructure/summary'); }
 export async function loadInfrastructure() { return controlRequest('/api/v1/control/infrastructure'); }
-export function subscribeUpdateCenterLive(onUpdate, onError = null) {
+export function subscribeUpdateCenterLive(onUpdate, onError = null, onSignal = null) {
   if (typeof EventSource === 'undefined' || typeof onUpdate !== 'function') return null;
   const stream = new EventSource('/api/v1/control/updates/stream', { withCredentials: true });
+  stream.onopen = () => { if (typeof onSignal === 'function') onSignal({ kind: 'open', observedAt: new Date().toISOString() }); };
   stream.addEventListener('update', (event) => {
     try {
       const value = JSON.parse(event.data);
       if (value?.schemaVersion !== 1 || !value.snapshot || value.snapshot.schemaVersion !== 1) throw new Error('LIVE_UPDATE_INVALID');
+      if (typeof onSignal === 'function') onSignal({ kind: 'update', observedAt: value.observedAt || new Date().toISOString(), cursor: value.cursor || null });
       onUpdate(value.snapshot, value.cursor || null);
+    } catch (error) {
+      if (typeof onError === 'function') onError(error);
+    }
+  });
+  stream.addEventListener('heartbeat', (event) => {
+    try {
+      const value = JSON.parse(event.data);
+      if (value?.schemaVersion !== 1 || typeof value.observedAt !== 'string') throw new Error('LIVE_HEARTBEAT_INVALID');
+      if (typeof onSignal === 'function') onSignal({ kind: 'heartbeat', observedAt: value.observedAt, cursor: value.cursor || null });
     } catch (error) {
       if (typeof onError === 'function') onError(error);
     }

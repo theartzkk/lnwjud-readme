@@ -238,6 +238,7 @@ final class HubControlPlaneService
     public function updateCenterForSession(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now);
+        $observedNow = $now ?? gmdate('c');
         $userId = (string) $session['user_id'];
         $this->assertOwner($userId);
 
@@ -278,7 +279,7 @@ final class HubControlPlaneService
         $activePlatform = null;
         foreach ((array)($platform['releases'] ?? []) as $row) {
             if (!is_array($row) || !is_string($row['releaseSha'] ?? null)) continue;
-            if (in_array((string)($row['taskState'] ?? ''),['COMPLETED','FAILED','CANCELLED'],true)) continue;
+            if (!self::releaseRowStillActive($row,$platformCurrent,$observedNow)) continue;
             $activePlatform=$row; break;
         }
         $activePlatformSha=is_array($activePlatform)&&is_string($activePlatform['releaseSha']??null)?strtolower((string)$activePlatform['releaseSha']):null;
@@ -317,7 +318,7 @@ final class HubControlPlaneService
         $activeCore = null;
         foreach ((array) ($core['releases'] ?? []) as $row) {
             if (!is_array($row) || !is_string($row['releaseSha'] ?? null)) continue;
-            if (in_array((string) ($row['taskState'] ?? ''), ['COMPLETED','FAILED','CANCELLED'], true)) continue;
+            if (!self::releaseRowStillActive($row,$awhCurrent,$observedNow)) continue;
             $activeCore = $row;
             break;
         }
@@ -438,7 +439,7 @@ final class HubControlPlaneService
                 $currentLearnLabSha = is_string($currentLearnLab['releaseSha'] ?? null) ? strtolower((string) $currentLearnLab['releaseSha']) : null;
                 $activeLearnLab = null;
                 foreach ((array) ($learnLab['releases'] ?? []) as $row) {
-                    if (!is_array($row) || in_array((string) ($row['taskState'] ?? ''), ['COMPLETED','FAILED','CANCELLED'], true)) continue;
+                    if (!is_array($row) || !self::releaseRowStillActive($row,$currentLearnLabSha,$observedNow)) continue;
                     $releaseSha = is_string($row['releaseSha'] ?? null) ? strtolower((string) $row['releaseSha']) : null;
                     if ($latestLearnLabSha !== null && ($releaseSha === null || !hash_equals($latestLearnLabSha,$releaseSha))) continue;
                     $activeLearnLab = $row;
@@ -495,7 +496,7 @@ final class HubControlPlaneService
                     $candidateSha=(($candidateAssessment['ready']??false)===true&&is_string($candidateAssessment['releaseSha']??null))?strtolower((string)$candidateAssessment['releaseSha']):null;
                     $activeAssessment=null;
                     foreach((array)($assessment['releases']??[]) as $row){
-                        if(!is_array($row)||in_array((string)($row['taskState']??''),['COMPLETED','FAILED','CANCELLED'],true))continue;
+                        if(!is_array($row)||!self::releaseRowStillActive($row,$currentSha,$observedNow))continue;
                         $releaseSha=is_string($row['releaseSha']??null)?strtolower((string)$row['releaseSha']):null;
                         if($candidateSha!==null&&($releaseSha===null||!hash_equals($candidateSha,$releaseSha)))continue;
                         $activeAssessment=$row;break;
@@ -640,6 +641,20 @@ final class HubControlPlaneService
                 'singleLatestCandidate'=>true,'stalePendingRelease'=>'AUTO_SUPERSEDE_BEFORE_LEASE','humanShaRequired'=>false,'runtimeCoherenceRequired'=>true,'releaseDetailsRequired'=>true,
                 'releaseTrackScopedDeployOwnership'=>true,'hostGlobalReleaseTrack'=>'vps-platform','mutationDecisionAuthority'=>'AWH_EXECUTION_GATE','projectMissionIsCoordinationOnly'=>true],
         ];
+    }
+
+    private static function releaseRowStillActive(array $row,?string $currentSha,string $now,int $convergenceGraceSeconds=120): bool
+    {
+        $taskState=strtoupper((string)($row['taskState']??''));
+        if(in_array($taskState,['COMPLETED','FAILED','CANCELLED'],true))return false;
+        $executionState=strtoupper((string)($row['executionState']??''));
+        if(in_array($executionState,['COMPLETED','FAILED','CANCELLED','ABANDONED'],true))return false;
+        $releaseSha=is_string($row['releaseSha']??null)?strtolower((string)$row['releaseSha']):null;
+        if($currentSha===null||$releaseSha===null||!hash_equals(strtolower($currentSha),$releaseSha))return true;
+        $updatedAt=is_string($row['updatedAt']??null)?strtotime((string)$row['updatedAt']):false;
+        $observedAt=strtotime($now);
+        if($updatedAt===false||$observedAt===false)return true;
+        return max(0,$observedAt-$updatedAt)<$convergenceGraceSeconds;
     }
 
     private function projectVaultPackageVersion(string $projectId,mixed $revisionId): ?string

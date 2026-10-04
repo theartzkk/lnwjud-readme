@@ -61,10 +61,14 @@ try {
 
 ";
                 $lastPing=microtime(true);
-            }elseif(microtime(true)-$lastPing>=10.0){
-                echo ': keepalive '.gmdate('c')."
+            }elseif(microtime(true)-$lastPing>=5.0){
+                $heartbeat=json_encode(['schemaVersion'=>1,'cursor'=>$cursor,'observedAt'=>gmdate('c')],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+                echo "event: heartbeat
+";
+                echo 'data: '.$heartbeat."
 
-";$lastPing=microtime(true);
+";
+                $lastPing=microtime(true);
             }
             @flush();
             if(connection_aborted())break;
