@@ -42,6 +42,8 @@ ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['scripts/ops/run-release
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['scripts/create-web-release-manifest.mjs','scripts/list-web-release-files.mjs','scripts/release/desktop-reuse-fallback.mjs','test/desktop-release-reuse.test.ts','test/desktop-reuse-fallback.test.ts'])==='vps-platform','desktop release packaging and verified reuse recovery are VPS Platform-owned infrastructure');
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['deploy/awh-control-plane/remote-deploy-control-plane.sh','scripts/release/desktop-reuse-fallback.mjs','hub/src/HubCapabilityRegistryService.php'])==='vps-platform','platform deployment, desktop reuse recovery and execution authority remain one VPS Platform track');
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/continuous-improvement-policy.json','config/kruart-engineering-eval.json','hub/src/HubVerificationIntelligence.php','hub/tests/verification-intelligence.php'])==='vps-platform','continuous improvement policy, classifier and eval authority are VPS Platform-owned');
+$updatesSource=file_get_contents(dirname(__DIR__,2).'/web/updates.js');
+ep(is_string($updatesSource)&&str_contains($updatesSource,'used!==null&&used>=75')&&str_contains($updatesSource,'free<16*1024**3'),'Owner Update Center warning boundary mirrors canonical Storage Guard headroom');
 ep(!isset($p['policyFamilies'])&&!isset($p['planBeforeCall'])&&!isset($p['quotaAware']),'retired owner-model fields are absent');
 
 // Provider capability recovery: a retry-exhausted transient wait is preserved

@@ -362,7 +362,9 @@ function renderReleaseInfrastructure(){
   // Never turn stale/checking telemetry into a hard owner-facing storage failure.
   // A blocking storage verdict is valid only when the live Production telemetry is READY.
   const storageBlocked=Boolean(telemetryReady)&&((used!==null&&used>=90)||(Number.isFinite(free)&&free<3*1024**3));
-  const storageWarn=Boolean(telemetryReady)&&!storageBlocked&&used!==null&&used>=80;
+  // Mirror the canonical Storage Guard warning boundary so Owner UI never says
+  // READY while the platform authority is already protecting headroom.
+  const storageWarn=Boolean(telemetryReady)&&!storageBlocked&&((used!==null&&used>=75)||(Number.isFinite(free)&&free<16*1024**3));
   const authority=center?.infrastructure?.executionAuthority||{};
   const activeMutations=Number(authority.activeMutationCount||0);
   const waitingMutations=Number(authority.waitingMutationCount||0);

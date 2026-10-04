@@ -143,6 +143,8 @@ test('Release Runner is visible in Update Center but remains executor-only under
   assert.match(script,/runnerWorker/);
   assert.match(script,/awh-build-01/);
   assert.match(script,/storageBlocked/);
+  assert.match(script,/used!==null&&used>=75/);
+  assert.match(script,/free<16\*1024\*\*3/);
   assert.match(script,/activeMutations===0/);
   assert.match(script,/ยังไม่ได้ติดตั้ง — ไม่จำเป็นต่อการใช้งานปัจจุบัน Production รับ Build\/QA แบบจำกัดทรัพยากรได้/);
   assert.match(script,/ตัวเลือกขยายระบบในอนาคต เมื่อ Build\/QA เริ่มกระทบ Production/);
