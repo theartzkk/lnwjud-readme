@@ -189,6 +189,11 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(deployOrchestrator, /deploy\/ssh\/00-awh-hardening\.conf/);
   assert.match(deployOrchestrator, /install-ssh-hardening\.sh/);
   assert.match(edgeInstaller, /EDGE_HARDENING_ROLLBACK=PASS/);
+  assert.match(edgeInstaller, /EDGE_DOMAIN_BACKENDS_RECONCILED=/);
+  assert.match(edgeInstaller, /awh-domain-\*\.conf/);
+  assert.match(edgeInstaller, /awh-site-\*\.conf/);
+  assert.match(edgeInstaller, /listen 127\.0\.0\.1:/);
+  assert.match(edgeInstaller, /domain-backends/);
   assert.match(sshInstaller, /SSH_HARDENING_ROLLBACK=PASS/);
   assert.match(sshInstaller, /\.ssh\/authorized_keys/);
   assert.match(sshInstaller, /\/usr\/sbin\/sshd -t/);

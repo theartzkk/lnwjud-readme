@@ -13,21 +13,29 @@ FILTER_SOURCE="$ROOT/deploy/fail2ban/awh-nginx-scanner.conf"
 EDGE_TARGET=/etc/nginx/conf.d/awh-edge-hardening.conf
 JAIL_TARGET=/etc/fail2ban/jail.d/awh-nginx-botsearch.local
 FILTER_TARGET=/etc/fail2ban/filter.d/awh-nginx-scanner.conf
+NGINX_AVAILABLE=${AWH_NGINX_SITES_AVAILABLE:-/etc/nginx/sites-available}
+NGINX_ENABLED=${AWH_NGINX_SITES_ENABLED:-/etc/nginx/sites-enabled}
 BACKUP_ROOT=/var/backups/awh-hub/config
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP="$BACKUP_ROOT/edge-$STAMP"
+BACKEND_BACKUP="$BACKUP/domain-backends"
 
 test "$(id -u)" -eq 0 || { echo "EDGE_HARDENING_REQUIRES_ROOT" >&2; exit 2; }
 for f in "$SITE" "$NGINX_MAIN" "$EDGE_SOURCE" "$LEGACY_SOURCE" "$JAIL_SOURCE" "$FILTER_SOURCE"; do test -f "$f" || { echo "EDGE_HARDENING_INPUT_MISSING=$f" >&2; exit 2; }; done
 command -v nginx >/dev/null 2>&1 || { echo "EDGE_HARDENING_NGINX_MISSING" >&2; exit 2; }
 command -v python3 >/dev/null 2>&1 || { echo "EDGE_HARDENING_PYTHON_MISSING" >&2; exit 2; }
 
-mkdir -p "$BACKUP"
+mkdir -p "$BACKUP" "$BACKEND_BACKUP"
 cp -p "$SITE" "$BACKUP/awh-preview.conf"
 cp -p "$NGINX_MAIN" "$BACKUP/nginx.conf"
 if test -f "$EDGE_TARGET"; then cp -p "$EDGE_TARGET" "$BACKUP/awh-edge-hardening.conf"; else : > "$BACKUP/no-edge"; fi
 if test -f "$JAIL_TARGET"; then cp -p "$JAIL_TARGET" "$BACKUP/awh-nginx-botsearch.local"; else : > "$BACKUP/no-jail"; fi
 if test -f "$FILTER_TARGET"; then cp -p "$FILTER_TARGET" "$BACKUP/awh-nginx-scanner.conf"; else : > "$BACKUP/no-filter"; fi
+for backend in "$NGINX_AVAILABLE"/awh-site-*.conf; do
+  test -e "$backend" || continue
+  test -f "$backend" && test ! -L "$backend" || { echo "EDGE_HARDENING_BACKEND_UNSAFE=$backend" >&2; exit 2; }
+  cp -p "$backend" "$BACKEND_BACKUP/$(basename "$backend")"
+done
 
 rollback() {
   cp -p "$BACKUP/awh-preview.conf" "$SITE"
@@ -35,6 +43,10 @@ rollback() {
   if test -f "$BACKUP/no-edge"; then rm -f "$EDGE_TARGET"; else cp -p "$BACKUP/awh-edge-hardening.conf" "$EDGE_TARGET"; fi
   if test -f "$BACKUP/no-jail"; then rm -f "$JAIL_TARGET"; else cp -p "$BACKUP/awh-nginx-botsearch.local" "$JAIL_TARGET"; fi
   if test -f "$BACKUP/no-filter"; then rm -f "$FILTER_TARGET"; else cp -p "$BACKUP/awh-nginx-scanner.conf" "$FILTER_TARGET"; fi
+  for backend in "$BACKEND_BACKUP"/*.conf; do
+    test -f "$backend" || continue
+    cp -p "$backend" "$NGINX_AVAILABLE/$(basename "$backend")"
+  done
   nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
   fail2ban-client reload >/dev/null 2>&1 || true
 }
@@ -90,6 +102,64 @@ if old in s:
     p.write_text(s.replace(old,new,1))
 elif new not in s:
     raise SystemExit('ssl_protocols authority changed; refusing blind edit')
+PY
+
+# Existing DOMAIN sites created before loopback-only backends were introduced
+# must converge too. Domain routes are the authority for which backend ports
+# are no longer intended to be internet-facing. The rewrite is bounded to
+# AWH-managed site configs and is idempotent; rollback restores every captured
+# backend config if any later edge verification fails.
+python3 - "$NGINX_AVAILABLE" "$NGINX_ENABLED" <<'PY'
+from pathlib import Path
+import os,re,stat,sys
+available=Path(sys.argv[1]).resolve()
+enabled=Path(sys.argv[2]).resolve()
+if not available.is_dir() or not enabled.is_dir():
+    raise SystemExit('managed nginx directories are unavailable')
+ports=set()
+port_re=re.compile(r'proxy_pass\s+https://127\.0\.0\.1:(8[4-9][0-9]{2})\s*;')
+for entry in sorted(enabled.glob('awh-domain-*.conf')):
+    if not entry.exists():
+        continue
+    target=entry.resolve()
+    if target.parent != available or not target.is_file() or target.is_symlink():
+        raise SystemExit(f'unsafe managed domain route: {entry}')
+    raw=target.read_text()
+    if len(raw)>1024*1024:
+        raise SystemExit(f'managed domain route too large: {entry.name}')
+    ports.update(port_re.findall(raw))
+rewritten=0
+for port in sorted(ports):
+    public=f'listen {port} ssl;'
+    loopback=f'listen 127.0.0.1:{port} ssl;'
+    matches=[]
+    for config in sorted(available.glob('awh-site-*.conf')):
+        if config.is_symlink() or not config.is_file():
+            raise SystemExit(f'unsafe managed backend config: {config}')
+        raw=config.read_text()
+        if len(raw)>1024*1024:
+            raise SystemExit(f'managed backend config too large: {config.name}')
+        if public in raw or loopback in raw:
+            matches.append((config,raw))
+    if len(matches)!=1:
+        raise SystemExit(f'domain backend authority is ambiguous for port {port}')
+    config,raw=matches[0]
+    if loopback in raw:
+        if public in raw:
+            raise SystemExit(f'mixed backend listener authority for port {port}')
+        continue
+    if raw.count(public)!=1:
+        raise SystemExit(f'backend listener shape changed for port {port}')
+    updated=raw.replace(public,loopback,1)
+    tmp=config.with_name(config.name+f'.awh-edge-{os.getpid()}.tmp')
+    with tmp.open('x') as handle:
+        handle.write(updated)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.chmod(tmp,stat.S_IMODE(config.stat().st_mode))
+    os.replace(tmp,config)
+    rewritten+=1
+print(f'EDGE_DOMAIN_BACKENDS_RECONCILED={rewritten}')
 PY
 
 nginx -t
