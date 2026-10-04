@@ -482,15 +482,18 @@ final class HubOperatorBridgeService
         $matchingMission=null;
         foreach((array)($mission['missions']??[]) as $candidate){
             if(!is_array($candidate))continue;
-            $candidateTrack=is_string($candidate['releaseTrack']??null)?(string)$candidate['releaseTrack']:'';
+            $candidateTrack=is_string($candidate['releaseTrack']??null)?strtolower(trim((string)$candidate['releaseTrack'])):'';
             if($trackKey!==''&&($candidateTrack===''||!hash_equals($trackKey,$candidateTrack)))continue;
+            $candidateWorkstream=is_string($candidate['workstream']??null)?strtolower(trim((string)$candidate['workstream'])):'';
             if($requestedWorkstream!==''){
-                $candidateWorkstream=is_string($candidate['workstream']??null)?(string)$candidate['workstream']:'';
-                if($candidateWorkstream!==''&&!hash_equals($requestedWorkstream,$candidateWorkstream))continue;
-                if($candidateWorkstream===''&&$requestedGoal==='')continue;
+                if($candidateWorkstream===''||!hash_equals($requestedWorkstream,$candidateWorkstream))continue;
+                $matchingMission=$candidate;break;
             }
-            if($trackKey!==''&&$requestedGoal!==''&&!self::missionGoalsCompatible($requestedGoal,(string)($candidate['goal']??'')))continue;
-            $matchingMission=$candidate;break;
+            if($requestedGoal!==''){
+                if(!self::missionGoalsCompatible($requestedGoal,(string)($candidate['goal']??'')))continue;
+                $matchingMission=$candidate;break;
+            }
+            if($trackKey!==''){$matchingMission=$candidate;break;}
         }
         $existingState=is_array($matchingMission)?(string)($matchingMission['state']??'IDLE'):'IDLE';
         $existing=$existingState==='STALE_RESUMABLE'?'RESUMABLE':($existingState==='COORDINATING'?'ACTIVE':'NONE');
@@ -948,10 +951,11 @@ final class HubOperatorBridgeService
     private static function missionMatchesCoordinationScope(array $row,?string $releaseTrack,string $requestedGoal,?string $requestedWorkstream): bool
     {
         if(!self::missionMatchesReleaseTrack($row,$releaseTrack))return false;
-        if($releaseTrack===null||$releaseTrack==='')return true;
         $currentWorkstream=self::missionWorkstreamFromCheckpoint((string)($row['checkpoint_json']??''));
-        if(is_string($requestedWorkstream)&&$requestedWorkstream!==''&&is_string($currentWorkstream))return hash_equals($requestedWorkstream,$currentWorkstream);
-        return self::missionGoalsCompatible($requestedGoal,(string)($row['goal']??''));
+        if(is_string($requestedWorkstream)&&$requestedWorkstream!=='')
+            return is_string($currentWorkstream)&&hash_equals($requestedWorkstream,$currentWorkstream);
+        if(trim($requestedGoal)!=='')return self::missionGoalsCompatible($requestedGoal,(string)($row['goal']??''));
+        return $releaseTrack!==null&&$releaseTrack!=='';
     }
 
     /** @param array<string,mixed> $row @return array<string,mixed> */
