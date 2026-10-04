@@ -409,15 +409,14 @@ final class HubCoreReleaseService
             return $audit;
         }
         if($this->releaseTrack!=='vps-platform'||hash_equals($trackSha,$main))return $audit;
-        $pendingPlatformChain=$this->sourcePromotionChain($platform,$trackSha);
         $chain=$this->sourcePromotionChain($platform,$main);
-        if(!is_array($pendingPlatformChain)||!is_array($chain)){
+        if(!is_array($chain)){
             $audit['authority']='CANONICAL_SHARED_REPO_CHAIN_INCOMPLETE';
             return $audit;
         }
         $platformSegments=array_values(array_filter($chain,static fn(array $segment): bool => hash_equals((string)($segment['track']??''),'vps-platform')));
-        $latestPlatform=$platformSegments===[]?null:$platformSegments[count($platformSegments)-1];
-        if(!is_array($latestPlatform)||!hash_equals((string)($latestPlatform['target']??''),$trackSha)){
+        $latestPlatformTarget=$platformSegments===[]?$platform:(string)$platformSegments[count($platformSegments)-1]['target'];
+        if(!hash_equals($latestPlatformTarget,$trackSha)){
             $audit['authority']='CANONICAL_SHARED_REPO_CHAIN_INCOMPLETE';
             return $audit;
         }
@@ -538,11 +537,23 @@ final class HubCoreReleaseService
         $impact=['databaseMigration'=>'NONE','serviceReload'=>'NONE','appRestart'=>'NONE','signIn'=>'NONE','plannedDowntime'=>false];
         $compat=['data'=>'COMPATIBLE','runtime'=>'COMPATIBLE','authentication'=>'UNCHANGED'];
         foreach($segments as $segment){
+            $notes=$segment['notes'];
+            // Shared-repository dependencies may carry operational impact even when
+            // their user-facing release notes belong to another track. Preserve
+            // those safety signals without reclassifying their features/fixes.
+            if(($notes['impact']['databaseMigration']??'NONE')!=='NONE')$impact['databaseMigration']='AUTOMATIC';
+            if(($notes['impact']['serviceReload']??'NONE')!=='NONE')$impact['serviceReload']='AUTOMATIC';
+            if(($notes['impact']['appRestart']??'NONE')!=='NONE')$impact['appRestart']='MAY_BE_REQUIRED';
+            if(($notes['impact']['signIn']??'NONE')!=='NONE')$impact['signIn']='MAY_BE_REQUIRED';
+            $impact['plannedDowntime']=$impact['plannedDowntime']||(($notes['impact']['plannedDowntime']??false)===true);
+            if(($notes['compatibility']['data']??'COMPATIBLE')!=='COMPATIBLE')$compat['data']='MIGRATION_REQUIRED';
+            if(($notes['compatibility']['runtime']??'COMPATIBLE')!=='COMPATIBLE')$compat['runtime']='RESTART_MAY_BE_REQUIRED';
+            if(($notes['compatibility']['authentication']??'UNCHANGED')!=='UNCHANGED')$compat['authentication']='SIGN_IN_MAY_BE_REQUIRED';
+
             // Source topology can legitimately cross another release track in the shared repo.
-            // Preserve continuity, but aggregate release details only from this track.
+            // Preserve continuity, but aggregate product-facing change details only from this track.
             if(!hash_equals((string)($segment['track']??''),$this->releaseTrack))continue;
             $trackSegments[]=$segment;
-            $notes=$segment['notes'];
             foreach(array_keys($groups) as $category)foreach((array)($notes['summary'][$category]??[]) as $label){
                 if(is_string($label)&&trim($label)!==''&&!in_array($label,$groups[$category],true)&&count($groups[$category])<12)$groups[$category][]=trim($label);
             }
@@ -552,16 +563,26 @@ final class HubCoreReleaseService
                 $commitSeen[$sha]=true;$commits[]=$commit;
             }
             $touches+=max(0,(int)($notes['changedFileCount']??0));
-            if(($notes['impact']['databaseMigration']??'NONE')!=='NONE')$impact['databaseMigration']='AUTOMATIC';
-            if(($notes['impact']['serviceReload']??'NONE')!=='NONE')$impact['serviceReload']='AUTOMATIC';
-            if(($notes['impact']['appRestart']??'NONE')!=='NONE')$impact['appRestart']='MAY_BE_REQUIRED';
-            if(($notes['impact']['signIn']??'NONE')!=='NONE')$impact['signIn']='MAY_BE_REQUIRED';
-            $impact['plannedDowntime']=$impact['plannedDowntime']||(($notes['impact']['plannedDowntime']??false)===true);
-            if(($notes['compatibility']['data']??'COMPATIBLE')!=='COMPATIBLE')$compat['data']='MIGRATION_REQUIRED';
-            if(($notes['compatibility']['runtime']??'COMPATIBLE')!=='COMPATIBLE')$compat['runtime']='RESTART_MAY_BE_REQUIRED';
-            if(($notes['compatibility']['authentication']??'UNCHANGED')!=='UNCHANGED')$compat['authentication']='SIGN_IN_MAY_BE_REQUIRED';
         }
-        if($trackSegments===[])return $this->incompleteDeploymentReleaseNotes($production,$releaseTarget);
+        if($trackSegments===[]){
+            $anchor=is_array($latest)&&is_string($latest['platformAnchorSha']??null)?strtolower((string)$latest['platformAnchorSha']):null;
+            $dependencyOnly=$this->releaseTrack==='vps-platform'
+                &&($latest['authority']??null)==='CANONICAL_SOURCE_CHAIN_VERIFIED'
+                &&is_string($anchor)&&hash_equals($anchor,$production);
+            if(!$dependencyOnly)return $this->incompleteDeploymentReleaseNotes($production,$releaseTarget);
+            $latestSegment=$segments[count($segments)-1];$latestNotes=$latestSegment['notes'];
+            return [
+                'schemaVersion'=>1,'metadataState'=>'READY','generatedFrom'=>'SOURCE_PROMOTION_CHAIN_DEPENDENCY_ONLY',
+                'repository'=>'awh','releaseTrack'=>$this->releaseTrack,'previousSha'=>$production,'targetSha'=>$releaseTarget,
+                'generatedAt'=>$latestNotes['generatedAt']??$latestSegment['updatedAt'],
+                'ownerSummary'=>'ซิงก์ shared-source dependencies ที่ผ่านการตรวจสอบแล้ว','userVisible'=>false,
+                'summary'=>['features'=>[],'improvements'=>[],'fixes'=>[],'internal'=>['Sync verified shared-source dependencies after the deployed VPS Platform anchor']],
+                'commits'=>[],'changedFileCount'=>0,'changedFileCountMode'=>'TRACK_ONLY','promotionCount'=>0,'chainSegmentCount'=>count($segments),
+                'impact'=>$impact,'compatibility'=>$compat,
+                'rollback'=>['required'=>true,'strategy'=>'PREVIOUS_VERIFIED_RELEASE_OR_SOURCE','sourceSha'=>$production],
+                'knownIssues'=>[],'comingNext'=>[],
+            ];
+        }
         $latestTrackSegment=$trackSegments[count($trackSegments)-1];$latestNotes=$latestTrackSegment['notes'];
         $visible=array_values(array_merge($groups['features'],$groups['improvements'],$groups['fixes']));
         return [
