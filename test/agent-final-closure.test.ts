@@ -64,7 +64,9 @@ test('watchdog handle tracks child liveness and uses the explicit Agent executab
   assert.match(source, /let running = child\.pid !== undefined;/);
   assert.match(source, /child\.once\('exit', \(\) => \{ running = false; \}\);/);
   assert.match(source, /child\.once\('error', \(\) => \{ running = false; \}\);/);
-  assert.match(source, /isRunning\(\): boolean \{ return running; \}/);
+  assert.match(source, /if \(!running \|\| child\.exitCode !== null \|\| child\.signalCode !== null \|\| child\.pid === undefined\) return false;/);
+  assert.match(source, /process\.kill\(child\.pid, 0\); return true;/);
+  assert.match(source, /if \(code === 'EPERM'\) return true;/);
 });
 
 test('watchdog launch fails closed when the packaged watchdog script is missing', async () => {

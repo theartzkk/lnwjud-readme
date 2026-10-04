@@ -101,7 +101,16 @@ export function startAgentWatchdog(dataDir: string, appExecutable: string, scrip
   return {
     pid: child.pid ?? null,
     markerPath,
-    isRunning(): boolean { return running; },
+    isRunning(): boolean {
+      if (!running || child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return false;
+      try { process.kill(child.pid, 0); return true; }
+      catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'EPERM') return true;
+        running = false;
+        return false;
+      }
+    },
     markExpectedExit(): void {
       try {
         writeFileSync(markerPath, 'expected\n', { encoding: 'utf8', mode: 0o600 });
