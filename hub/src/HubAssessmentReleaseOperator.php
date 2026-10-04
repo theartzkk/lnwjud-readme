@@ -33,6 +33,12 @@ final class HubAssessmentReleaseOperator
         return new self($pdo,$runner,$engine);
     }
 
+    public function heartbeat(?string $now=null): array
+    {
+        $this->ready();$at=self::time($now??gmdate('c'));$this->advertise($at);
+        return ['schemaVersion'=>1,'state'=>'READY','capability'=>HubAssessmentReleaseService::CAPABILITY,'observedAt'=>$at];
+    }
+
     public function tick(?string $now=null): array
     {
         $this->ready();$at=self::time($now??gmdate('c'));$this->advertise($at);

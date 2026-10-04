@@ -962,12 +962,20 @@ function orderedRows(rows,groupKey){
 }
 function reconcileRecoveredActionMessage(){
   const host=$('updates-message');
-  const awh=primaryItems().find((item)=>item.adapter==='CORE_RELEASE');
   const text=String(host?.textContent||'').trim();
   const stale=text==='AWH ไม่สามารถดำเนินการได้ในขณะนี้'||text.startsWith('AWH ยังอัปเดตไม่ได้');
-  if(stale&&awh?.state==='UPDATE_AVAILABLE'&&awh?.candidate){
-    message('AWH พร้อมอัปเดตแล้ว · กด “อัปเดต AWH” ที่การ์ดแรกด้านล่าง','good');
+  if(!stale)return;
+  const active=primaryItems().find((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
+  if(active){
+    message(active.name+' กำลังดำเนินการอยู่ · ระบบจะติดตามและตรวจผลให้อัตโนมัติ','info');
+    return;
   }
+  const actionable=primaryItems().find((item)=>item.state==='UPDATE_AVAILABLE'&&item.actionable!==false);
+  if(actionable){
+    message(actionable.name+' พร้อมอัปเดตแล้ว · สถานะล่าสุดจาก AWH ยืนยันว่าดำเนินการต่อได้','good');
+    return;
+  }
+  message('AWH กลับมาพร้อมดำเนินการแล้ว · สถานะล่าสุดตรวจสอบสำเร็จ','good');
 }
 
 function render(){

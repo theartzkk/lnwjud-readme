@@ -18,6 +18,17 @@ try{
     $pdo->exec('PRAGMA busy_timeout=7500');
     $pdo->exec('PRAGMA journal_mode=WAL');
 
+    // Lower-priority release authorities must stay observable while Core is busy.
+    // Core heartbeats in its own tick because it is always evaluated first;
+    // LearnLab/Assessment heartbeat before Core can return early.
+    foreach([
+        'learnlab'=>static fn()=>HubLearnLabReleaseOperator::fromEnvironment($pdo),
+        'assessment'=>static fn()=>HubAssessmentReleaseOperator::fromEnvironment($pdo),
+    ] as $track=>$factory){
+        try{$factory()->heartbeat();}
+        catch(Throwable $error){error_log('AWH release heartbeat degraded: '.$track.' '.get_class($error));}
+    }
+
     $core=HubCoreReleaseOperator::fromEnvironment($pdo)->tick();
     if(($core['state']??'IDLE')!=='IDLE'){
         fwrite(STDOUT,json_encode(['schemaVersion'=>1,'coreRelease'=>$core,'hosting'=>['state'=>'PAUSED_FOR_CORE_RELEASE']],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n");
