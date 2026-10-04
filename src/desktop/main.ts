@@ -90,6 +90,8 @@ let connectedRuntimeMonitor: NodeJS.Timeout | null = null;
 let connectedRuntimeRepairInFlight = false;
 let deviceRuntimeBootstrapInFlight: Promise<DeviceBootstrapResult> | null = null;
 let agentWatchdog: AgentWatchdogHandle | null = null;
+let agentWatchdogMonitor: NodeJS.Timeout | null = null;
+let agentWatchdogLaunches: number[] = [];
 let workerConnectionState: 'CHECKING' | 'CONNECTED' | 'OFFLINE' = 'CHECKING';
 let lastWorkerError:string|null=null;
 let lastDeviceRuntimeBootstrap: DeviceBootstrapResult | null = null;
@@ -100,6 +102,9 @@ let coreUpdateLastCheckedAt: string | null = null;
 let coreUpdateTimer: NodeJS.Timeout | null = null;
 let startupPermissionsReady = process.platform !== 'darwin';
 const CONNECTED_RUNTIME_RECHECK_MS = 15_000;
+const WATCHDOG_MONITOR_MS = 5_000;
+const WATCHDOG_LAUNCH_WINDOW_MS = 60_000;
+const WATCHDOG_MAX_LAUNCHES_PER_WINDOW = 4;
 const PERMISSION_SETUP_VERSION = 1;
 const MAX_HANDOFF_PREVIEW_CHARS = 4_000;
 
@@ -330,10 +335,21 @@ function startCrashWatchdog(): { supported: boolean; state: 'READY' | 'FAILED' |
   if (process.platform !== 'darwin' && process.platform !== 'win32') return { supported: false, state: 'UNSUPPORTED' };
   if (!packagedAgentRuntime() || SMOKE_TEST) return { supported: true, state: 'UNPACKAGED' };
   if (agentWatchdog?.isRunning()) return { supported: true, state: 'READY' };
-  if (agentWatchdog && !agentWatchdog.isRunning()) agentWatchdog = null;
+  if (agentWatchdog && !agentWatchdog.isRunning()) {
+    agentWatchdog = null;
+    lastWorkerError = 'WATCHDOG_PROCESS_EXITED';
+  }
+  const now = Date.now();
+  agentWatchdogLaunches = agentWatchdogLaunches.filter((at) => now - at < WATCHDOG_LAUNCH_WINDOW_MS);
+  if (agentWatchdogLaunches.length >= WATCHDOG_MAX_LAUNCHES_PER_WINDOW) {
+    lastWorkerError = 'WATCHDOG_LAUNCH_RATE_LIMITED';
+    return { supported: true, state: 'FAILED' };
+  }
   try {
     const config = loadConfig();
+    agentWatchdogLaunches.push(now);
     agentWatchdog = startAgentWatchdog(config.dataDir, process.execPath, packagedWatchdogScriptPath());
+    if (!agentWatchdog.isRunning()) throw new Error('AWH_WATCHDOG_NOT_RUNNING_AFTER_LAUNCH');
     return { supported: true, state: 'READY' };
   } catch (error) {
     lastWorkerError = error instanceof Error ? error.message.replace(/[^A-Z0-9_.-]/gi, '_').slice(0, 80) : 'WATCHDOG_START_FAILED';
@@ -341,7 +357,17 @@ function startCrashWatchdog(): { supported: boolean; state: 'READY' | 'FAILED' |
   }
 }
 
+function startCrashWatchdogMonitor(): void {
+  if (agentWatchdogMonitor || SMOKE_TEST || !packagedAgentRuntime()) return;
+  agentWatchdogMonitor = setInterval(() => {
+    if (!agentWatchdog?.isRunning()) startCrashWatchdog();
+  }, WATCHDOG_MONITOR_MS);
+  agentWatchdogMonitor.unref?.();
+}
+
 function markExpectedAgentExit(): void {
+  if (agentWatchdogMonitor) clearInterval(agentWatchdogMonitor);
+  agentWatchdogMonitor = null;
   agentWatchdog?.markExpectedExit();
 }
 
@@ -365,7 +391,7 @@ async function localHealthState() {
     schemaVersion: 1, checkedAt: new Date().toISOString(),
     agent: { state: 'READY', version: VERSION, platform: process.platform, arch: process.arch },
     connection: { state: workerConnectionState, paired: enrollment.enrolled === true },
-    supervisor: { state: agentWatchdog ? 'READY' : packagedAgentRuntime() ? 'FAILED' : 'UNPACKAGED', last: watchdogStatus },
+    supervisor: { state: agentWatchdog?.isRunning() ? 'READY' : packagedAgentRuntime() ? 'FAILED' : 'UNPACKAGED', last: watchdogStatus },
     runtime: lastDeviceRuntimeBootstrap ?? { state: 'UNKNOWN', version: null, installed: false, verified: false, reason: null },
     permissions: { ready: permissions.ready, missing: permissions.missing ?? [] },
     toolFabric: { state: toolFabricState, stableCapabilityCount },
@@ -1427,6 +1453,7 @@ async function startAfterReady(): Promise<void> {
   }
 
   startCrashWatchdog();
+  startCrashWatchdogMonitor();
   if (process.platform === 'darwin') app.dock?.hide();
   mainWindow = await createWindow(false);
   tray = createTray();
@@ -1471,7 +1498,10 @@ async function startAfterReady(): Promise<void> {
   });
 }
 
-if (!SQUIRREL_STARTUP && !SMOKE_TEST) startCrashWatchdog();
+if (!SQUIRREL_STARTUP && !SMOKE_TEST) {
+  startCrashWatchdog();
+  startCrashWatchdogMonitor();
+}
 
 if (SQUIRREL_STARTUP) {
   quitting = true;

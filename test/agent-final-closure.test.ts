@@ -33,17 +33,23 @@ test('packaged Agent watchdog recognizes an ASAR runtime even when Electron pack
   assert.match(source, /executableName === 'awh agent'/);
   assert.match(source, /executableName === 'awh\.exe'/);
   assert.match(source, /if \(!packagedAgentRuntime\(\) \|\| SMOKE_TEST\)/);
-  assert.match(source, /agentWatchdog \? 'READY' : packagedAgentRuntime\(\) \? 'FAILED' : 'UNPACKAGED'/);
+  assert.match(source, /agentWatchdog\?\.isRunning\(\) \? 'READY' : packagedAgentRuntime\(\) \? 'FAILED' : 'UNPACKAGED'/);
 });
 
 test('packaged Agent starts its production watchdog before app ready and keeps startup idempotent', () => {
   const source = readFileSync(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
-  const early = source.indexOf("if (!SQUIRREL_STARTUP && !SMOKE_TEST) startCrashWatchdog();");
+  const early = source.indexOf("if (!SQUIRREL_STARTUP && !SMOKE_TEST) {");
   const ready = source.indexOf("void app.whenReady().then(startAfterReady)");
   assert.ok(early >= 0 && ready > early);
+  assert.match(source, /if \(!SQUIRREL_STARTUP && !SMOKE_TEST\) \{[\s\S]*startCrashWatchdog\(\);[\s\S]*startCrashWatchdogMonitor\(\);[\s\S]*\}/);
   assert.match(source, /if \(agentWatchdog\?\.isRunning\(\)\) return \{ supported: true, state: 'READY' \};/);
-  assert.match(source, /if \(agentWatchdog && !agentWatchdog\.isRunning\(\)\) agentWatchdog = null;/);
-  assert.match(source, /startCrashWatchdog\(\);[\s\S]*mainWindow = await createWindow\(false\);/);
+  assert.match(source, /if \(agentWatchdog && !agentWatchdog\.isRunning\(\)\) \{[\s\S]*agentWatchdog = null;[\s\S]*WATCHDOG_PROCESS_EXITED/);
+  assert.match(source, /function startCrashWatchdogMonitor\(\): void/);
+  assert.match(source, /if \(!agentWatchdog\?\.isRunning\(\)\) startCrashWatchdog\(\);/);
+  assert.match(source, /WATCHDOG_LAUNCH_WINDOW_MS = 60_000/);
+  assert.match(source, /WATCHDOG_MAX_LAUNCHES_PER_WINDOW = 4/);
+  assert.match(source, /WATCHDOG_LAUNCH_RATE_LIMITED/);
+  assert.match(source, /startCrashWatchdog\(\);[\s\S]*startCrashWatchdogMonitor\(\);[\s\S]*mainWindow = await createWindow\(false\);/);
   assert.match(source, /function packagedWatchdogScriptPath\(\): string/);
   assert.match(source, /resourcesPath.*process as NodeJS\.Process/);
   assert.match(source, /join\(resourcesPath, 'app\.asar', 'dist', 'agent-watchdog\.js'\)/);
