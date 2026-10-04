@@ -44,6 +44,9 @@ ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['deploy/awh-control-plan
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/continuous-improvement-policy.json','config/kruart-engineering-eval.json','hub/src/HubVerificationIntelligence.php','hub/tests/verification-intelligence.php'])==='vps-platform','continuous improvement policy, classifier and eval authority are VPS Platform-owned');
 $updatesSource=file_get_contents(dirname(__DIR__,2).'/web/updates.js');
 ep(is_string($updatesSource)&&str_contains($updatesSource,'used!==null&&used>=75')&&str_contains($updatesSource,'free<16*1024**3'),'Owner Update Center warning boundary mirrors canonical Storage Guard headroom');
+ep(is_string($updatesSource)&&str_contains($updatesSource,'Writer 0 · ไม่มี blocker')&&str_contains($updatesSource,'ยังไม่ได้ติดตั้ง — ไม่จำเป็นต่อการใช้งานปัจจุบัน'),'Owner Update Center distinguishes preserved waits and optional runner capacity from current blockers');
+$executorTimer=file_get_contents(dirname(__DIR__,2).'/deploy/systemd/awh-native-executor.timer');
+ep(is_string($executorTimer)&&str_contains($executorTimer,'OnActiveSec=5s')&&str_contains($executorTimer,'OnUnitActiveSec=15s')&&str_contains($executorTimer,'Persistent=true'),'native executor retains a bounded automatic wake fallback without owner retry');
 ep(!isset($p['policyFamilies'])&&!isset($p['planBeforeCall'])&&!isset($p['quotaAware']),'retired owner-model fields are absent');
 
 // Provider capability recovery: a retry-exhausted transient wait is preserved
