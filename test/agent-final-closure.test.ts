@@ -41,7 +41,8 @@ test('packaged Agent starts its production watchdog before app ready and keeps s
   const early = source.indexOf("if (!SQUIRREL_STARTUP && !SMOKE_TEST) startCrashWatchdog();");
   const ready = source.indexOf("void app.whenReady().then(startAfterReady)");
   assert.ok(early >= 0 && ready > early);
-  assert.match(source, /if \(agentWatchdog\) return \{ supported: true, state: 'READY' \};/);
+  assert.match(source, /if \(agentWatchdog\?\.isRunning\(\)\) return \{ supported: true, state: 'READY' \};/);
+  assert.match(source, /if \(agentWatchdog && !agentWatchdog\.isRunning\(\)\) agentWatchdog = null;/);
   assert.match(source, /startCrashWatchdog\(\);[\s\S]*mainWindow = await createWindow\(false\);/);
   assert.match(source, /function packagedWatchdogScriptPath\(\): string/);
   assert.match(source, /resourcesPath.*process as NodeJS\.Process/);
@@ -49,6 +50,15 @@ test('packaged Agent starts its production watchdog before app ready and keeps s
   assert.match(source, /fileURLToPath\(import\.meta\.url\)/);
   assert.match(source, /startAgentWatchdog\(config\.dataDir, process\.execPath, packagedWatchdogScriptPath\(\)\)/);
   assert.doesNotMatch(source, /startAgentWatchdog\(config\.dataDir, process\.execPath, join\(app\.getAppPath\(\), 'dist', 'agent-watchdog\.js'\)\)/);
+});
+
+test('watchdog handle tracks child liveness and uses the explicit Agent executable', () => {
+  const source = readFileSync(new URL('../src/agent-watchdog.ts', import.meta.url), 'utf8');
+  assert.match(source, /spawn\(executable, \[script, '--awh-agent-watchdog'/);
+  assert.match(source, /let running = child\.pid !== undefined;/);
+  assert.match(source, /child\.once\('exit', \(\) => \{ running = false; \}\);/);
+  assert.match(source, /child\.once\('error', \(\) => \{ running = false; \}\);/);
+  assert.match(source, /isRunning\(\): boolean \{ return running; \}/);
 });
 
 test('watchdog launch fails closed when the packaged watchdog script is missing', async () => {

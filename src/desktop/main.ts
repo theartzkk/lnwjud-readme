@@ -329,7 +329,8 @@ function packagedWatchdogScriptPath(): string {
 function startCrashWatchdog(): { supported: boolean; state: 'READY' | 'FAILED' | 'UNPACKAGED' | 'UNSUPPORTED' } {
   if (process.platform !== 'darwin' && process.platform !== 'win32') return { supported: false, state: 'UNSUPPORTED' };
   if (!packagedAgentRuntime() || SMOKE_TEST) return { supported: true, state: 'UNPACKAGED' };
-  if (agentWatchdog) return { supported: true, state: 'READY' };
+  if (agentWatchdog?.isRunning()) return { supported: true, state: 'READY' };
+  if (agentWatchdog && !agentWatchdog.isRunning()) agentWatchdog = null;
   try {
     const config = loadConfig();
     agentWatchdog = startAgentWatchdog(config.dataDir, process.execPath, packagedWatchdogScriptPath());

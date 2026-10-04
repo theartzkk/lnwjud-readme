@@ -21,6 +21,7 @@ export interface AgentWatchdogStatus {
 export interface AgentWatchdogHandle {
   pid: number | null;
   markerPath: string;
+  isRunning(): boolean;
   markExpectedExit(): void;
   markHealthy(): Promise<void>;
 }
@@ -85,18 +86,22 @@ export function startAgentWatchdog(dataDir: string, appExecutable: string, scrip
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const markerPath = join(root, 'expected-' + randomUUID() + '.marker');
   const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
-  const child = spawn(process.execPath, [script, '--awh-agent-watchdog', String(process.pid), cleanDataDir, markerPath, executable], {
+  const child = spawn(executable, [script, '--awh-agent-watchdog', String(process.pid), cleanDataDir, markerPath, executable], {
     detached: true,
     stdio: 'ignore',
     shell: false,
     windowsHide: true,
     env,
   });
+  let running = child.pid !== undefined;
+  child.once('exit', () => { running = false; });
+  child.once('error', () => { running = false; });
   child.unref();
 
   return {
     pid: child.pid ?? null,
     markerPath,
+    isRunning(): boolean { return running; },
     markExpectedExit(): void {
       try {
         writeFileSync(markerPath, 'expected\n', { encoding: 'utf8', mode: 0o600 });
