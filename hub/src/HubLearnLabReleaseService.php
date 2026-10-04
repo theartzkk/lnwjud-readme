@@ -101,7 +101,8 @@ final class HubLearnLabReleaseService
             'baseReleaseSha'=>$base,'runtimeVersion'=>$version,'cacheEpoch'=>$epoch,'expectedVaultRevisionId'=>$vault,
             'releaseMode'=>'FILE_ONLY','transport'=>'LOCAL','risk'=>'CRITICAL'];
         $goal='Deploy BAY LearnLab '.$version.' '.substr($sha,0,12).' ผ่าน bounded VPS-native release controller';
-        $key='learnlab-release.'.substr($sha,0,12).'.'.str_replace('.','-',$version);
+        $attempt=$this->releaseAttemptCount($sha,$version);
+        $key='learnlab-release.'.substr($sha,0,12).'.'.str_replace('.','-',$version).'.attempt'.$attempt;
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at)
@@ -170,7 +171,7 @@ final class HubLearnLabReleaseService
     private static function channelRoot(): string
     {
         $override=getenv('AWH_LEARNLAB_CHANNEL_ROOT');
-        if(is_string($override)&&$override!==''&&str_starts_with($override,'/')&&!str_contains($override,""))return rtrim($override,'/');
+        if(is_string($override)&&$override!==''&&str_starts_with($override,'/')&&!str_contains($override,"\0"))return rtrim($override,'/');
         return self::CHANNEL_ROOT;
     }
 
@@ -368,6 +369,19 @@ final class HubLearnLabReleaseService
             $existing['task_state']='WAITING_FOR_WORKER';$existing['approval_status']='APPROVED';$existing['decided_at']=$at;
             return $existing;
         }catch(Throwable $error){$this->rollback();throw new HubLearnLabReleaseException('Legacy LearnLab release could not resume safely','LEARNLAB_RELEASE_QUEUE_FAILED');}
+    }
+
+    private function releaseAttemptCount(string $sha,string $version): int
+    {
+        $q=$this->pdo->prepare("SELECT checkpoint_json FROM control_task_executions
+            WHERE project_id=:project AND required_capability=:capability ORDER BY created_at ASC,execution_id ASC");
+        $q->execute(['project'=>self::PROJECT_ID,'capability'=>self::CAPABILITY]);$count=0;
+        foreach($q->fetchAll() as $row){
+            $checkpoint=self::checkpoint((string)$row['checkpoint_json'],false);
+            if(is_string($checkpoint['releaseSha']??null)&&hash_equals((string)$checkpoint['releaseSha'],$sha)
+                &&is_string($checkpoint['runtimeVersion']??null)&&hash_equals((string)$checkpoint['runtimeVersion'],$version))$count++;
+        }
+        return $count;
     }
 
     private function activeRelease(): ?array
