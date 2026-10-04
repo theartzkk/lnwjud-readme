@@ -246,9 +246,17 @@ def get_url(url):
         except Exception as e: last=e; time.sleep(.5)
     fail("LEARNLAB_RELEASE_SMOKE_FAILED",f"{url}: {last}")
 
+def wait_student_entrypoint(url,attempts=12,delay=.5):
+    last_status=0; last_final=""
+    for attempt in range(attempts):
+        status,final,_=get_url("https://learn.kruart.online/student")
+        last_status,last_final=status,final
+        if status==200 and final==url: return
+        if attempt+1<attempts: time.sleep(delay)
+    fail("LEARNLAB_RELEASE_STUDENT_SMOKE_FAILED",f"{last_status} {last_final}")
+
 def smoke(url,release):
-    status,final,_=get_url("https://learn.kruart.online/student")
-    if status!=200 or final!=url: fail("LEARNLAB_RELEASE_STUDENT_SMOKE_FAILED",f"{status} {final}")
+    wait_student_entrypoint(url)
     status,_,_=get_url(url)
     if status!=200: fail("LEARNLAB_RELEASE_STUDENT_SMOKE_FAILED",str(status))
     status,_,body=get_url("https://learn.kruart.online/teacher")

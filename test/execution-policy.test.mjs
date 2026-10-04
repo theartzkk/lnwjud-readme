@@ -228,4 +228,9 @@ test('LearnLab FILE_ONLY release keeps QA metadata source-only without widening 
   assert.match(source,/if not deploy_rows: fail\("LEARNLAB_RELEASE_EMPTY","no deployable changes"\)/);
   assert.match(source,/"sourceOnlyDiff":\[\{"status":s,"path":p\} for s,p in source_only_rows\]/);
   assert.doesNotMatch(source,/not path\.startswith\(ALLOWED\)/);
+  assert.match(source,/def wait_student_entrypoint\(url,attempts=12,delay=\.5\):/);
+  assert.match(source,/for attempt in range\(attempts\):/);
+  assert.match(source,/if status==200 and final==url: return/);
+  assert.match(source,/if attempt\+1<attempts: time\.sleep\(delay\)/);
+  assert.match(source,/wait_student_entrypoint\(url\)/);
 });
