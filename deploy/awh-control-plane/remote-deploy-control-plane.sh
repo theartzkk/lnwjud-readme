@@ -1535,6 +1535,11 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   done
   sudo systemctl show -p ExecStart --value awh-temp-cleanup.service | grep -Fq '/opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup'
   sudo systemctl show -p ExecStart --value awh-retention.service | grep -Fq '/opt/awh-hub/control-plane-current/deploy/awh-storage/awh-retention-manager.py'
+  sudo test -x "$RELEASE/deploy/awh-storage/awh-storage-inventory.py"
+  sudo systemctl start awh-storage-guard.service
+  sudo test -s /var/lib/awh-hub/storage-inventory.json
+  sudo -u awh-hub test -r /var/lib/awh-hub/storage-inventory.json
+  sudo -u awh-hub /usr/bin/python3 -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); assert d.get("schemaVersion")==1 and isinstance(d.get("filesystem"),dict) and isinstance(d.get("categories"),dict) and isinstance(d.get("awhRemoteBreakdown"),dict)' /var/lib/awh-hub/storage-inventory.json
   ! sudo systemctl show -p ExecStart --value awh-temp-cleanup.service | grep -Fq '/usr/local/sbin/awh-temp-cleanup'
   ! sudo systemctl show -p ExecStart --value awh-retention.service | grep -Fq '/usr/local/sbin/awh-retention-manager'
   for LEGACY_HELPER in /usr/local/sbin/awh-temp-cleanup /usr/local/sbin/awh-storage-guard /usr/local/sbin/awh-retention-manager; do

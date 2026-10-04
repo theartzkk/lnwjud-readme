@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import grp
 import json
 import os
 import subprocess
@@ -96,6 +97,8 @@ def atomic_json(path: Path, payload: dict) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(name, 0o640)
+        if os.geteuid() == 0:
+            os.chown(name, 0, grp.getgrnam("awh-hub").gr_gid)
         os.replace(name, path)
     finally:
         if os.path.exists(name):
