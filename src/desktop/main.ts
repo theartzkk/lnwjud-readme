@@ -309,9 +309,13 @@ function startCoreUpdateLoop(): void {
   coreUpdateTimer.unref?.();
 }
 
+function packagedAgentRuntime(): boolean {
+  return app.isPackaged || app.getAppPath().endsWith('.asar');
+}
+
 function startCrashWatchdog(): { supported: boolean; state: 'READY' | 'FAILED' | 'UNPACKAGED' | 'UNSUPPORTED' } {
   if (process.platform !== 'darwin' && process.platform !== 'win32') return { supported: false, state: 'UNSUPPORTED' };
-  if (!app.isPackaged || SMOKE_TEST) return { supported: true, state: 'UNPACKAGED' };
+  if (!packagedAgentRuntime() || SMOKE_TEST) return { supported: true, state: 'UNPACKAGED' };
   if (agentWatchdog) return { supported: true, state: 'READY' };
   try {
     const config = loadConfig();
@@ -347,7 +351,7 @@ async function localHealthState() {
     schemaVersion: 1, checkedAt: new Date().toISOString(),
     agent: { state: 'READY', version: VERSION, platform: process.platform, arch: process.arch },
     connection: { state: workerConnectionState, paired: enrollment.enrolled === true },
-    supervisor: { state: agentWatchdog ? 'READY' : app.isPackaged ? 'FAILED' : 'UNPACKAGED', last: watchdogStatus },
+    supervisor: { state: agentWatchdog ? 'READY' : packagedAgentRuntime() ? 'FAILED' : 'UNPACKAGED', last: watchdogStatus },
     runtime: lastDeviceRuntimeBootstrap ?? { state: 'UNKNOWN', version: null, installed: false, verified: false, reason: null },
     permissions: { ready: permissions.ready, missing: permissions.missing ?? [] },
     toolFabric: { state: toolFabricState, stableCapabilityCount },
@@ -1452,6 +1456,8 @@ async function startAfterReady(): Promise<void> {
     })();
   });
 }
+
+if (!SQUIRREL_STARTUP && !SMOKE_TEST) startCrashWatchdog();
 
 if (SQUIRREL_STARTUP) {
   quitting = true;
