@@ -132,8 +132,8 @@ final class HubInfrastructureService
         foreach (is_array($value['services'] ?? null) ? $value['services'] : [] as $item) {
             if (!is_array($item) || array_is_list($item)) continue;
             $key = $this->text($item['key'] ?? null, 32); if (!in_array($key, self::SERVICE_KEYS, true)) continue;
-            $state = strtoupper($this->text($item['state'] ?? 'UNKNOWN', 24)); if (!in_array($state, self::STATES, true)) $state = 'UNKNOWN';
-            $startup = strtoupper($this->text($item['startup'] ?? 'UNKNOWN', 24)); if (!in_array($startup, self::STARTUP, true)) $startup = 'UNKNOWN';
+            $state = is_string($item['state'] ?? null) ? strtoupper(trim((string) $item['state'])) : 'UNKNOWN'; if (!in_array($state, self::STATES, true)) $state = 'UNKNOWN';
+            $startup = is_string($item['startup'] ?? null) ? strtoupper(trim((string) $item['startup'])) : 'UNKNOWN'; if (!in_array($startup, self::STARTUP, true)) $startup = 'UNKNOWN';
             $services[] = ['key' => $key, 'label' => $this->text($item['label'] ?? $key, 60), 'state' => $state, 'startup' => $startup];
         }
         $domains = [];

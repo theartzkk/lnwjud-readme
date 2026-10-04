@@ -35,6 +35,8 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   assert.doesNotMatch(service,/'staff' => \$staff,/);
   assert.doesNotMatch(`${html}\n${js}`,/localStorage|sessionStorage|Authorization|Bearer\s|shell_exec|<textarea[^>]*(?:terminal|command)|innerHTML/i);
   assert.doesNotMatch(collector,/shell_exec\s*\(|\bexec\s*\(|\bsystem\s*\(/);
+  assert.match(collector,/if \(\$candidate !== ''\) \$enabled = \$candidate/);
+  assert.match(collector,/if \(\$candidate !== ''\) \$active = \$candidate/);
   const release=JSON.parse(await readFile(join(output,'release.json'),'utf8')) as {files:Array<{path:string}>};
   const releaseContract=JSON.parse(await readFile(join(ROOT,'scripts/web-release-files.json'),'utf8')) as {required:string[]};
   assert.deepEqual(release.files.map(entry=>entry.path),releaseContract.required);
@@ -78,11 +80,11 @@ test('Infrastructure release parser recognizes VPS Platform release identities',
 test('Infrastructure telemetry service accepts a bounded snapshot without exposing its path',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'awh-infra-snapshot-')); const snapshot=join(dir,'snapshot.json');
  try{
-  const fixture={schemaVersion:1,generatedAt:'2026-08-28T15:00:00Z',host:{name:'awh-hub-01',os:'Ubuntu 24.04.4 LTS',uptimeSeconds:3600},cpu:{usedPercent:3.2,load1:0.01,load5:0.02,load15:0.03},memory:{totalBytes:2000000000,availableBytes:1500000000,usedBytes:500000000,usedPercent:25},swap:{totalBytes:2000000000,usedBytes:0,usedPercent:0},storage:{totalBytes:30000000000,freeBytes:14000000000,usedBytes:16000000000,usedPercent:53.3},services:[{key:'nginx',label:'Web Server',state:'ACTIVE',startup:'ENABLED'},{key:'backup',label:'Automatic Backup',state:'INACTIVE',startup:'DISABLED'}],domains:[{name:'kruart.online',tls:true,certificateExpiresAt:'2026-11-01T00:00:00Z',certificateDaysRemaining:64}],security:{fail2ban:'ACTIVE',automaticUpdates:'ACTIVE'}};
+  const fixture={schemaVersion:1,generatedAt:'2026-08-28T15:00:00Z',host:{name:'awh-hub-01',os:'Ubuntu 24.04.4 LTS',uptimeSeconds:3600},cpu:{usedPercent:3.2,load1:0.01,load5:0.02,load15:0.03},memory:{totalBytes:2000000000,availableBytes:1500000000,usedBytes:500000000,usedPercent:25},swap:{totalBytes:2000000000,usedBytes:0,usedPercent:0},storage:{totalBytes:30000000000,freeBytes:14000000000,usedBytes:16000000000,usedPercent:53.3},services:[{key:'nginx',label:'Web Server',state:'ACTIVE',startup:'ENABLED'},{key:'backup',label:'Automatic Backup',state:'INACTIVE',startup:'DISABLED'},{key:'gatus',label:'Service Health Sensor',state:'INACTIVE',startup:''}],domains:[{name:'kruart.online',tls:true,certificateExpiresAt:'2026-11-01T00:00:00Z',certificateDaysRemaining:64}],security:{fail2ban:'ACTIVE',automaticUpdates:'ACTIVE'}};
   await writeFile(snapshot,JSON.stringify(fixture));
   const code=`require ${JSON.stringify(join(ROOT,'hub/src/HubInfrastructureService.php'))}; $s=new HubInfrastructureService(${JSON.stringify(snapshot)}); echo json_encode($s->status('2026-08-28T15:00:30Z'));`;
   const {stdout}=await run('php',['-r',code],{cwd:ROOT,shell:false}); const value=JSON.parse(stdout);
-  assert.equal(value.state,'READY'); assert.equal(value.server.host.name,'awh-hub-01'); assert.equal(value.server.domains[0].tls,true); assert.equal(value.server.services[1].startup,'DISABLED');
+  assert.equal(value.state,'READY'); assert.equal(value.server.host.name,'awh-hub-01'); assert.equal(value.server.domains[0].tls,true); assert.equal(value.server.services[1].startup,'DISABLED'); assert.equal(value.server.services[2].startup,'UNKNOWN');
   assert.doesNotMatch(stdout,/snapshot\.json|\/tmp\/|secret|password/i);
  }finally{await rm(dir,{recursive:true,force:true});}
 });

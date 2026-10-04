@@ -50,8 +50,8 @@ function telemetrySystemd(string $unit): array
     if (!$result['ok']) return ['active' => 'UNKNOWN', 'enabled' => 'UNKNOWN'];
     $active = 'UNKNOWN'; $enabled = 'UNKNOWN';
     foreach (preg_split('/\R/', trim($result['out'])) ?: [] as $line) {
-        if (str_starts_with($line, 'ActiveState=')) $active = strtoupper(substr($line, 12));
-        if (str_starts_with($line, 'UnitFileState=')) $enabled = strtoupper(substr($line, 14));
+        if (str_starts_with($line, 'ActiveState=')) { $candidate = strtoupper(trim(substr($line, 12))); if ($candidate !== '') $active = $candidate; }
+        if (str_starts_with($line, 'UnitFileState=')) { $candidate = strtoupper(trim(substr($line, 14))); if ($candidate !== '') $enabled = $candidate; }
     }
     return ['active' => $active, 'enabled' => $enabled];
 }
