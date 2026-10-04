@@ -36,9 +36,10 @@ test("iPhone dictation is one-shot and self-recovers instead of remaining stuck"
   assert.match(runtime, /continuous:\s*false/);
   assert.doesNotMatch(runtime, /continuous:\s*true/);
   assert.match(thread, /function DictationSafety/);
-  assert.match(thread, /12_000/);
+  assert.match(thread, /phase === "starting" \? 4_000 : 30_000/);
   assert.match(thread, /aui\.composer\.stopDictation\(\)/);
   assert.match(thread, /visibilitychange/);
+  assert.match(thread, /กำลังเปิดไมค์…/);
   assert.match(thread, /กำลังฟัง… แตะ ■ เพื่อหยุด/);
   assert.match(css, /\.awh-dictation-state/);
 });

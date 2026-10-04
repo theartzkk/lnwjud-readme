@@ -145,7 +145,9 @@ function ComposerAssist({ snapshot }: { snapshot: AwhChatSnapshot }) {
 
 function DictationSafety() {
   const aui = useAui();
-  const active = useAuiState((s) => s.composer.dictation != null);
+  const dictation = useAuiState((s) => s.composer.dictation);
+  const active = dictation != null;
+  const phase = dictation?.status.type ?? null;
   React.useEffect(() => {
     if (!active) return;
     let stopped = false;
@@ -154,18 +156,22 @@ function DictationSafety() {
       stopped = true;
       void aui.composer.stopDictation();
     };
-    const watchdog = window.setTimeout(stop, 12_000);
+    // iOS Safari occasionally never transitions Web Speech from "starting".
+    // Fail fast there, but allow a normal running dictation to continue.
+    const watchdogMs = phase === "starting" ? 4_000 : 30_000;
+    const watchdog = window.setTimeout(stop, watchdogMs);
     const onVisibility = () => { if (document.hidden) stop(); };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.clearTimeout(watchdog);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [active, aui]);
+  }, [active, phase, aui]);
 
-  return active
-    ? <span className="awh-dictation-state" role="status" aria-live="polite">กำลังฟัง… แตะ ■ เพื่อหยุด</span>
-    : null;
+  if (!active) return null;
+  return <span className="awh-dictation-state" role="status" aria-live="polite">
+    {phase === "starting" ? "กำลังเปิดไมค์…" : "กำลังฟัง… แตะ ■ เพื่อหยุด"}
+  </span>;
 }
 
 function ChatComposer({ snapshot }: { snapshot: AwhChatSnapshot }) {
