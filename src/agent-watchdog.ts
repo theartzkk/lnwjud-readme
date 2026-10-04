@@ -81,6 +81,7 @@ export function startAgentWatchdog(dataDir: string, appExecutable: string, scrip
   const root = watchdogRoot(cleanDataDir);
   const executable = cleanPath(appExecutable);
   const script = cleanPath(scriptPath);
+  if (!existsSync(script)) throw new Error('AWH_WATCHDOG_SCRIPT_MISSING');
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const markerPath = join(root, 'expected-' + randomUUID() + '.marker');
   const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };

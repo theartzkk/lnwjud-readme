@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   app,
   BrowserWindow,
@@ -310,7 +311,15 @@ function startCoreUpdateLoop(): void {
 }
 
 function packagedAgentRuntime(): boolean {
-  return app.isPackaged || app.getAppPath().endsWith('.asar');
+  if (app.isPackaged || app.getAppPath().endsWith('.asar')) return true;
+  const executableName = basename(process.execPath).toLowerCase();
+  return process.platform === 'darwin'
+    ? executableName === 'awh agent'
+    : process.platform === 'win32' && executableName === 'awh.exe';
+}
+
+function packagedWatchdogScriptPath(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), '..', 'agent-watchdog.js');
 }
 
 function startCrashWatchdog(): { supported: boolean; state: 'READY' | 'FAILED' | 'UNPACKAGED' | 'UNSUPPORTED' } {
@@ -319,7 +328,7 @@ function startCrashWatchdog(): { supported: boolean; state: 'READY' | 'FAILED' |
   if (agentWatchdog) return { supported: true, state: 'READY' };
   try {
     const config = loadConfig();
-    agentWatchdog = startAgentWatchdog(config.dataDir, process.execPath, join(app.getAppPath(), 'dist', 'agent-watchdog.js'));
+    agentWatchdog = startAgentWatchdog(config.dataDir, process.execPath, packagedWatchdogScriptPath());
     return { supported: true, state: 'READY' };
   } catch (error) {
     lastWorkerError = error instanceof Error ? error.message.replace(/[^A-Z0-9_.-]/gi, '_').slice(0, 80) : 'WATCHDOG_START_FAILED';

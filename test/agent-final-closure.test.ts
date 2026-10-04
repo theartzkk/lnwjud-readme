@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { boundedCrashTimestamps, watchdogRestartAllowed, readAgentWatchdogStatus } from '../src/agent-watchdog.js';
+import { boundedCrashTimestamps, watchdogRestartAllowed, readAgentWatchdogStatus, startAgentWatchdog } from '../src/agent-watchdog.js';
 
 test('watchdog status lifecycle rejects stale/malformed state and bounds restart storms', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-watchdog-test-'));
@@ -29,6 +29,9 @@ test('packaged Agent watchdog recognizes an ASAR runtime even when Electron pack
   const source = readFileSync(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
   assert.match(source, /function packagedAgentRuntime\(\): boolean/);
   assert.match(source, /app\.isPackaged \|\| app\.getAppPath\(\)\.endsWith\('\.asar'\)/);
+  assert.match(source, /basename\(process\.execPath\)\.toLowerCase\(\)/);
+  assert.match(source, /executableName === 'awh agent'/);
+  assert.match(source, /executableName === 'awh\.exe'/);
   assert.match(source, /if \(!packagedAgentRuntime\(\) \|\| SMOKE_TEST\)/);
   assert.match(source, /agentWatchdog \? 'READY' : packagedAgentRuntime\(\) \? 'FAILED' : 'UNPACKAGED'/);
 });
@@ -40,6 +43,19 @@ test('packaged Agent starts its production watchdog before app ready and keeps s
   assert.ok(early >= 0 && ready > early);
   assert.match(source, /if \(agentWatchdog\) return \{ supported: true, state: 'READY' \};/);
   assert.match(source, /startCrashWatchdog\(\);[\s\S]*mainWindow = await createWindow\(false\);/);
+  assert.match(source, /function packagedWatchdogScriptPath\(\): string/);
+  assert.match(source, /fileURLToPath\(import\.meta\.url\)/);
+  assert.match(source, /startAgentWatchdog\(config\.dataDir, process\.execPath, packagedWatchdogScriptPath\(\)\)/);
+  assert.doesNotMatch(source, /startAgentWatchdog\(config\.dataDir, process\.execPath, join\(app\.getAppPath\(\), 'dist', 'agent-watchdog\.js'\)\)/);
+});
+
+test('watchdog launch fails closed when the packaged watchdog script is missing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-watchdog-missing-'));
+  try {
+    assert.throws(() => startAgentWatchdog(root, process.execPath, join(root, 'missing-watchdog.js')), /AWH_WATCHDOG_SCRIPT_MISSING/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('Windows device runtime discovery stays inside AWH-managed roots', () => {
