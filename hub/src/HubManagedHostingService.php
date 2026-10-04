@@ -7,6 +7,7 @@ require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
 require_once __DIR__ . '/HubProviderCredentialStore.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
+require_once __DIR__ . '/HubEcosystemHealthService.php';
 
 final class HubManagedHostingException extends RuntimeException
 {
@@ -51,7 +52,8 @@ final class HubManagedHostingService
         try{$telemetry=HubInfrastructureService::fromEnvironment()->status($now);}catch(Throwable){$telemetry=['state'=>'UNAVAILABLE','generatedAt'=>null,'server'=>null];}
         $adoptions=$this->adoptionState((string)$owner['user_id']);
         $inventory=$this->hostingInventory($rows,$telemetry,$root,$adoptions);
-        return ['schemaVersion'=>1,'sites'=>$rows,'inventory'=>$inventory['sites'],'inventoryMeta'=>$inventory['meta'],'domains'=>$inventory['domains'],'projectsWithoutHosting'=>$this->projectsWithoutHosting((string)$owner['user_id'],$rows,$adoptions),'dns'=>HubDnsProviderAdapter::plan($root),'ecosystem'=>$this->ecosystemStatus($now),'policy'=>HubTrustPolicy::catalog(['hosting.site.create','hosting.site.deploy','hosting.site.rollback','hosting.site.disable','hosting.site.bind_domain'])];
+        $reliability=$this->hostingReliability($inventory['sites'],$inventory['domains'],$root,$now);
+        return ['schemaVersion'=>1,'sites'=>$rows,'inventory'=>$inventory['sites'],'inventoryMeta'=>$inventory['meta'],'domains'=>$inventory['domains'],'projectsWithoutHosting'=>$this->projectsWithoutHosting((string)$owner['user_id'],$rows,$adoptions),'dns'=>HubDnsProviderAdapter::plan($root),'reliability'=>$reliability,'ecosystem'=>$this->ecosystemStatus($now),'policy'=>HubTrustPolicy::catalog(['hosting.site.create','hosting.site.deploy','hosting.site.rollback','hosting.site.disable','hosting.site.bind_domain'])];
     }
 
     public function siteSecrets(string $token,string $siteId): array
@@ -190,7 +192,7 @@ final class HubManagedHostingService
 
     public function disableSite(string $token,string $csrf,string $siteId,array $payload,?string $now=null): array
     {
-        $owner=$this->ownerMutation($token,$csrf,'hosting.site.disable',$now);self::keys($payload,['schemaVersion']);if(($payload['schemaVersion']??null)!==1)throw new HubManagedHostingException('Disable request is invalid','HOSTING_INVALID');$site=$this->siteForOwner($siteId,(string)$owner['user_id']);$at=self::time($now??gmdate('c'));$task=self::uuid();$execution=self::uuid();try{$this->pdo->exec('BEGIN IMMEDIATE');$this->insertTask($task,$execution,(string)$owner['user_id'],(string)$site['project_id'],null,'ปิดการเผยแพร่ '.$site['name'],'hosting.site.disable',['mode'=>'HOSTING_DISABLE','siteId'=>$site['site_id']],$at);$this->event((string)$site['site_id'],$task,'DISABLE_REQUESTED','QUEUED','AWH กำลังปิด public route อย่างปลอดภัย',$at);$this->pdo->exec('COMMIT');}catch(Throwable $error){$this->rollback();if($error instanceof HubManagedHostingException)throw $error;throw new HubManagedHostingException('Disable could not be queued','HOSTING_DISABLE_FAILED');}return ['siteId'=>$site['site_id'],'taskId'=>$task,'state'=>'QUEUED'];
+        $owner=$this->ownerMutation($token,$csrf,'hosting.site.disable',$now);self::keys($payload,['schemaVersion']);if(($payload['schemaVersion']??null)!==1)throw new HubManagedHostingException('Disable request is invalid','HOSTING_INVALID');$site=$this->siteForOwner($siteId,(string)$owner['user_id']);$at=self::time($now??gmdate('c'));$task=self::uuid();$execution=self::uuid();try{$this->pdo->exec('BEGIN IMMEDIATE');$this->insertTask($task,$execution,(string)$owner['user_id'],(string)$site['project_id'],null,'เก็บเว็บไซต์เข้าคลัง '.$site['name'],'hosting.site.disable',['mode'=>'HOSTING_DISABLE','siteId'=>$site['site_id']],$at);$this->event((string)$site['site_id'],$task,'DISABLE_REQUESTED','QUEUED','AWH กำลังปิด public route โดยเก็บ release และข้อมูลไว้',$at);$this->pdo->exec('COMMIT');}catch(Throwable $error){$this->rollback();if($error instanceof HubManagedHostingException)throw $error;throw new HubManagedHostingException('Disable could not be queued','HOSTING_DISABLE_FAILED');}return ['siteId'=>$site['site_id'],'taskId'=>$task,'state'=>'QUEUED'];
     }
 
     private function hostingInventory(array $managed,array $telemetry,string $root,array $adoptions=[]): array
@@ -229,10 +231,11 @@ final class HubManagedHostingService
                 'rootClass'=>is_array($liveRoute)?($liveRoute['rootClass']??null):null,'configName'=>is_array($liveRoute)?($liveRoute['configName']??null):null,
                 'tls'=>$liveTls,'certificateExpiresAt'=>is_array($liveDomain)?($liveDomain['certificateExpiresAt']??null):null,
                 'certificateDaysRemaining'=>is_array($liveDomain)?($liveDomain['certificateDaysRemaining']??null):null,'redirectHost'=>$redirect,
-                'url'=>$site['url']??($liveState!=='NOT_DETECTED'?(($liveTls?'https://':'http://').$liveHost.'/'):null),'source'=>$site['source']??null,'backupEnabled'=>($site['backupEnabled']??false)===true,
+                'url'=>$site['url']??($liveState!=='NOT_DETECTED'?(($liveTls?'https://':'http://').$liveHost.'/'):null),'source'=>$site['source']??null,'healthPath'=>$site['healthPath']??'/','backupEnabled'=>($site['backupEnabled']??false)===true,
                 'databaseMode'=>$site['databaseMode']??null,'databaseState'=>$site['databaseState']??null,
                 'secretsState'=>$site['secretsState']??'UNAVAILABLE','secretsConfigured'=>$site['secretsConfigured']??null,
                 'currentReleaseId'=>$site['currentReleaseId']??null,'rollbackReleaseId'=>$site['rollbackReleaseId']??null,'lastEvent'=>$site['lastEvent']??null,'recentEvents'=>$site['recentEvents']??[],
+                'lifecycle'=>['state'=>(string)($site['state']??'UNKNOWN')==='DISABLED'?'ARCHIVED':'ACTIVE','archiveReversible'=>true,'dataPreserved'=>(string)($site['state']??'UNKNOWN')==='DISABLED','permanentDeleteEnabled'=>false],
             ];
         }
         foreach($routes as $route){
@@ -306,6 +309,120 @@ final class HubManagedHostingService
         return array_slice($out,0,100);
     }
 
+    private function hostingReliability(array $sites,array $domains,string $root,string $at): array
+    {
+        $http=$this->hostingHttpProbes($sites,$root,$at);
+        $dns=$this->hostingDnsReconciliation($sites,$root);
+        try{$ecosystem=HubEcosystemHealthService::fromEnvironment()->status(null,$at);}
+        catch(Throwable){$ecosystem=['state'=>'NOT_CONFIGURED','history'=>['state'=>'COLLECTING','sampleCount'=>0],'alerts'=>[],'recoveryDrill'=>['state'=>'NOT_RUN','verifiedAt'=>null]];}
+        return $this->reliabilityFromSignals($sites,$domains,$http,$dns,$ecosystem,$at);
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function hostingHttpProbes(array $sites,string $root,string $at): array
+    {
+        $targets=[];
+        foreach($sites as $site){
+            if(!is_array($site)||!is_string($site['primaryHost']??null))continue;
+            $host=strtolower((string)$site['primaryHost']);
+            if(!$this->hostingHostAllowed($host,$root)||isset($targets[$host]))continue;
+            $archived=($site['lifecycle']['state']??null)==='ARCHIVED'||($site['state']??null)==='DISABLED';
+            $path=is_string($site['healthPath']??null)?(string)$site['healthPath']:'/';
+            if(!preg_match('#^/[A-Za-z0-9._~!$&\'()*+,;=:@%/-]{0,240}$#',$path)||str_contains($path,'..'))$path='/';
+            $targets[$host]=['host'=>$host,'path'=>$path,'archived'=>$archived,'tls'=>($site['tls']??false)===true];
+            if(count($targets)>=30)break;
+        }
+        $out=[];
+        foreach($targets as $target)if($target['archived'])$out[$target['host']]=['host'=>$target['host'],'state'=>'SKIPPED_ARCHIVED','ok'=>null,'httpStatus'=>null,'latencyMs'=>null,'checkedAt'=>$at,'scheme'=>$target['tls']?'https':'http'];
+        $active=array_values(array_filter($targets,static fn(array $target):bool=>!$target['archived']));
+        if($active===[])return array_values($out);
+        if(!function_exists('curl_multi_init')||!function_exists('curl_init')){
+            foreach($active as $target)$out[$target['host']]=['host'=>$target['host'],'state'=>'UNKNOWN','ok'=>null,'httpStatus'=>null,'latencyMs'=>null,'checkedAt'=>$at,'scheme'=>$target['tls']?'https':'http'];
+            ksort($out);return array_values($out);
+        }
+        $multi=curl_multi_init();$handles=[];
+        try{
+            foreach($active as $target){
+                $scheme=$target['tls']?'https':'http';$url=$scheme.'://'.$target['host'].$target['path'];$ch=curl_init($url);
+                if($ch===false){$out[$target['host']]=['host'=>$target['host'],'state'=>'UNKNOWN','ok'=>null,'httpStatus'=>null,'latencyMs'=>null,'checkedAt'=>$at,'scheme'=>$scheme];continue;}
+                curl_setopt_array($ch,[CURLOPT_NOBODY=>true,CURLOPT_RETURNTRANSFER=>true,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_CONNECTTIMEOUT_MS=>1200,CURLOPT_TIMEOUT_MS=>2500,CURLOPT_SSL_VERIFYPEER=>true,CURLOPT_SSL_VERIFYHOST=>2,CURLOPT_USERAGENT=>'AWH-Hosting-Health/1.0']);
+                curl_multi_add_handle($multi,$ch);$id=is_object($ch)?spl_object_id($ch):(int)$ch;$handles[$id]=[$ch,$target,$scheme];
+            }
+            do{$status=curl_multi_exec($multi,$running);if($status!==CURLM_OK)break;if($running>0)curl_multi_select($multi,0.25);}while($running>0);
+            foreach($handles as [$ch,$target,$scheme]){
+                $code=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE);$total=(float)curl_getinfo($ch,CURLINFO_TOTAL_TIME);$latency=(int)round(max(0.0,$total)*1000);
+                $state=$code>=200&&$code<400?'HEALTHY':($code>=400&&$code<500?'REACHABLE':'DOWN');
+                if(curl_errno($ch)!==0&&$code===0)$state='DOWN';
+                $out[$target['host']]=['host'=>$target['host'],'state'=>$state,'ok'=>$state==='HEALTHY','httpStatus'=>$code>0?$code:null,'latencyMs'=>max(0,min(60000,$latency)),'checkedAt'=>$at,'scheme'=>$scheme];
+            }
+        }finally{
+            foreach($handles as [$ch]){try{curl_multi_remove_handle($multi,$ch);curl_close($ch);}catch(Throwable){}}
+            curl_multi_close($multi);
+        }
+        ksort($out);return array_values($out);
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function hostingDnsReconciliation(array $sites,string $root): array
+    {
+        $plan=HubDnsProviderAdapter::plan($root);$expected=is_string($plan['target']??null)?(string)$plan['target']:null;$hosts=[];
+        foreach($sites as $site){
+            if(!is_array($site)||!is_string($site['primaryHost']??null))continue;$host=strtolower((string)$site['primaryHost']);
+            if(!$this->hostingHostAllowed($host,$root)||isset($hosts[$host]))continue;$hosts[$host]=true;if(count($hosts)>=40)break;
+        }
+        $out=[];
+        foreach(array_keys($hosts) as $host){
+            $answers=gethostbynamel($host)?:[];$answers=array_values(array_unique(array_filter($answers,static fn(string $ip):bool=>filter_var($ip,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)!==false)));sort($answers);
+            $state=$answers===[]?'MISSING':($expected===null?'UNKNOWN':(in_array($expected,$answers,true)?'MATCHED':'DIFFERENT_TARGET'));
+            $out[]=['host'=>$host,'state'=>$state,'ok'=>$state==='MATCHED','expectedTarget'=>$expected,'resolvedTargets'=>array_slice($answers,0,4)];
+        }
+        return $out;
+    }
+
+    private function hostingHostAllowed(string $host,string $root): bool
+    {
+        if(strlen($host)<1||strlen($host)>253||preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/',$host)!==1)return false;
+        return $host===$root||str_ends_with($host,'.'.$root);
+    }
+
+    private function reliabilityFromSignals(array $sites,array $domains,array $http,array $dns,array $ecosystem,string $at): array
+    {
+        $httpHealthy=count(array_filter($http,static fn(array $row):bool=>($row['state']??null)==='HEALTHY'));
+        $httpReachable=count(array_filter($http,static fn(array $row):bool=>in_array($row['state']??null,['HEALTHY','REACHABLE'],true)));
+        $httpDown=count(array_filter($http,static fn(array $row):bool=>($row['state']??null)==='DOWN'));
+        $dnsMatched=count(array_filter($dns,static fn(array $row):bool=>($row['state']??null)==='MATCHED'));
+        $dnsAttention=count(array_filter($dns,static fn(array $row):bool=>in_array($row['state']??null,['MISSING','DIFFERENT_TARGET'],true)));
+        $recovery=is_array($ecosystem['recoveryDrill']??null)?$ecosystem['recoveryDrill']:['state'=>'NOT_RUN','verifiedAt'=>null];
+        $alerts=[];
+        foreach(is_array($ecosystem['alerts']??null)?$ecosystem['alerts']:[] as $alert){
+            if(!is_array($alert)||!is_string($alert['key']??null))continue;
+            $key=(string)$alert['key'];if(!preg_match('/^[a-z0-9.-]{1,120}$/',$key))continue;
+            $severity=strtoupper((string)($alert['severity']??'WARNING'));if(!in_array($severity,['WARNING','CRITICAL'],true))$severity='WARNING';
+            $alerts[]=['key'=>$key,'severity'=>$severity,'title'=>self::boundedReliabilityText($alert['title']??'Hosting ต้องตรวจสอบ',120),'detail'=>self::boundedReliabilityText($alert['detail']??'มีสัญญาณต่อเนื่องที่ควรตรวจสอบ',220),'source'=>'HISTORY'];
+        }
+        foreach($domains as $domain){
+            if(!is_array($domain)||!is_string($domain['host']??null))continue;$host=strtolower((string)$domain['host']);$days=$domain['certificateDaysRemaining']??null;
+            if(($domain['tls']??false)!==true){
+                $alerts[]=['key'=>'tls-missing-'.substr(hash('sha256',$host),0,16),'severity'=>'WARNING','title'=>'HTTPS '.$host.' ต้องตรวจสอบ','detail'=>'Nginx route นี้ยังไม่มีหลักฐาน TLS ที่พร้อมใช้งาน','source'=>'STRUCTURAL'];continue;
+            }
+            if(is_int($days)&&$days<=14)$alerts[]=['key'=>'tls-expiry-'.substr(hash('sha256',$host),0,16),'severity'=>$days<=3?'CRITICAL':'WARNING','title'=>'ใบรับรอง '.$host.' ใกล้หมดอายุ','detail'=>'เหลือ '.$days.' วัน · ตรวจ automatic renewal ก่อนหมดอายุ','source'=>'STRUCTURAL'];
+        }
+        $recoveryState=strtoupper((string)($recovery['state']??'NOT_RUN'));$verifiedAt=is_string($recovery['verifiedAt']??null)?(string)$recovery['verifiedAt']:null;$age=is_int($recovery['ageSeconds']??null)?(int)$recovery['ageSeconds']:null;
+        if($recoveryState==='FAILED')$alerts[]=['key'=>'recovery-drill-failed','severity'=>'CRITICAL','title'=>'Recovery drill ต้องตรวจสอบ','detail'=>'Backup มีอยู่ แต่การทดสอบกู้คืนล่าสุดไม่ผ่าน','source'=>'RECOVERY'];
+        elseif(in_array($recoveryState,['NOT_RUN','INVALID'],true))$alerts[]=['key'=>'hosting-recovery-drill-missing','severity'=>'WARNING','title'=>'ยังไม่มี Recovery drill ที่ยืนยันแล้ว','detail'=>'ต้องมีหลักฐาน restore test ก่อนถือว่า backup พร้อมกู้คืนจริง','source'=>'RECOVERY'];
+        elseif($recoveryState==='PASS'&&is_int($age)&&$age>259200)$alerts[]=['key'=>'hosting-recovery-drill-stale','severity'=>'WARNING','title'=>'Recovery drill เก่ากว่าปกติ','detail'=>'การทดสอบกู้คืนล่าสุดเกิน 72 ชั่วโมง ควรตรวจรอบ scheduled backup','source'=>'RECOVERY'];
+        $deduped=[];$seen=[];foreach($alerts as $alert){if(isset($seen[$alert['key']]))continue;$seen[$alert['key']]=true;$deduped[]=$alert;if(count($deduped)>=12)break;}
+        $history=is_array($ecosystem['history']??null)?$ecosystem['history']:[];
+        $state=$deduped!==[]?'ATTENTION':(($httpDown>0||$dnsAttention>0)?'PARTIAL':'READY');
+        return ['schemaVersion'=>1,'state'=>$state,'generatedAt'=>$at,'probeMode'=>'BOUNDED_ON_DEMAND','http'=>$http,'dns'=>$dns,'recoveryDrill'=>['state'=>$recoveryState,'verifiedAt'=>$verifiedAt,'ageSeconds'=>$age,'databaseSchemaVersion'=>$recovery['databaseSchemaVersion']??null,'backupName'=>$recovery['backupName']??null],'alerts'=>$deduped,'summary'=>['probeTargetCount'=>count($http),'httpHealthy'=>$httpHealthy,'httpReachable'=>$httpReachable,'httpDown'=>$httpDown,'dnsMatched'=>$dnsMatched,'dnsAttention'=>$dnsAttention,'historySampleCount'=>(int)($history['sampleCount']??0)],'alertPolicy'=>['mode'=>'PERSISTED_OR_STRUCTURAL','historySamplesRequired'=>3,'singleHttpFailureCreatesAlert'=>false]];
+    }
+
+    private static function boundedReliabilityText(mixed $value,int $max): string
+    {
+        $text=is_string($value)?trim($value):'';$text=preg_replace('/[\x00-\x1f\x7f]/u','',$text)??'';
+        if($text==='')return 'ต้องตรวจสอบ';return function_exists('mb_substr')?mb_substr($text,0,$max,'UTF-8'):substr($text,0,$max);
+    }
+
     private function ecosystemStatus(string $at): array
     {
         $required=['hosting.site.provision','hosting.site.deploy','hosting.site.rollback','hosting.site.disable','hosting.site.bind_domain'];
@@ -349,7 +466,7 @@ final class HubManagedHostingService
     private function insertTask(string $task,string $execution,string $user,string $project,?string $revision,string $goal,string $capability,array $checkpoint,string $at): void { $key='hosting-'.substr(hash('sha256',$task),0,48);$this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'QUEUED',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$task,'user'=>$user,'project'=>$project,'goal'=>$goal,'key'=>$key,'at'=>$at]);$this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,:revision,'VPS',:capability,'QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$execution,'task'=>$task,'project'=>$project,'revision'=>$revision,'capability'=>$capability,'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);$this->pdo->prepare('INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,\'QUEUED\',0,:message,:at)')->execute(['id'=>self::uuid(),'task'=>$task,'message'=>'AWH Hosting รับงานแล้ว','at'=>$at]); }
     private function event(string $site,?string $task,string $name,string $state,string $message,string $at): void { $this->pdo->prepare('INSERT INTO control_site_events(event_id,site_id,task_id,event_name,state,message,occurred_at) VALUES(:id,:site,:task,:name,:state,:message,:at)')->execute(['id'=>self::uuid(),'site'=>$site,'task'=>$task,'name'=>$name,'state'=>$state,'message'=>$message,'at'=>$at]); }
     private function rollback(): void { try{$this->pdo->exec('ROLLBACK');}catch(Throwable){} }
-    private static function siteRow(array $r): array { $url=null;if(($r['binding_state']??null)==='ACTIVE'&&is_string($r['binding_host']??null)){if(($r['binding_kind']??null)==='IP_PORT'&&is_numeric($r['binding_port']))$url='https://'.$r['binding_host'].':'.(int)$r['binding_port'].'/';elseif(($r['binding_kind']??null)==='DOMAIN')$url='https://'.$r['binding_host'].'/';}return ['siteId'=>(string)$r['site_id'],'projectId'=>(string)$r['project_id'],'projectName'=>(string)$r['project_name'],'name'=>(string)$r['name'],'slug'=>(string)$r['slug'],'environment'=>(string)$r['environment'],'runtimeType'=>(string)$r['runtime_type'],'runtimeVersion'=>$r['runtime_version'],'databaseMode'=>(string)$r['database_mode'],'databaseState'=>$r['db_state'],'state'=>(string)$r['state'],'publicMode'=>(string)$r['public_mode'],'port'=>$r['listen_port']===null?null:(int)$r['listen_port'],'url'=>$url,'tlsMode'=>$r['tls_mode'],'bindingState'=>$r['binding_state'],'domainHost'=>$r['domain_host']??null,'domainState'=>$r['domain_state']??null,'primaryHost'=>$r['primary_host']??null,'source'=>['ready'=>is_string($r['source_revision_id']??null)&&self::validUuid((string)$r['source_revision_id'])&&($r['source_sync_state']??null)==='SYNCED','syncState'=>(string)($r['source_sync_state']??'EMPTY'),'revisionId'=>$r['source_revision_id']??null,'blockerCode'=>$r['source_blocker_code']??null],'lastEvent'=>['name'=>$r['last_event_name']??null,'state'=>$r['last_event_state']??null,'message'=>$r['last_event_message']??null,'at'=>$r['last_event_at']??null],'taskId'=>$r['active_deploy_task_id']??null,'taskState'=>$r['active_deploy_task_state']??null,'canCancel'=>is_string($r['active_deploy_task_state']??null)&&in_array((string)$r['active_deploy_task_state'],['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_APPROVAL'],true),'backupEnabled'=>(int)$r['backup_enabled']===1,'currentReleaseId'=>$r['current_release_id'],'currentSourceRevisionId'=>$r['current_release_revision_id']??null,'rollbackReleaseId'=>$r['rollback_release_id'],'updatedAt'=>(string)$r['updated_at']]; }
+    private static function siteRow(array $r): array { $url=null;if(($r['binding_state']??null)==='ACTIVE'&&is_string($r['binding_host']??null)){if(($r['binding_kind']??null)==='IP_PORT'&&is_numeric($r['binding_port']))$url='https://'.$r['binding_host'].':'.(int)$r['binding_port'].'/';elseif(($r['binding_kind']??null)==='DOMAIN')$url='https://'.$r['binding_host'].'/';}return ['siteId'=>(string)$r['site_id'],'projectId'=>(string)$r['project_id'],'projectName'=>(string)$r['project_name'],'name'=>(string)$r['name'],'slug'=>(string)$r['slug'],'environment'=>(string)$r['environment'],'runtimeType'=>(string)$r['runtime_type'],'runtimeVersion'=>$r['runtime_version'],'databaseMode'=>(string)$r['database_mode'],'databaseState'=>$r['db_state'],'state'=>(string)$r['state'],'publicMode'=>(string)$r['public_mode'],'port'=>$r['listen_port']===null?null:(int)$r['listen_port'],'url'=>$url,'tlsMode'=>$r['tls_mode'],'bindingState'=>$r['binding_state'],'domainHost'=>$r['domain_host']??null,'domainState'=>$r['domain_state']??null,'primaryHost'=>$r['primary_host']??null,'source'=>['ready'=>is_string($r['source_revision_id']??null)&&self::validUuid((string)$r['source_revision_id'])&&($r['source_sync_state']??null)==='SYNCED','syncState'=>(string)($r['source_sync_state']??'EMPTY'),'revisionId'=>$r['source_revision_id']??null,'blockerCode'=>$r['source_blocker_code']??null],'lastEvent'=>['name'=>$r['last_event_name']??null,'state'=>$r['last_event_state']??null,'message'=>$r['last_event_message']??null,'at'=>$r['last_event_at']??null],'taskId'=>$r['active_deploy_task_id']??null,'taskState'=>$r['active_deploy_task_state']??null,'canCancel'=>is_string($r['active_deploy_task_state']??null)&&in_array((string)$r['active_deploy_task_state'],['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_APPROVAL'],true),'healthPath'=>(string)($r['health_path']??'/'),'backupEnabled'=>(int)$r['backup_enabled']===1,'currentReleaseId'=>$r['current_release_id'],'currentSourceRevisionId'=>$r['current_release_revision_id']??null,'rollbackReleaseId'=>$r['rollback_release_id'],'updatedAt'=>(string)$r['updated_at']]; }
     private static function domainHost(string $value): string { $host=strtolower(trim(rtrim($value,'.')));if(strlen($host)<1||strlen($host)>253||!preg_match('/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/',$host))throw new HubManagedHostingException('ชื่อโดเมนไม่ถูกต้อง','DOMAIN_INVALID');return $host; }
     private static function keys(array $v,array $allowed): void { $a=array_keys($v);sort($a);sort($allowed);if($a!==$allowed)throw new HubManagedHostingException('Website fields are invalid','HOSTING_INVALID'); }
     private static function enum(mixed $v,array $allowed): string { if(!is_string($v)||!in_array(strtoupper($v),$allowed,true))throw new HubManagedHostingException('Website option is invalid','HOSTING_INVALID');return strtoupper($v); }

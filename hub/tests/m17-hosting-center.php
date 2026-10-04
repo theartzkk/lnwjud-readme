@@ -96,6 +96,56 @@ $stagingInventory=$method->invoke($service,$staging,$telemetry,'kruart.online');
 hc(($stagingInventory['sites'][0]['primaryHost']??null)==='portal-staging.kruart.online','staging default hostname is isolated from production');
 hc(($stagingInventory['sites'][0]['environment']??null)==='STAGING','staging environment is preserved');
 
+$archived=[[
+    'siteId'=>'13131313-1313-4313-8313-131313131313','projectId'=>'14141414-1414-4414-8414-141414141414',
+    'projectName'=>'Archive','name'=>'Archive','slug'=>'archive','environment'=>'PRODUCTION','state'=>'DISABLED','runtimeType'=>'STATIC',
+    'domainHost'=>null,'primaryHost'=>null,'port'=>null,'url'=>null,'source'=>['ready'=>true],'healthPath'=>'/','backupEnabled'=>true,
+    'currentReleaseId'=>'release-archive','rollbackReleaseId'=>'release-before','lastEvent'=>null,'recentEvents'=>[],
+]];
+$archivedInventory=$method->invoke($service,$archived,$telemetry,'kruart.online');
+hc(($archivedInventory['sites'][0]['lifecycle']['state']??null)==='ARCHIVED','disabled managed site is projected as archived');
+hc(($archivedInventory['sites'][0]['lifecycle']['dataPreserved']??null)===true,'archive explicitly preserves data');
+hc(($archivedInventory['sites'][0]['lifecycle']['archiveReversible']??null)===true,'archive is reversible');
+hc(($archivedInventory['sites'][0]['lifecycle']['permanentDeleteEnabled']??null)===false,'permanent delete remains disabled');
+
+$hostAllowed=$reflection->getMethod('hostingHostAllowed');$hostAllowed->setAccessible(true);
+hc($hostAllowed->invoke($service,'school.kruart.online','kruart.online')===true,'health probe accepts canonical subdomain');
+hc($hostAllowed->invoke($service,'kruart.online','kruart.online')===true,'health probe accepts canonical root');
+hc($hostAllowed->invoke($service,'evil.example','kruart.online')===false,'health probe blocks external host');
+hc($hostAllowed->invoke($service,'kruart.online.evil.example','kruart.online')===false,'health probe blocks suffix confusion');
+
+$reliabilityMethod=$reflection->getMethod('reliabilityFromSignals');$reliabilityMethod->setAccessible(true);
+$liveOnly=$reliabilityMethod->invoke($service,$result['sites'],[
+    ['host'=>'school.kruart.online','tls'=>true,'certificateDaysRemaining'=>30],
+],[
+    ['host'=>'school.kruart.online','state'=>'DOWN','ok'=>false,'httpStatus'=>503,'latencyMs'=>900,'checkedAt'=>$now,'scheme'=>'https'],
+],[
+    ['host'=>'school.kruart.online','state'=>'DIFFERENT_TARGET','ok'=>false,'expectedTarget'=>'203.0.113.10','resolvedTargets'=>['203.0.113.20']],
+],[
+    'state'=>'READY','history'=>['sampleCount'=>8],'alerts'=>[],
+    'recoveryDrill'=>['state'=>'PASS','verifiedAt'=>$now,'ageSeconds'=>60,'databaseSchemaVersion'=>25,'backupName'=>'fixture.sqlite'],
+],$now);
+hc(($liveOnly['state']??null)==='PARTIAL','single live failures stay partial rather than incident');
+hc(($liveOnly['alerts']??null)===[],'single HTTP and DNS failures do not create persistent alerts');
+hc(($liveOnly['alertPolicy']['singleHttpFailureCreatesAlert']??null)===false,'single HTTP failure alert is explicitly disabled');
+hc(($liveOnly['summary']['httpDown']??null)===1&&($liveOnly['summary']['dnsAttention']??null)===1,'live probe summary remains visible');
+
+$persistent=$reliabilityMethod->invoke($service,$result['sites'],[
+    ['host'=>'school.kruart.online','tls'=>true,'certificateDaysRemaining'=>2],
+],[],[],[
+    'state'=>'READY','history'=>['sampleCount'=>12],
+    'alerts'=>[
+        ['key'=>'service-down-website','severity'=>'CRITICAL','title'=>'เว็บไซต์มีปัญหาต่อเนื่อง','detail'=>'ตรวจพบไม่ผ่าน 3 รอบติดกัน'],
+        ['key'=>'recovery-drill-failed','severity'=>'CRITICAL','title'=>'Recovery drill ต้องตรวจสอบ','detail'=>'restore ไม่ผ่าน'],
+    ],
+    'recoveryDrill'=>['state'=>'FAILED','verifiedAt'=>$now,'ageSeconds'=>60,'databaseSchemaVersion'=>25,'backupName'=>'fixture.sqlite'],
+],$now);
+$alertKeys=array_column($persistent['alerts'],'key');
+hc(in_array('service-down-website',$alertKeys,true),'persisted health alert is surfaced');
+hc(count(array_filter($alertKeys,static fn(string $key):bool=>$key==='recovery-drill-failed'))===1,'recovery alert is deduplicated');
+hc(count(array_filter($alertKeys,static fn(string $key):bool=>str_starts_with($key,'tls-expiry-')))===1,'near-expiry TLS becomes structural alert');
+hc(($persistent['state']??null)==='ATTENTION','persistent evidence raises attention');
+
 $encoded=json_encode($adopted,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
 hc(!str_contains($encoded,'/var/www/')&&!str_contains($encoded,'/etc/nginx/'),'raw server paths are not exposed');
 

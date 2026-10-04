@@ -28,9 +28,11 @@
 
 <section id="unhosted-panel" class="hosting-panel onboarding-panel" hidden><div class="section-heading"><div><span>Project onboarding</span><h2>โปรเจกต์ที่ยังไม่มี Hosting</h2></div><small>เริ่มตั้งค่าเว็บใหม่ได้โดยไม่ต้องสร้าง Nginx เอง</small></div><div id="unhosted-projects" class="onboarding-list"></div></section>
 
-<section class="hosting-panel domains-panel"><div class="section-heading"><div><span>Domains & HTTPS</span><h2>โดเมนและใบรับรอง</h2></div><small>ตรวจจากเส้นทางที่ Nginx ให้บริการจริง</small></div><div id="domain-list" class="domain-list"></div></section>
+<section class="hosting-panel domains-panel"><div class="section-heading"><div><span>Domains & HTTPS</span><h2>โดเมนและใบรับรอง</h2></div><small>ตรวจ DNS, TLS และเส้นทางจริงแยกกัน</small></div><div id="domain-list" class="domain-list"></div></section>
 
-<section class="hosting-panel recovery-panel"><div class="section-heading"><div><span>Recovery & Capacity</span><h2>การกู้คืนและความจุ</h2></div><small>แยกสถานะ Backup ที่ยืนยันแล้วออกจากนโยบายของแต่ละเว็บ</small></div><div id="hosting-recovery" class="recovery-grid"></div></section>
+<section id="hosting-alert-panel" class="hosting-panel reliability-alert-panel" hidden><div class="section-heading"><div><span>Actionable alerts</span><h2>สิ่งที่ควรดู</h2></div><small>แจ้งเฉพาะปัญหาต่อเนื่องหรือหลักฐานโครงสร้าง · HTTP สะดุดครั้งเดียวไม่สร้าง incident</small></div><div id="hosting-alerts" class="reliability-alert-list"></div></section>
+
+<section class="hosting-panel recovery-panel"><div class="section-heading"><div><span>Recovery & Capacity</span><h2>การกู้คืนและความจุ</h2></div><small>แยก Backup ที่มีอยู่ ออกจาก Restore drill ที่พิสูจน์ว่ากู้คืนได้จริง</small></div><div id="hosting-recovery" class="recovery-grid"></div></section>
 
 <details class="hosting-panel topology-panel"><summary class="create-summary"><span><small>Server map</small><strong>แผนผังเส้นทางเว็บไซต์</strong></span><em>Domain → Nginx → Runtime → Project</em></summary><div id="hosting-topology" class="topology-list"></div></details>
 
