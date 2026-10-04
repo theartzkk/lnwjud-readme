@@ -44,14 +44,6 @@ Production uses one exact-revision approval for the bounded release scope. QA PA
 
 On VPS-native work, use the local typed operator. Do not self-SSH back into the same VPS when the local authority exists. Restricted workers keep `NoNewPrivileges`; recurring privileged actions belong in bounded typed operators.
 
-## Continuous execution
-
-A clear Owner command such as "ทำต่อ", "ทำให้เสร็จ", "เริ่มเลย", "continue", "finish it", or an equivalent direct execution request is an **execute-to-boundary** instruction. Continue useful work in the same response while tools return `RUNNING`, `QUEUED`, `PENDING`, task IDs, resumable checkpoints, or other non-terminal states. Observe the same work with the appropriate wait/status/result operation, repair bounded failures when safe, and verify the real deliverable before reporting completion.
-
-Do not end a response merely to say work will continue, that a check will be performed next, or that a running task is being monitored. A response may stop before terminal completion only when an explicit Owner-required boundary is reached (approval, authentication/login, credential entry, physical action, safety boundary), a live `WAIT_CONFLICT` requires another writer to finish, or the available tool/runtime has a hard non-recoverable limit. Reuse/join/resume existing Mission, candidate, release and execution identities; never create duplicates merely because a chat turn changed.
-
-This contract is shared across managed projects and chats. Project-specific instructions may refine domain behavior but must not weaken execute-to-boundary semantics.
-
 ## Completion
 
 Resume proven durable state after a chat/tool interruption instead of blind retrying or spawning a duplicate mission. Clean transient workspaces and release leases on terminal paths.
