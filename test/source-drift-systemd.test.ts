@@ -161,6 +161,12 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(janitor, /verified_agent_publish_workspace/);
   assert.match(janitor, /agentPublishCandidateBytes/);
   assert.match(janitor, /AWAIT_TYPED_DELETION_AUTHORITY/);
+  assert.match(janitor, /AWH_AGENT_PUBLISH_CLEANUP_AUTHORITY/);
+  assert.match(janitor, /STORAGE_GUARD_PRESSURE_V1/);
+  assert.match(janitor, /agentPublishDeletedCount/);
+  assert.match(janitor, /agentPublishReclaimedLogicalBytes/);
+  assert.match(janitor, /fresh_agent_active\s*=\s*active_projects\(\)/);
+  assert.ok((janitor.match(/verified_agent_publish_workspace\(path\)/g)??[]).length>=2,'agent publish cleanup must re-verify published artifacts immediately before deletion');
   assert.match(janitor, /fresh_active\s*=\s*active_projects\(\)/);
   assert.match(janitor, /row\["projectId"\]\s+in\s+fresh_active/);
   assert.match(janitor, /AWH_DURABLE_WORKTREE_ROOT.*\/var\/lib\/awh-remote\/worktrees/);
@@ -202,6 +208,9 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(guard, /AWH_TMP_KEEP_NEWEST_PER_REPO=1/);
   assert.match(guard, /AWH_DURABLE_KEEP_NEWEST_PER_REPO=1/);
   assert.match(guard, /AWH_DURABLE_PRESSURE_MAX_DELETE_PER_RUN=64/);
+  assert.match(guard, /AWH_AGENT_PUBLISH_CLEANUP_AUTHORITY=STORAGE_GUARD_PRESSURE_V1/);
+  assert.match(guard, /AWH_AGENT_PUBLISH_MAX_DELETE_PER_RUN=1/);
+  assert.doesNotMatch(temp, /AWH_AGENT_PUBLISH_CLEANUP_AUTHORITY/);
   assert.match(guard, /awh-storage-inventory\.py/);
   assert.match(guard, /--max-age-seconds 3600/);
   assert.match(inventory, /unattributedMeaning/);

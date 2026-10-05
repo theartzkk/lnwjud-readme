@@ -34,6 +34,9 @@ AGENT_PUBLISH_PRESSURE_AGE = int(os.environ.get("AWH_PRESSURE_AGENT_PUBLISH_MIN_
 MAX_DELETE = int(os.environ.get("AWH_TMP_MAX_DELETE_PER_RUN", "32"))
 DURABLE_MAX_DELETE = int(os.environ.get("AWH_DURABLE_MAX_DELETE_PER_RUN", "16"))
 DURABLE_PRESSURE_MAX_DELETE = int(os.environ.get("AWH_DURABLE_PRESSURE_MAX_DELETE_PER_RUN", "64"))
+AGENT_PUBLISH_CLEANUP_AUTHORITY = os.environ.get("AWH_AGENT_PUBLISH_CLEANUP_AUTHORITY", "")
+AGENT_PUBLISH_AUTHORITY_TOKEN = "STORAGE_GUARD_PRESSURE_V1"
+AGENT_PUBLISH_MAX_DELETE = max(0, min(4, int(os.environ.get("AWH_AGENT_PUBLISH_MAX_DELETE_PER_RUN", "1"))))
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--plan", action="store_true")
@@ -266,6 +269,7 @@ min_age = PRESSURE_AGE if pressure else NORMAL_AGE
 durable_min_age = DURABLE_PRESSURE_AGE if pressure else DURABLE_NORMAL_AGE
 agent_publish_min_age = AGENT_PUBLISH_PRESSURE_AGE if pressure else AGENT_PUBLISH_NORMAL_AGE
 durable_delete_limit = DURABLE_PRESSURE_MAX_DELETE if pressure else DURABLE_MAX_DELETE
+agent_publish_authorized = pressure and AGENT_PUBLISH_CLEANUP_AUTHORITY == AGENT_PUBLISH_AUTHORITY_TOKEN
 now = time.time()
 rows = []
 durable_rows = []
@@ -427,6 +431,28 @@ if apply:
         durable_reclaimed += int(row["bytes"])
         durable_deleted.append({k: v for k, v in row.items() if k not in ("path", "mtime")} | {"path": str(path)})
 
+    if agent_publish_authorized:
+        for row in agent_publish_rows[:AGENT_PUBLISH_MAX_DELETE]:
+            if free_bytes() >= TARGET_FREE:
+                break
+            path = row["path"]
+            try:
+                if path.parent.resolve() != TMP.resolve() or time.time() - path.stat().st_mtime < agent_publish_min_age:
+                    continue
+            except OSError:
+                continue
+            fresh_agent_active = active_projects()
+            if fresh_agent_active is None or len(fresh_agent_active) != 0:
+                break
+            verified = verified_agent_publish_workspace(path)
+            if verified is None or verified["suffix"] != row["suffix"] or int(verified["fileCount"]) != int(row["fileCount"]):
+                continue
+            if open_files(path) or cwd_users(path):
+                continue
+            shutil.rmtree(path)
+            agent_publish_reclaimed += int(row["bytes"])
+            agent_publish_deleted.append({k: v for k, v in row.items() if k not in ("path", "mtime")} | {"path": str(path)})
+
 result = {
     "schemaVersion": 1,
     "mode": "APPLY" if apply else "PLAN",
@@ -436,9 +462,9 @@ result = {
     "candidateCount": len(eligible),
     "candidateBytes": sum(int(row["bytes"]) for row in eligible),
     "tempDeletedCount": len(deleted),
-    "deletedCount": len(deleted) + len(durable_deleted),
+    "deletedCount": len(deleted) + len(durable_deleted) + len(agent_publish_deleted),
     "tempReclaimedLogicalBytes": reclaimed,
-    "reclaimedLogicalBytes": reclaimed + durable_reclaimed,
+    "reclaimedLogicalBytes": reclaimed + durable_reclaimed + agent_publish_reclaimed,
     "durableCandidateCount": len(durable_eligible),
     "durableCandidateBytes": sum(int(row["bytes"]) for row in durable_eligible),
     "durableDeletedCount": len(durable_deleted),
@@ -446,7 +472,11 @@ result = {
     "agentPublishCandidateCount": len(agent_publish_rows),
     "agentPublishCandidateBytes": sum(int(row["bytes"]) for row in agent_publish_rows),
     "agentPublishMinAgeSeconds": agent_publish_min_age,
-    "agentPublishCleanupAction": "AWAIT_TYPED_DELETION_AUTHORITY" if agent_publish_rows else "NONE",
+    "agentPublishAuthorized": agent_publish_authorized,
+    "agentPublishDeleteLimit": AGENT_PUBLISH_MAX_DELETE,
+    "agentPublishDeletedCount": len(agent_publish_deleted),
+    "agentPublishReclaimedLogicalBytes": agent_publish_reclaimed,
+    "agentPublishCleanupAction": "NONE" if not agent_publish_rows else ("AUTHORIZED_STORAGE_GUARD_PRESSURE_V1" if agent_publish_authorized else "AWAIT_TYPED_DELETION_AUTHORITY"),
     "durableDeleteLimit": durable_delete_limit,
     "freeBefore": before,
     "freeAfter": free_bytes(),
@@ -458,6 +488,7 @@ result = {
     "durableMinAgeSeconds": durable_min_age,
     "deleted": deleted,
     "durableDeleted": durable_deleted,
+    "agentPublishDeleted": agent_publish_deleted,
 }
 
 state_write = "SKIPPED_PLAN"
