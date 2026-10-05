@@ -694,20 +694,27 @@ function ownerFacingReason(item){
   if(/worker|release controller|authority|lease|mutation|candidate|source sha|exact[- ]sha/i.test(reason))return 'ระบบกำลังตรวจความพร้อมของเส้นทางอัปเดต';
   return reason||'กำลังตรวจความพร้อม';
 }
+function ownerStageElapsed(event){
+  const started=Date.parse(String(event?.occurredAt||''));
+  if(!Number.isFinite(started))return '';
+  const minutes=Math.floor(Math.max(0,Date.now()-started)/60000);
+  return minutes>=1?` · ขั้นนี้ ${minutes} นาที`:'';
+}
 function ownerProgressMessage(item,event,waiting){
   if(waiting)return 'พร้อมแล้ว · รอการยืนยันก่อนเริ่มขั้นติดตั้ง';
   const state=String(item?.taskState||event?.state||'').toUpperCase();
   const progress=Math.max(0,Math.min(100,Number(event?.progress??item?.progress??localOperation?.progress??0)));
   const raw=String(event?.message||'').trim();
-  if(raw&&!/worker|release controller|authority|lease|mutation|candidate|source sha|exact[- ]sha/i.test(raw))return raw;
+  const elapsed=ownerStageElapsed(event);
+  if(raw&&!/worker|release controller|authority|lease|mutation|candidate|source sha|exact[- ]sha/i.test(raw))return raw+elapsed;
   if(state==='RUNNING'){
-    if(progress<23)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ';
-    if(progress<55)return 'กำลังตรวจความพร้อม สำรองข้อมูล และเตรียมจุดย้อนกลับ';
-    if(progress<60)return 'สำรองข้อมูลพร้อมแล้ว · กำลังเริ่มติดตั้ง';
-    if(progress<74)return 'กำลังเตรียมส่วนประกอบของระบบสำหรับรุ่นใหม่';
-    if(progress<88)return 'กำลังเปิดใช้บริการและหน้าเว็บรุ่นใหม่';
-    if(progress<99)return 'กำลังตรวจการทำงานของรุ่นใหม่รอบสุดท้าย';
-    return 'ตรวจรอบสุดท้ายผ่านแล้ว · กำลังปิดงานอัปเดต';
+    if(progress<23)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'+elapsed;
+    if(progress<55)return 'กำลังตรวจความพร้อมและ QA ก่อนติดตั้ง'+elapsed;
+    if(progress<60)return 'สำรองข้อมูลพร้อมแล้ว · กำลังเริ่มติดตั้ง'+elapsed;
+    if(progress<74)return 'กำลังเตรียมส่วนประกอบของระบบสำหรับรุ่นใหม่'+elapsed;
+    if(progress<88)return 'กำลังเปิดใช้บริการและหน้าเว็บรุ่นใหม่'+elapsed;
+    if(progress<99)return 'กำลังตรวจการทำงานของรุ่นใหม่รอบสุดท้าย'+elapsed;
+    return 'ตรวจรอบสุดท้ายผ่านแล้ว · กำลังปิดงานอัปเดต'+elapsed;
   }
   const mapped={QUEUED:'รับคำสั่งแล้ว · กำลังเข้าคิว',WAITING_FOR_WORKER:'รับคำสั่งแล้ว · อยู่ในคิวอัปเดต',PREPARING:'กำลังตรวจความพร้อมและเตรียมการ',QA:'กำลังทดสอบความพร้อมก่อนติดตั้ง',VERIFYING:'กำลังตรวจการทำงานของรุ่นใหม่และยืนยันผล',RECOVERING:'กำลังทำต่อจากจุดที่ปลอดภัย'}[state];
   return mapped||localOperation?.message||'กำลังดำเนินการและตรวจผล';

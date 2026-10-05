@@ -155,7 +155,12 @@ final class HubCapabilityRegistryService
         if (preg_match('/^(?:agent\.conversation|project\.(?:read|search)|artifact\.object|qa\.cloud|review\.visual)$/', $required) === 1) return 'READ';
         if ($required === 'source.promote') return 'CANONICAL:SOURCE';
         if ($required === 'operator.project_mission') return 'CANDIDATE';
-        if ($required === 'system.platform.release') return 'CANONICAL:DEPLOY:VPS_PLATFORM';
+        if ($required === 'system.platform.release') {
+            $phase=self::releaseExecutionPhaseFromCheckpoint($checkpointJson);
+            return $phase!==null&&!in_array($phase,['CUTOVER','ROLLBACK'],true)
+                ? 'RESOURCE:RELEASE_PREFLIGHT:VPS_PLATFORM'
+                : 'CANONICAL:DEPLOY:VPS_PLATFORM';
+        }
         if ($required === 'system.core.release') return 'CANONICAL:DEPLOY:AWH';
         if ($required === 'system.learnlab.release') return 'CANONICAL:DEPLOY:BAY_LEARNLAB';
         if ($required === 'system.assessment.release') return 'CANONICAL:DEPLOY:BAY_ASSESSMENT';
@@ -190,6 +195,16 @@ final class HubCapabilityRegistryService
             if (preg_match('/^[a-z0-9][a-z0-9._-]{1,79}$/', $value) === 1) return $value;
         }
         return null;
+    }
+
+    private static function releaseExecutionPhaseFromCheckpoint(?string $checkpointJson): ?string
+    {
+        if (!is_string($checkpointJson) || trim($checkpointJson) === '') return null;
+        try { $checkpoint=json_decode($checkpointJson,true,32,JSON_THROW_ON_ERROR); }
+        catch (Throwable) { return null; }
+        $execution=is_array($checkpoint)?($checkpoint['releaseExecution']??null):null;
+        $phase=is_array($execution)&&is_string($execution['phase']??null)?strtoupper(trim((string)$execution['phase'])):'';
+        return in_array($phase,['QUEUED','PREFLIGHT','QA','REHEARSAL','WAIT_CUTOVER','CUTOVER','ROLLBACK','FINALIZE'],true)?$phase:null;
     }
 
     private function maintenanceReleaseTrack(string $capability, ?string $checkpointJson): ?string

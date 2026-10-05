@@ -135,6 +135,32 @@ try {
     $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',lease_expires_at=NULL WHERE task_id=?")->execute([$legacyTask]);
     $service->reconcile('2026-09-15T00:30:40+00:00');
 
+    $platformTask='55555555-5555-4555-8555-555555555555';
+    $platformExecution='66666666-6666-4666-8666-666666666666';
+    $platformCheckpoint=json_encode([
+        'schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>str_repeat('f',40),
+        'releaseMode'=>'PLATFORM_HARDENING','releaseTrack'=>'vps-platform','cleanupTopology'=>false,
+        'transport'=>'LOCAL','releaseNotesSha256'=>str_repeat('1',64),
+        'releaseExecution'=>['schemaVersion'=>1,'phase'=>'WAIT_CUTOVER','phaseStartedAt'=>$now]
+    ],JSON_THROW_ON_ERROR);
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(?,?,?,?, 'RUNNING',NULL,NULL,52,NULL,NULL,?,NULL,?,?,NULL)")
+        ->execute([$platformTask,$owner,$project,'Modern Platform parent','modern-platform-parent',$now,$now]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(?,?,?,?,'VPS','system.platform.release','RUNNING','core-release:test','2026-09-15T01:00:00+00:00',1,NULL,?,NULL,?,?)")
+        ->execute([$platformExecution,$platformTask,$project,$revision,$platformCheckpoint,$now,$now]);
+    $pdo->prepare("INSERT INTO control_approvals(approval_id,task_id,action,scope_json,status,expires_at,decided_at) VALUES(?,?,'deployment.approve','{}','APPROVED',NULL,?)")
+        ->execute(['cccccccc-3333-4333-8333-333333333333',$platformTask,$now]);
+    $platformBorrowed=$service->acquire('platform-ffffffffffff',600,'2026-09-15T00:30:41+00:00');
+    dea_assert($platformBorrowed['borrowed']===true&&$platformBorrowed['executionId']===$platformExecution,'modern Platform release borrows its exact parent at cutover');
+    $phaseRow=$pdo->prepare("SELECT checkpoint_json FROM control_task_executions WHERE execution_id=?");$phaseRow->execute([$platformExecution]);
+    $phaseCheckpoint=json_decode((string)$phaseRow->fetchColumn(),true,16,JSON_THROW_ON_ERROR);
+    dea_assert(($phaseCheckpoint['releaseExecution']['phase']??null)==='CUTOVER','Platform authority acquisition transitions only the cutover phase to host-global');
+    $service->release($platformExecution,true,'2026-09-15T00:30:42+00:00');
+    $phaseRow->execute([$platformExecution]);$finalCheckpoint=json_decode((string)$phaseRow->fetchColumn(),true,16,JSON_THROW_ON_ERROR);
+    dea_assert(($finalCheckpoint['releaseExecution']['phase']??null)==='FINALIZE','borrowed authority release returns Platform execution to non-global finalization');
+    $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL WHERE execution_id=?")->execute([$platformExecution]);
+    $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',lease_expires_at=NULL WHERE task_id=?")->execute([$platformTask]);
+    $service->reconcile('2026-09-15T00:30:43+00:00');
+
     $first = $service->acquire('m21-aaaaaaaaaaaa', 600, $now);
     dea_assert($first['borrowed'] === false && is_string($first['executionId']) && $first['projectId'] === $project, 'first standalone deploy authority acquired');
     $activeQuery=$pdo->prepare("SELECT state FROM control_execution_envelopes WHERE execution_id=?");

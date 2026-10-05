@@ -158,7 +158,8 @@ test('mission contract preserves QA, rehearsal, backup, drift and public exact-r
   assert.match(source,/new URL\('\/api\/v1\/auth\/login',base\)/);
   assert.doesNotMatch(source,/new URL\('\/api\/v1\/control\/auth\/login',base\)/);
   assert.match(source,/state:'BLOCKED',result:'BLOCK'/);
-  assert.match(source,/MISSION_REGRESSION_REPLAY=DEEP/);
+  assert.match(source,/MISSION_REGRESSION_REPLAY=\$\{durableNeedsDeep\?'DEEP':'BOUNDED'\}/);
+  assert.match(source,/deepChecks=new Set\(\['repeat-regression','backup-proof','rollback-proof','source-drift','database-integrity'\]\)/);
   assert.match(source,/MISSION_DURABLE_REGISTRY_UNAVAILABLE/);
   assert.match(source,/loadExecutionPolicy/);
   assert.match(source,/qaScriptForBudget/);
@@ -173,7 +174,7 @@ test('mission contract preserves QA, rehearsal, backup, drift and public exact-r
   const localStart=source.indexOf("if(existsSync(local)){");
   const sshFallback=source.indexOf("const host=await canonicalOperatorHost()",localStart);
   assert.ok(localStart>=0&&sshFallback>localStart&&source.slice(localStart,sshFallback).includes('return null;'),'VPS-local operator failure must fail closed instead of self-SSH fallback');
-  for(const marker of ['MISSION_PRIVILEGE_LANE=','MISSION_DEPENDENCIES=ISOLATED_QA','MISSION_ISOLATED_QA_RUNNER_MISSING','MISSION_CANONICAL_MAIN_STABLE=','verificationPlanForFiles','MISSION_RISK=','MISSION_VERIFICATION_BUDGET=','MISSION_STABILITY=','MISSION_GOLDEN_JOURNEYS=','MISSION_EVIDENCE_CAPSULE=','MISSION_DURABLE_REGISTRY=','MISSION_DURABLE_EVIDENCE=','verification-regressions','verification-store','MISSION_INCIDENT_FINGERPRINT=','--dry-run','--deploy','--approve','DEPLOY_STAGE=BACKUP_VERIFIED','DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED','MISSION_APPROVALS_CONSUMED=1','MISSION_PUBLIC_VERIFY=PASS','AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS']) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+  for(const marker of ['MISSION_PRIVILEGE_LANE=','MISSION_DEPENDENCIES=ISOLATED_QA','MISSION_ISOLATED_QA_RUNNER_MISSING','MISSION_CANONICAL_MAIN_STABLE=','verificationPlanForFiles','MISSION_RISK=','MISSION_VERIFICATION_BUDGET=','MISSION_STABILITY=','MISSION_GOLDEN_JOURNEYS=','MISSION_EVIDENCE_CAPSULE=','MISSION_DURABLE_REGISTRY=','MISSION_DURABLE_EVIDENCE=','verification-regressions','verification-store','MISSION_INCIDENT_FINGERPRINT=','--dry-run','--deploy','--approve','DEPLOY_STAGE=BACKUP_VERIFIED','DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED','MISSION_APPROVALS_CONSUMED=1','MISSION_PUBLIC_VERIFY=PASS','AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS','RELEASE_QA_STARTED','RELEASE_REHEARSAL_PASSED','RELEASE_CUTOVER_WAIT','RELEASE_FINALIZE','deploy-execution-authority.php']) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
 });
 
 
