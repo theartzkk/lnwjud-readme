@@ -289,7 +289,7 @@ final class HubControlPlaneService
         if ($coreStorageBlocked && in_array($platformState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true)) $platformState='BLOCKED';
         $platformReason = match($platformState) {
             'CURRENT' => 'VPS Platform track ตรงกับรุ่นฐานที่บันทึกไว้',
-            'WAITING_FOR_APPROVAL' => 'พบคำขอ VPS Platform เดิมที่ยังไม่เริ่ม Production · กดทำต่อได้โดยใช้ task เดิม',
+            'WAITING_FOR_APPROVAL' => 'พบคำขอ VPS Platform เดิมที่รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติด้วย task เดิม',
             'UPDATING' => $platformTargetMoved
                 ? 'VPS Platform ใช้ exact SHA ที่ Owner อนุมัติไว้ · Source ใหม่จะไม่สลับรุ่นระหว่างรอคิวหรือกำลังติดตั้ง'
                 : 'VPS Platform controller กำลังอัปเดต shared runtime/infrastructure',
@@ -332,7 +332,7 @@ final class HubControlPlaneService
         $awhReason = $awhState === 'CURRENT'
             ? ($runtimeState === 'COHERENT' ? 'Production ตรงกับ Source Authority ล่าสุดและ Runtime สอดคล้องกัน' : 'Production ตรงกับ Source Authority ล่าสุด แต่ยังยืนยัน Runtime ได้ไม่ครบ')
             : ($awhState === 'WAITING_FOR_APPROVAL'
-                ? 'พบคำขอ AWH เดิมที่ยังไม่เริ่ม Production · กดทำต่อได้โดยใช้ task เดิม'
+                ? 'พบคำขอ AWH เดิมที่รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติด้วย task เดิม'
                 : ($awhState === 'BLOCKED'
                     ? 'Storage ยังไม่ถึง Core Release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90% ก่อนอัปเดต'
                     : ($awhTargetMoved
@@ -463,7 +463,7 @@ final class HubControlPlaneService
                     $learnLabCandidateVersion = is_string($activeLearnLab['runtimeVersion'] ?? null) ? (string) $activeLearnLab['runtimeVersion'] : null;
                     $learnLabApproval = is_string($activeLearnLab['approvalId'] ?? null) ? (string) $activeLearnLab['approvalId'] : null;
                     $learnLabState = (string) ($activeLearnLab['approvalStatus'] ?? '') === 'PENDING' ? 'WAITING_FOR_APPROVAL' : 'UPDATING';
-                    $learnLabReason = $learnLabState === 'WAITING_FOR_APPROVAL' ? 'พบคำขอ LearnLab เดิมที่ยังไม่เริ่ม Production · Owner กดทำต่อได้โดยใช้ task เดิม' : 'LearnLab release controller กำลังทำงานกับรุ่นล่าสุด';
+                    $learnLabReason = $learnLabState === 'WAITING_FOR_APPROVAL' ? 'พบคำขอ LearnLab เดิมที่รอการอนุมัติ · เมื่อ Owner อนุมัติแล้วระบบจะทำต่ออัตโนมัติด้วย task เดิม' : 'LearnLab release controller กำลังทำงานกับรุ่นล่าสุด';
                 }
                 $items[] = [
                     'key'=>'bay-learnlab','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'LEARNLAB_RELEASE',
@@ -505,7 +505,7 @@ final class HubControlPlaneService
                     $reason=$state==='CURRENT'?'Production ตรงกับ Assessment source ล่าสุด':'มี Assessment candidate ที่ผ่าน QA พร้อม staging-first release';
                     if(is_array($activeAssessment)){
                         $state=(string)($activeAssessment['approvalStatus']??'')==='PENDING'?'WAITING_FOR_APPROVAL':'UPDATING';
-                        $reason=$state==='WAITING_FOR_APPROVAL'?'พบคำขอ Assessment เดิมที่ยังไม่เริ่ม Production · กดทำต่อได้โดยใช้ task เดิม':'AWH กำลัง Backup → Staging → Production → Verify';
+                        $reason=$state==='WAITING_FOR_APPROVAL'?'พบคำขอ Assessment เดิมที่รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติด้วย task เดิม':'AWH กำลัง Backup → Staging → Production → Verify';
                     }
                     $items[]=[
                         'key'=>'bay-assessment','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'ASSESSMENT_RELEASE',

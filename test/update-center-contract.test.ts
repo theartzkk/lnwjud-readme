@@ -595,6 +595,11 @@ test('Update Center owner actions keep target-scoped feedback and expose only sa
   assert.match(service,/'canCancel'=>is_array\(\$activePlatform\)/);
   assert.match(service,/'canCancel'=>is_array\(\$activeLearnLab\)/);
   assert.match(service,/'canCancel'=>is_array\(\$activeAssessment\)/);
+  assert.match(service,/เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติ/);
+  assert.doesNotMatch(service,/กดทำต่อ/);
+  assert.match(script,/เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติ/);
+  assert.doesNotMatch(script,/กดทำต่อ/);
+  assert.match(service,/\$taskState = \$decision === 'APPROVED' \? 'WAITING_FOR_WORKER'/);
   assert.match(service,/\$hostingTaskActive=is_string\(\$site\['taskId'\]\?\?null\)/);
   assert.match(service,/'taskId'=>\$site\['taskId'\]\?\?null/);
   assert.match(service,/'canCancel'=>\(\$site\['canCancel'\]\?\?false\)===true/);

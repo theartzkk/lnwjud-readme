@@ -687,7 +687,7 @@ function ownerFacingReason(item){
   if(item.state==='CURRENT')return 'ระบบนี้เป็นรุ่นล่าสุด';
   if(item.state==='UPDATE_AVAILABLE')return 'มีรุ่นใหม่พร้อมอัปเดต';
   if(item.state==='UPDATING')return 'ระบบกำลังอัปเดตและตรวจสอบผล';
-  if(item.state==='WAITING_FOR_APPROVAL')return 'พบงานอัปเดตเดิมที่ยังไม่เริ่มติดตั้งจริง · กดทำต่อจากงานเดิมได้ทันที';
+  if(item.state==='WAITING_FOR_APPROVAL')return 'พบงานอัปเดตเดิมที่รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติจากงานเดิม';
   if(item.state==='REMOTE_CHECK_REQUIRED')return 'กำลังตรวจสถานะล่าสุด';
   if(item.state==='INTERNAL_MANAGED')return 'ระบบนี้ดูแลการอัปเดตให้อัตโนมัติ';
   if(/storage/i.test(reason))return 'พื้นที่สำหรับอัปเดตยังไม่เพียงพอ ระบบจะไม่เริ่มจนกว่าจะปลอดภัย';
