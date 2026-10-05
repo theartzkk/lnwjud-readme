@@ -162,9 +162,24 @@ function handleDialogKeyboard(event) {
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
 
+function revealFocusedDialogControl(event) {
+  const target = event.target;
+  if (!isElement(target) || !target.matches('input:not([type="button"]):not([type="submit"]):not([type="file"]), textarea, select, [contenteditable="true"]')) return;
+  const dialog = target.closest('[data-awh-dialog-open="1"]:not([hidden])');
+  if (!isElement(dialog) || !window.matchMedia?.('(max-width: 680px)').matches) return;
+  const reveal = () => {
+    if (!target.isConnected || dialog.hidden || dialog.dataset.awhDialogOpen !== '1') return;
+    target.scrollIntoView?.({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+  };
+  window.requestAnimationFrame(reveal);
+  window.setTimeout(reveal, 90);
+  window.setTimeout(reveal, 240);
+}
+
 if (hasDom()) {
   window.addEventListener('popstate', handlePopState);
   document.addEventListener('keydown', handleDialogKeyboard);
+  document.addEventListener('focusin', revealFocusedDialogControl, { passive: true });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => installAwhBackNavigation(), { once: true });
   else installAwhBackNavigation();
 }
