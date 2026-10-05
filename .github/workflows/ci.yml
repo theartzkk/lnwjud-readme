@@ -71,6 +71,9 @@ jobs:
           php -r 'exit(class_exists("ZipArchive") ? 0 : 1);'
           php hub/tests/m18-cloud-first-control.php
       - run: npm run typecheck
+      - if: runner.os != 'Windows'
+        name: Enforce KRUART experience governance
+        run: npm run design:gate
       - if: runner.os == 'Windows'
         run: npm run test:windows
       - if: runner.os != 'Windows'
