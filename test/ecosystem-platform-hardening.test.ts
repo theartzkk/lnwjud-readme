@@ -158,6 +158,9 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(bounded, /MISSION_DEPENDENCIES=ISOLATED_QA/);
   assert.match(bounded, /MISSION_CANONICAL_MAIN_MOVED/);
   assert.match(deploy, /PLATFORM_HARDENING_MIGRATION_VERIFIED/);
+  assert.match(deploy, /DEPLOY_AUTHORITY_CONFLICT_TIMEOUT/);
+  assert.match(deploy, /DEPLOY_AUTHORITY_WAIT_STARTED/);
+  assert.match(deploy, /sleep 2/);
   const platformStart=deploy.indexOf('if test "$PLATFORM_HARDENING" = 1; then\n  stage WORKSPACE_PRESERVED');
   const platformEnd=deploy.indexOf('elif test "$IDENTITY_CONVERGENCE" = 1; then',platformStart);
   const platformBlock=deploy.slice(platformStart,platformEnd);
