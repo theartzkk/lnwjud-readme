@@ -12,6 +12,8 @@ This is the durable UX contract for the KRUART/BAY ecosystem. It does not merge 
 - Release tracks remain independently owned even when Update Center renders them together.
 - Candidate/source activation and Production deployment remain separate gates with exact-revision evidence.
 - Visual changes require rendered verification; source inspection alone is insufficient.
+- Reusable interaction states are governed by `design/qa/component-state-matrix.json` and exercised through the real-surface fixture/browser pipeline.
+- Storybook is intentionally deferred while production UI remains mixed shared-DOM + React islands; introduce it only after a canonical cross-product component package exists so it does not become a second UI authority.
 
 KRUART is the umbrella. AWH is owner workspace/control plane. BAY EXCUSE X is school operations. Computer Lab is the student entry. LearnLab is the learning room. Assessment is an academic workflow under BAY. School Website is the institutional public surface. LINE OA is a channel/integration, not another product core.
 
