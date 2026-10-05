@@ -11,3 +11,7 @@ No deployment engine, queue, registry, approval authority, or product implementa
 Checkpoint `80898ac3a81b3cd6f9afc0c95c1a26661d015e4d` fixes a shared-repository release-readiness deadlock where a historical `SOURCE_PROMOTION_CHAIN_GAP` repair can be newer in audit time than the promotion it repairs and can predate deterministic `bundleSha256` evidence. The deployed control plane can therefore show a VPS Platform update as ready while the mutation path fails closed with `CORE_RELEASE_NOT_READY`.
 
 This AWH-owned compatibility note advances only the normal AWH source-promotion/bootstrap lane so the shared control-plane parser can understand that durable historical repair evidence. It does not move `platform/production`, activate Platform maintenance units, bypass Owner approval, edit historical database rows, or create a second release authority. The VPS Platform payload remains subject to its normal `system.platform.release` runner after the control-plane bootstrap converges.
+
+## 2026-10-05 Hatchet stage validator bootstrap follow-up
+
+Checkpoint `ac51d21d21206a687d3ab38522bf2035d5aeec6d` adds the already-emitted `HATCHET_WORKER_PREPARED` stage to the strict remote deploy output allowlist. The full clean-source test suite passes after this compatibility repair, so this note advances the AWH bootstrap target beyond that checkpoint without moving `platform/production` or changing release authority.
