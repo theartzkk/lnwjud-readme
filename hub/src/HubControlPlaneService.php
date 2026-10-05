@@ -2282,7 +2282,48 @@ final class HubControlPlaneService
         try {
             $store = HubProviderCredentialStore::fromEnvironment('hatchet');
             $configured = $store->configured();
-            return ['schemaVersion' => 1, 'hatchet' => ['credentialConfigured' => $configured, 'state' => $configured ? 'CONFIGURED' : 'NOT_CONFIGURED']];
+            $at = self::timestamp($now ?? gmdate('c')); $epoch = strtotime($at);
+            $heartbeatPath = getenv('AWH_HATCHET_HEARTBEAT_FILE');
+            if (!is_string($heartbeatPath) || trim($heartbeatPath) === '') $heartbeatPath = '/var/lib/awh-hub/hatchet-worker-heartbeat.json';
+            $heartbeat = null; $workerFresh = false; $ageSeconds = null; $freshForSeconds = 15;
+            if (is_file($heartbeatPath)) {
+                $size = @filesize($heartbeatPath);
+                if (is_int($size) && $size > 0 && $size <= 16384) {
+                    $raw = @file_get_contents($heartbeatPath);
+                    try { $decoded = is_string($raw) ? json_decode($raw, true, 16, JSON_THROW_ON_ERROR) : null; }
+                    catch (Throwable) { $decoded = null; }
+                    if (is_array($decoded) && ($decoded['schemaVersion'] ?? null) === 1 && ($decoded['worker'] ?? null) === 'awh-readyidc' && is_string($decoded['lastSeenAt'] ?? null)) {
+                        $seen = strtotime((string) $decoded['lastSeenAt']);
+                        if ($seen !== false && $epoch !== false) {
+                            $intervalMs = is_int($decoded['dispatchIntervalMs'] ?? null) ? max(1000, min(30000, (int) $decoded['dispatchIntervalMs'])) : 2000;
+                            $freshForSeconds = max(15, min(120, (int) ceil($intervalMs / 1000) * 5));
+                            $ageSeconds = max(0, $epoch - $seen);
+                            $workerFresh = $ageSeconds <= $freshForSeconds;
+                            $heartbeat = $decoded;
+                        }
+                    }
+                }
+            }
+            $workerState = is_array($heartbeat) && is_string($heartbeat['state'] ?? null) ? strtoupper((string) $heartbeat['state']) : null;
+            $state = !$configured ? 'NOT_CONFIGURED'
+                : ($workerFresh ? (in_array($workerState, ['DEGRADED','FATAL'], true) ? 'DEGRADED' : 'READY')
+                : ($heartbeat === null ? 'NOT_RUNNING' : 'STALE'));
+            $lastExecutionId = is_array($heartbeat) && is_string($heartbeat['lastExecutionId'] ?? null) && preg_match('/^[0-9a-f-]{36}$/i', (string) $heartbeat['lastExecutionId']) === 1 ? strtolower((string) $heartbeat['lastExecutionId']) : null;
+            return ['schemaVersion' => 2, 'hatchet' => [
+                'credentialConfigured' => $configured,
+                'state' => $state,
+                'worker' => 'awh-readyidc',
+                'workerFresh' => $workerFresh,
+                'workerState' => $workerState,
+                'lastSeenAt' => is_array($heartbeat) && is_string($heartbeat['lastSeenAt'] ?? null) ? (string) $heartbeat['lastSeenAt'] : null,
+                'ageSeconds' => $ageSeconds,
+                'freshForSeconds' => $freshForSeconds,
+                'lastDispatchAt' => is_array($heartbeat) && is_string($heartbeat['lastDispatchAt'] ?? null) ? (string) $heartbeat['lastDispatchAt'] : null,
+                'lastCandidateCount' => is_array($heartbeat) && is_int($heartbeat['lastCandidateCount'] ?? null) ? max(0, (int) $heartbeat['lastCandidateCount']) : null,
+                'lastExecutionId' => $lastExecutionId,
+                'dispatchMode' => 'EXACT_CANONICAL_EXECUTION_ID',
+                'productionMutationAuthority' => false,
+            ]];
         } catch (HubProviderCredentialStoreException $error) { throw new HubControlPlaneException('Hatchet status is unavailable', $error->codeName); }
     }
 

@@ -100,6 +100,9 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.match(js,/loadHatchetStatus/);
   assert.match(js,/renderHatchetOwnerStatus/);
   assert.match(js,/\.\/\?awh-settings=hatchet/);
+  assert.match(js,/READY:'พร้อมทำงาน · worker heartbeat สดและใช้ exact execution ID'/);
+  assert.match(js,/STALE:'สัญญาณ worker เก่า/);
+  assert.match(js,/state!=='READY'/);
   assert.doesNotMatch(js,/Math\.round\(Number\(task\.progress\)\)\+'%'/);
   assert.doesNotMatch(js,/Math\.max\(0,Math\.min\(100,Number\(active\.progress\|\|0\)\)\)\+'%'/);
   assert.match(js,/STALE_RESUMABLE:'กำลังกู้จากงานเดิม'/);

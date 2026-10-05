@@ -500,10 +500,20 @@ function renderProviderHub(data){
   remove.addEventListener('click',async()=>{remove.disabled=true;msg.textContent='กำลังยกเลิก…';try{await updateProviderHubCredential(provider.providerId,'REMOVE',null);await reload();}catch(error){msg.textContent=error instanceof Error?error.message:'ยังยกเลิกไม่ได้';}finally{remove.disabled=false;}});
  }}
 function renderHatchetOwnerStatus(data){
-  const configured=data?.hatchet?.credentialConfigured===true;
+  const value=data?.hatchet||{};
+  const configured=value.credentialConfigured===true;
+  const state=String(value.state||'UNKNOWN');
   const status=$('cp-hatchet-status');
-  if(status)status.textContent=configured?'พร้อมใช้งาน · credential ถูกเก็บแบบไม่แสดงกลับ':'ยังไม่เชื่อม · กดเชื่อมได้จาก AWH โดยตรง';
+  const copy={
+    READY:'พร้อมทำงาน · worker heartbeat สดและใช้ exact execution ID',
+    STALE:'สัญญาณ worker เก่า · งานเดิมยังอยู่ใน canonical execution',
+    DEGRADED:'worker เชื่อมอยู่แต่ dispatch ล่าสุดมีปัญหา · ระบบจะไม่อ้างว่า READY',
+    NOT_RUNNING:'มี credential แต่ยังไม่พบ worker heartbeat',
+    NOT_CONFIGURED:'ยังไม่เชื่อม Hatchet'
+  }[state]||'กำลังตรวจ Hatchet worker';
+  if(status)status.textContent=copy;
   if(!configured)attention('เชื่อม Hatchet Cloud','เหลือเชื่อม token เพื่อให้งานที่ใช้ Cloud worker พร้อมทำงาน','WARNING',{label:'เชื่อมตอนนี้',href:'./?awh-settings=hatchet'});
+  else if(state!=='READY')attention('ตรวจ Hatchet worker',copy,'WARNING',{label:'ดูสุขภาพระบบ',href:'#system-health'});
 }
 function filterMenus(query){
   const q=String(query||'').trim().toLowerCase();

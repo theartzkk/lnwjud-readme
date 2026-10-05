@@ -9,7 +9,21 @@ const php=process.env.AWH_HATCHET_PHP||"/usr/bin/php";
 const bridge=process.env.AWH_HATCHET_BRIDGE||"/opt/awh-hub/control-plane-current/hub/bin/awh-hatchet-execution.php";
 const slots=Math.max(1,Math.min(16,Number(process.env.AWH_HATCHET_SLOTS||4)));
 const dispatchIntervalMs=Math.max(1000,Math.min(30000,Number(process.env.AWH_HATCHET_DISPATCH_INTERVAL_MS||2000)));
+const heartbeatPath=process.env.AWH_HATCHET_HEARTBEAT_FILE||"/var/lib/awh-hub/hatchet-worker-heartbeat.json";
+let lastDispatchAt=null;
+let lastExecutionId=null;
+let lastCandidateCount=0;
+let lastErrorCode=null;
 function fail(code){console.error(code);process.exit(1);}
+function heartbeat(state,extra={}){
+ try{
+  const now=new Date().toISOString();
+  const value={schemaVersion:1,worker:"awh-readyidc",pid:process.pid,state,lastSeenAt:now,slots,dispatchIntervalMs,lastDispatchAt,lastExecutionId,lastCandidateCount,lastErrorCode,...extra};
+  const temp=heartbeatPath+".tmp-"+process.pid;
+  fs.writeFileSync(temp,JSON.stringify(value)+"\n",{encoding:"utf8",mode:0o600});
+  fs.renameSync(temp,heartbeatPath);
+ }catch{console.error("AWH_HATCHET_HEARTBEAT_WRITE_FAILED");}
+}
 if(!fs.existsSync(tokenPath)) fail("AWH_HATCHET_CREDENTIAL_MISSING");
 const token=fs.readFileSync(tokenPath,"utf8").trim();
 if(!token||/\s/.test(token)) fail("AWH_HATCHET_CREDENTIAL_INVALID");
@@ -44,21 +58,32 @@ let dispatching=false;
 async function dispatchOnce(){
  if(dispatching)return;
  dispatching=true;
+ heartbeat("DISPATCHING");
  try{
   const response=await bridgeCall(["candidates",String(Math.min(16,slots*2))],30000);
   const candidates=Array.isArray(response.items)?response.items:[];
+  lastCandidateCount=candidates.length;
+  lastDispatchAt=new Date().toISOString();
+  lastErrorCode=null;
   for(const candidate of candidates){
+   lastExecutionId=typeof candidate?.executionId==="string"?candidate.executionId:lastExecutionId;
    try{await workflow.runNoWait(candidate);}
    catch(error){if(error instanceof IdempotencyCollisionError||error?.name==="IdempotencyCollisionError")continue;throw error;}
   }
+  heartbeat(candidates.length>0?"DISPATCHED":"IDLE");
+ }catch(error){
+  lastErrorCode=String(error?.message||"AWH_HATCHET_DISPATCH_FAILED").slice(0,120);
+  heartbeat("DEGRADED");
+  throw error;
  }finally{dispatching=false;}
 }
 (async()=>{
  const worker=await hatchet.worker("awh-readyidc",{workflows:[workflow],slots});
  const started=worker.start();
  await new Promise(resolve=>setTimeout(resolve,1000));
+ heartbeat("READY");
  console.log("AWH_HATCHET_WORKER_READY authority=execution-only dispatch=exact-id");
  await dispatchOnce().catch(()=>console.error("AWH_HATCHET_DISPATCH_FAILED"));
  const timer=setInterval(()=>dispatchOnce().catch(()=>console.error("AWH_HATCHET_DISPATCH_FAILED")),dispatchIntervalMs);
  try{await started;}finally{clearInterval(timer);}
-})().catch(()=>fail("AWH_HATCHET_WORKER_FATAL"));
+})().catch(()=>{heartbeat("FATAL",{lastErrorCode:"AWH_HATCHET_WORKER_FATAL"});fail("AWH_HATCHET_WORKER_FATAL");});
