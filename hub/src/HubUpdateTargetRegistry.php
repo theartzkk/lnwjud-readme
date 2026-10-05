@@ -387,6 +387,7 @@ final class HubUpdateTargetRegistry
             'test/source-drift-systemd.test.ts',
             'test/system-coherence-health.test.ts',
             'test/test-singleflight.test.mjs',
+            'test/vps-native-core-release.test.ts',
         ];
         if(in_array($path,$platformExact,true))return 'vps-platform';
         if(str_starts_with($path,'deploy/'))return 'vps-platform';
