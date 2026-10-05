@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 
@@ -50,6 +50,12 @@ test('runtime and dependency maintenance are declarative and do not require depl
   assert.match(executable(connectorVerify),/EXPECTED_AGENT_VERSION=\$\(manifest_value version\)/);
   assert.match(executable(browserQa),/manifest_value browserQa\.playwrightVersion/);
   assert.match(executable(browserQa),/manifest_value browserQa\.axeCoreVersion/);
+  if(process.platform!=='win32'){
+    for(const path of ['deploy/qa/install-browser-qa-runtime.sh','scripts/qa/run-vps-chat-continuity.sh','scripts/qa/awh-local-qa.mjs']){
+      const info=await stat(join(root,path));
+      assert.ok((info.mode&0o111)!==0,path+' must remain executable');
+    }
+  }
   assert.match(macInstaller,/device-runtime-release\.json/);
   assert.doesNotMatch(executable(macInstaller),/^EXPECTED=\d+\.\d+\.\d+$/m);
   assert.match(packagedVerifier,/package\.json/);
