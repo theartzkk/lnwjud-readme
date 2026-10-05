@@ -85,7 +85,8 @@ try {
         // A Governor projection failure must not strand already-queued work.
         $governorRun = ['schemaVersion'=>1,'state'=>'DEGRADED','decision'=>'GOVERNOR_DEGRADED','created'=>false,'selectedWork'=>null,'signals'=>[],'reason'=>$error->codeName,'blockedWorkDoesNotStopLoop'=>true,'arbitraryShell'=>false];
     }
-    $batch = $execution->runBatch(4);
+    $hatchetDispatchMode=getenv('AWH_HATCHET_DISPATCH_MODE')==='1';
+    $batch=$hatchetDispatchMode?['processed'=>0,'completed'=>0,'waiting'=>0,'failed'=>0,'recovered'=>0,'continuationRecovered'=>0,'results'=>[]]:$execution->runBatch(4);
     $staffTelemetry = HubInfrastructureService::fromEnvironment()->status();
     $releaseState = HubInfrastructureService::releaseState();
     $storageService = new HubStorageGovernanceService();

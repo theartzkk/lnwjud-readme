@@ -42,6 +42,7 @@ final class HubDurableExecutionService
     private const LEASE_SECONDS = 300;
     private const MAX_ATTEMPTS = 3;
     private const MAX_BATCH_ITEMS = 4;
+    private const MAX_HATCHET_CANDIDATES = 16;
     private const MAX_ASSISTED_EDIT_FILES = 4;
     private const MAX_ASSISTED_EDIT_FILE_BYTES = 131072;
     private const MAX_ASSISTED_EDIT_TOTAL_BYTES = 262144;
@@ -75,6 +76,39 @@ final class HubDurableExecutionService
         $q = $this->pdo->prepare('INSERT INTO control_task_executions(execution_id, task_id, project_id, vault_revision_id, executor_kind, required_capability, state, lease_owner, lease_expires_at, attempt_count, cancellation_requested_at, checkpoint_json, last_error_code, created_at, updated_at) VALUES(:id, :task, :project, :revision, :kind, :capability, :state, NULL, NULL, 0, NULL, :checkpoint, NULL, :at, :at) ON CONFLICT(task_id) DO NOTHING');
         $q->execute(['id' => $executionId, 'task' => $taskId, 'project' => $projectId, 'revision' => $revisionId, 'kind' => $executorKind, 'capability' => $requiredCapability, 'state' => $state, 'checkpoint' => $json, 'at' => $at]);
         if ($q->rowCount() === 1 && HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->ensureExecutionEnvelope($executionId, $at);
+    }
+
+    /** @return list<array{executionId:string,taskId:string,resource:string,requiredCapability:string,productionMutationAuthority:bool}> */
+    public function hatchetCandidates(int $limit = 8, ?string $now = null): array
+    {
+        $this->assertReady();
+        if ($limit < 1 || $limit > self::MAX_HATCHET_CANDIDATES) throw new HubDurableExecutionException('Hatchet candidate bound is invalid', 'EXECUTION_INVALID');
+        $at = self::timestamp($now ?? gmdate('c'));
+        $this->advertise($at); $this->recoverExpired($at); $this->recoverFailedContinuations($at);
+        $this->reconcileRunnableInspections($at); $this->reconcileRecoverableProviderWaits($at);
+        $q = $this->pdo->prepare("SELECT e.*,t.goal,t.conversation_id,t.user_id FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.state='QUEUED' AND e.executor_kind='VPS' AND e.required_capability IN ('agent.conversation','project.read','project.search','project.mutate.text','project.mutate.assisted','artifact.object') AND t.state IN ('QUEUED','WAITING_FOR_WORKER') ORDER BY e.created_at,e.execution_id LIMIT 64");
+        $q->execute(); $out=[];
+        foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){
+            if(!$this->retryEligible($row,$at))continue;
+            $execution=self::uuid((string)($row['execution_id']??'')); $task=self::uuid((string)($row['task_id']??''));
+            $resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind'],is_string($row['checkpoint_json']??null)?(string)$row['checkpoint_json']:null);
+            $hatchetResource=in_array($resource,['READ','CANDIDATE','WORKSPACE'],true)?$resource.':'.$execution:$resource;
+            $out[]=['schemaVersion'=>1,'executionId'=>$execution,'taskId'=>$task,'resource'=>$hatchetResource,'requiredCapability'=>(string)$row['required_capability'],'productionMutationAuthority'=>false];
+            if(count($out)>=$limit)break;
+        }
+        return $out;
+    }
+
+    /** Execute one exact canonical execution id; no alternate queue is created. */
+    public function runExact(string $executionId, ?string $now = null): ?array
+    {
+        $executionId=self::uuid($executionId); $result=$this->runOnce($now,$executionId);
+        if($result!==null)return $result;
+        $q=$this->pdo->prepare('SELECT execution_id,task_id,state FROM control_task_executions WHERE execution_id=:execution');
+        $q->execute(['execution'=>$executionId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+        if(is_array($row)&&in_array((string)$row['state'],['COMPLETED','FAILED','CANCELLED','WAITING_FOR_APPROVAL'],true))
+            return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'state'=>(string)$row['state'],'idempotent'=>true];
+        return null;
     }
 
     /**
@@ -150,9 +184,9 @@ final class HubDurableExecutionService
     }
 
     /** Claims and completes at most one persisted server-native task. */
-    public function runOnce(?string $now = null): ?array
+    public function runOnce(?string $now = null, ?string $executionId = null): ?array
     {
-        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $this->advertise($at); $this->reconcileRunnableInspections($at); $this->reconcileRecoverableProviderWaits($at); $claimed = $this->claim($at);
+        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $this->advertise($at); $this->reconcileRunnableInspections($at); $this->reconcileRecoverableProviderWaits($at); $claimed = $this->claim($at,$executionId);
         if ($claimed === null) return null;
         try {
             $checkpoint = json_decode((string) $claimed['checkpoint_json'], true, 32, JSON_THROW_ON_ERROR);
@@ -313,12 +347,16 @@ final class HubDurableExecutionService
         return $released;
     }
 
-    private function claim(string $at): ?array
+    private function claim(string $at, ?string $executionId = null): ?array
     {
         $this->recoverExpired($at); $expires = gmdate('c', strtotime($at) + self::LEASE_SECONDS);
+        if ($executionId !== null) $executionId = self::uuid($executionId);
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $q = $this->pdo->prepare("SELECT e.*, t.goal, t.conversation_id, t.user_id FROM control_task_executions e JOIN control_tasks t ON t.task_id = e.task_id WHERE e.state = 'QUEUED' AND e.executor_kind = 'VPS' AND e.required_capability IN ('agent.conversation', 'project.read', 'project.search', 'project.mutate.text', 'project.mutate.assisted', 'artifact.object') AND t.state IN ('QUEUED', 'WAITING_FOR_WORKER') ORDER BY e.created_at, e.execution_id LIMIT 25"); $q->execute();
+            $sql="SELECT e.*, t.goal, t.conversation_id, t.user_id FROM control_task_executions e JOIN control_tasks t ON t.task_id = e.task_id WHERE e.state = 'QUEUED' AND e.executor_kind = 'VPS' AND e.required_capability IN ('agent.conversation', 'project.read', 'project.search', 'project.mutate.text', 'project.mutate.assisted', 'artifact.object') AND t.state IN ('QUEUED', 'WAITING_FOR_WORKER')";
+            $params=[]; if($executionId!==null){$sql.=' AND e.execution_id=:execution';$params['execution']=$executionId;}
+            $sql.=' ORDER BY e.created_at, e.execution_id LIMIT '.($executionId===null?'25':'1');
+            $q=$this->pdo->prepare($sql); $q->execute($params);
             $registry=HubCapabilityRegistryService::schemaPresent($this->pdo)?new HubCapabilityRegistryService($this->pdo):null;
             $row = null;
             foreach ($q->fetchAll() as $candidate) {
