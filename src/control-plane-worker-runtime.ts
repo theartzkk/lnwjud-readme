@@ -232,6 +232,10 @@ export async function workerCapabilities(dataDir: string, allowCodex = true, pro
   return composeWorkerHeartbeatCapabilities(executable, tools);
 }
 
+export function workerHeartbeatCapabilitiesWithMode(baseCapabilities: readonly string[], mode: ReturnType<typeof currentAgentMode>): string[] {
+  return composeWorkerHeartbeatCapabilities([modeCapability(mode), ...baseCapabilities], [], 24);
+}
+
 export class ControlPlaneWorkerRuntime {
   private running = false;
   private readonly contextRecoveryAttempts = new Set<string>();
@@ -239,14 +243,25 @@ export class ControlPlaneWorkerRuntime {
 
   constructor(private readonly client: ControlPlaneWorkerClient, private readonly options: WorkerRuntimeOptions) {}
 
+  private async heartbeatCapabilities(): Promise<string[]> {
+    const managedCatalog = await this.client.toolFabricCatalog().catch(() => []);
+    const mode=currentAgentMode(this.options.dataDir);
+    return workerHeartbeatCapabilitiesWithMode(
+      await workerCapabilities(this.options.dataDir, this.options.allowCodex, managedCatalog.map((item) => item.capability)),
+      mode,
+    );
+  }
+
+  async heartbeatOnly(state: 'READY' | 'WORKING' | 'OFFLINE' = 'READY'): Promise<{ deviceId: string; state: string; lastSeenAt: string }> {
+    return this.client.heartbeat(await this.heartbeatCapabilities(), state);
+  }
+
   async runOnce(): Promise<WorkerRunResult> {
     if (this.running) throw new Error('Worker run is already active');
     this.running = true;
     const identity = await loadOrCreateDeviceIdentity(this.options.dataDir);
     try {
-      const managedCatalog = await this.client.toolFabricCatalog().catch(() => []);
-      const mode=currentAgentMode(this.options.dataDir);
-      const capabilities = [...new Set([...(await workerCapabilities(this.options.dataDir, this.options.allowCodex, managedCatalog.map((item) => item.capability))),modeCapability(mode)])];
+      const capabilities = await this.heartbeatCapabilities();
       await this.client.heartbeat(capabilities, 'READY');
       const projects = await this.client.projects().catch((): WorkerProject[] => []);
       await this.reconcileProjectMemoryMetadata(projects).catch(() => undefined);

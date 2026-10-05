@@ -104,6 +104,8 @@ const AWH_RUNTIME_APPROVAL_BRIDGE_MARKER = 'AWH_EXACT_APPROVAL_BRIDGE_V2';
 const AWH_RUNTIME_APPROVAL_INLINE_MARKER = 'AWH_EXACT_APPROVAL_INLINE_V1';
 const AWH_RUNTIME_APPROVAL_BRIDGE_V1_MARKER = 'var AWH_EXACT_APPROVAL_BRIDGE_V1 = true;';
 const AWH_RUNTIME_NATIVE_HOST_NAME = 'AWHDeviceRuntimeHost';
+const AWH_RUNTIME_BUNDLE_ID = 'online.kruart.awh-device-runtime';
+const AWH_RUNTIME_DESIGNATED_REQUIREMENT = '=designated => identifier "online.kruart.awh-device-runtime"';
 let freshAsarReadSequence = 0;
 async function withFreshAsarRead<T>(archive: string, reader: (freshArchive: string) => T): Promise<T> {
   const fresh = archive + '.awh-read-' + String(process.pid) + '-' + String(++freshAsarReadSequence);
@@ -559,7 +561,7 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
     ['CFBundleDisplayName', '-string', 'AWH Device Runtime'],
     ['CFBundleName', '-string', 'AWH Device Runtime'],
     ['CFBundleExecutable', '-string', MAC_RUNTIME_EXECUTABLE],
-    ['CFBundleIdentifier', '-string', 'online.kruart.awh-device-runtime'],
+    ['CFBundleIdentifier', '-string', AWH_RUNTIME_BUNDLE_ID],
   ];
   for (const [key, kind, value] of updates) {
     const result = await execFile('/usr/bin/plutil', ['-replace', key, kind, value, plist], appRoot, 15_000);
@@ -621,7 +623,7 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   await rm(backup, { force: true }).catch(() => undefined);
-  const sign = await execFile('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', appRoot], appRoot, 180_000);
+  const sign = await execFile('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', '-i', AWH_RUNTIME_BUNDLE_ID, '-r', AWH_RUNTIME_DESIGNATED_REQUIREMENT, appRoot], appRoot, 180_000);
   if (sign.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_SIGN_FAILED');
   const finalMain = await readAsarMainFresh(archive);
   if (!finalMain.includes(AWH_HEADLESS_PATCH_MARKER)
@@ -677,29 +679,34 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
     active = isAbsolute(link) ? link : join(root, link);
   } catch {}
   const executable = join(active, 'Contents', 'MacOS', MAC_RUNTIME_EXECUTABLE);
-  const dataPath = join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'device-runtime');
+  const probeRoot = await mkdtemp(join(tmpdir(), 'awh-device-permission-'));
+  const dataPath = join(probeRoot, 'runtime');
   await mkdir(dataPath, { recursive: true, mode: 0o700 });
   const env: NodeJS.ProcessEnv = { ...process.env, AWH_DEVICE_RUNTIME_HEADLESS: '1', LNWJUD_DATA_PATH: dataPath };
   delete env.ELECTRON_RUN_AS_NODE;
-  const result = await execFile(executable, [requestPermissions ? '--awh-permission-setup' : '--awh-permission-status'], active, requestPermissions ? 120_000 : 30_000, env);
-  const line = result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
-  if (!line) throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_MISSING');
-  let value: unknown;
-  try { value = JSON.parse(line); } catch { throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_INVALID'); }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_INVALID');
-  const row = value as Record<string, unknown>;
-  if (row.schemaVersion !== 1 || row.runtime !== 'AWH Device Runtime' || typeof row.accessibility !== 'boolean' || typeof row.screenCapture !== 'string' || typeof row.microphone !== 'string' || typeof row.automation !== 'string' || typeof row.ready !== 'boolean') throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_INVALID');
-  return {
-    schemaVersion: 1,
-    runtime: 'AWH Device Runtime',
-    accessibility: row.accessibility,
-    screenCapture: row.screenCapture,
-    microphone: row.microphone,
-    automation: row.automation,
-    ready: row.ready,
-    requested: requestPermissions,
-    ...(typeof row.error === 'string' ? { error: row.error } : {}),
-  };
+  try {
+    const result = await execFile(executable, [requestPermissions ? '--awh-permission-setup' : '--awh-permission-status'], active, requestPermissions ? 120_000 : 30_000, env);
+    const line = result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
+    if (!line) throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_MISSING');
+    let value: unknown;
+    try { value = JSON.parse(line); } catch { throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_INVALID'); }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_INVALID');
+    const row = value as Record<string, unknown>;
+    if (row.schemaVersion !== 1 || row.runtime !== 'AWH Device Runtime' || typeof row.accessibility !== 'boolean' || typeof row.screenCapture !== 'string' || typeof row.microphone !== 'string' || typeof row.automation !== 'string' || typeof row.ready !== 'boolean') throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_INVALID');
+    return {
+      schemaVersion: 1,
+      runtime: 'AWH Device Runtime',
+      accessibility: row.accessibility,
+      screenCapture: row.screenCapture,
+      microphone: row.microphone,
+      automation: row.automation,
+      ready: row.ready,
+      requested: requestPermissions,
+      ...(typeof row.error === 'string' ? { error: row.error } : {}),
+    };
+  } finally {
+    await rm(probeRoot, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
 async function macEngineVerificationFailure(appRoot: string, arch: 'arm64' | 'x64'): Promise<string | null> {
@@ -736,6 +743,9 @@ async function macEngineVerificationFailure(appRoot: string, arch: 'arm64' | 'x6
     if (typeof hostManifest.sizeBytes !== 'number' || hostInfo.size !== hostManifest.sizeBytes) return 'DEVICE_RUNTIME_VERIFY_NATIVE_HOST_MANIFEST_SIZE';
     const signed = await execFile('/usr/bin/codesign', ['--verify', '--deep', '--strict', appRoot], appRoot, 180_000);
     if (signed.code !== 0) return 'DEVICE_RUNTIME_VERIFY_CODESIGN_' + String(signed.code);
+    const designated = await execFile('/usr/bin/codesign', ['-dr', '-', appRoot], appRoot, 30_000);
+    const designatedText = designated.stdout + '\n' + designated.stderr;
+    if (designated.code !== 0 || !designatedText.includes('designated => identifier "online.kruart.awh-device-runtime"') || designatedText.includes('cdhash H"')) return 'DEVICE_RUNTIME_VERIFY_UNSTABLE_DESIGNATED_REQUIREMENT';
     return null;
   } catch (error) {
     const message = error instanceof Error ? error.message.replace(/[^A-Z0-9_.-]/gi, '_').slice(0, 100) : 'UNKNOWN';
@@ -743,8 +753,14 @@ async function macEngineVerificationFailure(appRoot: string, arch: 'arm64' | 'x6
   }
 }
 
-async function verifyMacEngineBundle(appRoot: string, arch: 'arm64' | 'x64'): Promise<boolean> {
-  return (await macEngineVerificationFailure(appRoot, arch)) === null;
+async function verifyMacEngineBundleStable(appRoot: string, arch: 'arm64' | 'x64', attempts = 3): Promise<{ ok: boolean; failure: string | null }> {
+  let failure: string | null = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    failure = await macEngineVerificationFailure(appRoot, arch);
+    if (failure === null) return { ok: true, failure: null };
+    if (attempt < attempts) await new Promise<void>((resolve) => setTimeout(resolve, attempt * 150));
+  }
+  return { ok: false, failure };
 }
 
 async function installMacEngine(home: string, arch: 'arm64' | 'x64', forceRepair = false): Promise<boolean> {
@@ -758,12 +774,19 @@ async function installMacEngine(home: string, arch: 'arm64' | 'x64', forceRepair
     try {
       const link = (await readlink(current)).trim();
       const active = isAbsolute(link) ? link : join(root, link);
-      if (active.includes(LNWJUD_VERSION) && await verifyMacEngineBundle(active, arch)) {
-        await installMacBridge(home);
-        return false;
+      if (active.includes(LNWJUD_VERSION)) {
+        const verified = await verifyMacEngineBundleStable(active, arch);
+        if (verified.ok) {
+          await installMacBridge(home);
+          return false;
+        }
+        console.warn(`AWH_DEVICE_RUNTIME_ACTIVE_VERIFY_RETRY_EXHAUSTED ${verified.failure ?? 'UNKNOWN'}`);
       }
-    } catch {}
-    if (await verifyMacEngineBundle(target, arch)) {
+    } catch (error) {
+      console.warn(`AWH_DEVICE_RUNTIME_ACTIVE_RESOLVE_FAILED ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const targetVerified = await verifyMacEngineBundleStable(target, arch);
+    if (targetVerified.ok) {
       const nextLink = current + '.next';
       await rm(nextLink, { force: true }).catch(() => undefined);
       await symlink(target, nextLink, 'dir');
@@ -771,6 +794,7 @@ async function installMacEngine(home: string, arch: 'arm64' | 'x64', forceRepair
       await installMacBridge(home);
       return false;
     }
+    console.warn(`AWH_DEVICE_RUNTIME_TARGET_VERIFY_RETRY_EXHAUSTED ${targetVerified.failure ?? 'UNKNOWN'}`);
   }
 
   const work = await mkdtemp(join(tmpdir(), 'awh-lnwjud-'));
@@ -791,13 +815,13 @@ async function installMacEngine(home: string, arch: 'arm64' | 'x64', forceRepair
     if (!app) throw new Error('DEVICE_RUNTIME_PACKAGE_INVALID');
 
     await rebrandMacEngine(app);
-    const stagedFailure = await macEngineVerificationFailure(app, arch);
-    if (stagedFailure) throw new Error('DEVICE_RUNTIME_STAGED_VERIFY_FAILED_' + stagedFailure);
+    const stagedVerification = await verifyMacEngineBundleStable(app, arch);
+    if (!stagedVerification.ok) throw new Error('DEVICE_RUNTIME_STAGED_VERIFY_FAILED_' + (stagedVerification.failure ?? 'UNKNOWN'));
     await rm(staged, { recursive: true, force: true });
     const copy = await execFile('/usr/bin/ditto', [app, staged], work, 180_000);
     if (copy.code !== 0) throw new Error('DEVICE_RUNTIME_STAGED_COPY_FAILED_' + String(copy.code));
-    const copiedFailure = await macEngineVerificationFailure(staged, arch);
-    if (copiedFailure) throw new Error('DEVICE_RUNTIME_STAGED_COPY_VERIFY_FAILED_' + copiedFailure);
+    const copiedVerification = await verifyMacEngineBundleStable(staged, arch);
+    if (!copiedVerification.ok) throw new Error('DEVICE_RUNTIME_STAGED_COPY_VERIFY_FAILED_' + (copiedVerification.failure ?? 'UNKNOWN'));
 
     try { oldCurrent = (await readlink(current)).trim(); } catch { oldCurrent = null; }
     await rm(rollback, { recursive: true, force: true }).catch(() => undefined);
@@ -819,8 +843,8 @@ async function installMacEngine(home: string, arch: 'arm64' | 'x64', forceRepair
       } catch {}
       await rename(currentNext, current);
       await installMacBridge(home);
-      const postSwapFailure = await macEngineVerificationFailure(target, arch);
-      if (postSwapFailure) throw new Error('DEVICE_RUNTIME_POST_SWAP_VERIFY_FAILED_' + postSwapFailure);
+      const postSwapVerification = await verifyMacEngineBundleStable(target, arch);
+      if (!postSwapVerification.ok) throw new Error('DEVICE_RUNTIME_POST_SWAP_VERIFY_FAILED_' + (postSwapVerification.failure ?? 'UNKNOWN'));
 
       const previous = join(root, 'previous');
       const previousNext = previous + '.next';
@@ -893,6 +917,28 @@ async function readinessFile(dataDir: string, result: DeviceBootstrapResult): Pr
   await writeFile(join(dataDir, 'device-runtime-readiness.json'), JSON.stringify({ schemaVersion: 1, ...result, verifiedAt: new Date().toISOString(), source: 'pinned-audited-device-runtime' }, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
 }
 
+async function recoverVerifiedInstalledMacRuntime(dataDir: string, home: string, arch: 'arm64' | 'x64', env: NodeJS.ProcessEnv): Promise<boolean> {
+  const root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud');
+  const current = join(root, 'current');
+  try {
+    const link = (await readlink(current)).trim();
+    const active = isAbsolute(link) ? link : join(root, link);
+    const verified = await verifyMacEngineBundleStable(active, arch);
+    if (!verified.ok) return false;
+    await installMacBridge(home);
+    const smokeRoot = join(dataDir, 'device-runtime-smoke-recovery');
+    const client = await LnwjudDeviceClient.openWithSpec({
+      command: join(active, 'Contents', 'MacOS', MAC_RUNTIME_EXECUTABLE),
+      argsPrefix: ['--mcp-stdio'],
+    }, smokeRoot);
+    try { await client.callTool('health', { operation: 'check_all' }, 20_000); }
+    finally { await client.closeAndWait(); }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.Platform = process.platform, arch: string = process.arch, home = homedir(), env: NodeJS.ProcessEnv = process.env, forceRepair = false): Promise<DeviceBootstrapResult> {
   if (!['darwin', 'win32'].includes(platform)) {
     const result: DeviceBootstrapResult = { state: 'UNSUPPORTED', version: null, installed: false, verified: false, reason: 'PLATFORM_NOT_SUPPORTED' };
@@ -916,6 +962,15 @@ export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.P
     const result: DeviceBootstrapResult = { state: 'READY', version: LNWJUD_VERSION, installed, verified: true, reason: null };
     await readinessFile(dataDir, result); return result;
   } catch (error) {
+    if (platform === 'darwin' && (arch === 'arm64' || arch === 'x64')) {
+      const recovered = await recoverVerifiedInstalledMacRuntime(dataDir, home, arch, env);
+      if (recovered) {
+        console.warn('AWH_DEVICE_RUNTIME_BOOTSTRAP_RECOVERED_INSTALLED_RUNTIME');
+        const result: DeviceBootstrapResult = { state: 'READY', version: LNWJUD_VERSION, installed: true, verified: true, reason: null };
+        await readinessFile(dataDir, result).catch(() => undefined);
+        return result;
+      }
+    }
     const reason = error instanceof Error ? error.message.replace(/[^A-Z0-9_.-]/gi, '_').slice(0, 120) : 'DEVICE_RUNTIME_BOOTSTRAP_FAILED';
     const result: DeviceBootstrapResult = { state: 'FAILED', version: null, installed: false, verified: false, reason };
     await readinessFile(dataDir, result).catch(() => undefined); return result;

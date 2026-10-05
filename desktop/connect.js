@@ -1,5 +1,8 @@
 const $ = (id) => document.getElementById(id);
 let refreshToken = 0;
+let permissionRetryTimer = null;
+let permissionRetryAttempt = 0;
+const PERMISSION_RETRY_DELAYS_MS = [1200, 2500, 5000, 8000, 12000];
 
 function setMessage(id, text, kind = '') {
   const node = $(id); node.textContent = text || ''; node.className = `message ${kind}`.trim();
@@ -14,6 +17,14 @@ function permissionEntry(label, ok, detail, required = true) {
   state.className = ok ? 'permission-ok' : required ? 'permission-missing' : 'permission-optional';
   state.textContent = ok ? 'พร้อม' : required ? 'ต้องอนุญาต' : 'ใช้เมื่อจำเป็น';
   copy.append(title, sub); row.append(copy, state); return row;
+}
+
+function schedulePermissionRetry(permissions, enrolled) {
+  if (permissionRetryTimer) { clearTimeout(permissionRetryTimer); permissionRetryTimer = null; }
+  if (!enrolled || permissions?.ready === true) { permissionRetryAttempt = 0; return; }
+  const delay = PERMISSION_RETRY_DELAYS_MS[Math.min(permissionRetryAttempt, PERMISSION_RETRY_DELAYS_MS.length - 1)];
+  permissionRetryAttempt += 1;
+  permissionRetryTimer = setTimeout(() => { permissionRetryTimer = null; void refresh(); }, delay);
 }
 
 function renderPermissions(permissions, enrolled) {
@@ -36,6 +47,7 @@ function renderPermissions(permissions, enrolled) {
   list.append(permissionEntry('AWH Full Device Control', permissions?.internalReady === true, 'Write · Execute · Codex · Worker'));
   $('authorize-permissions').disabled = ready;
   $('open-permission-settings').disabled = ready || permissions?.platform !== 'darwin';
+  schedulePermissionRetry(permissions, enrolled);
 }
 
 function activityLabel(value) {

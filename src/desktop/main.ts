@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   app,
   BrowserWindow,
+  desktopCapturer,
   dialog,
   globalShortcut,
   ipcMain,
@@ -13,6 +14,7 @@ import {
   nativeImage,
   powerMonitor,
   shell,
+  systemPreferences,
   Tray,
   type OpenDialogOptions,
 } from 'electron';
@@ -30,13 +32,13 @@ import { appendAgentActivity, readAgentActivity } from '../agent-activity-log.js
 import { createDiagnosticsBundle } from '../agent-diagnostics.js';
 import { readAgentWatchdogStatus, startAgentWatchdog, type AgentWatchdogHandle } from '../agent-watchdog.js';
 import { DESKTOP_UPDATE_FOUNDATION } from '../desktop-update-policy.js';
-import { effectiveDesktopUpdateChannel, launchDesktopCoreUpdateSwap, prepareDesktopCoreUpdateSwap, readDesktopCoreUpdateLastResult, resolveDesktopCoreUpdateCandidate, stageDesktopCoreUpdate, writeDesktopCoreUpdateHealth, type DesktopCoreUpdateCandidate } from '../desktop-core-update.js';
+import { effectiveDesktopUpdateChannel, launchDesktopCoreUpdateSwap, prepareDesktopCoreUpdateSwap, readDesktopCoreUpdateLastResult, reconcileDesktopCoreUpdateBackups, resolveDesktopCoreUpdateCandidate, stageDesktopCoreUpdate, writeDesktopCoreUpdateHealth, type DesktopCoreUpdateCandidate } from '../desktop-core-update.js';
 import { prepareRuntimeRepair, resetThisDevice } from '../device-maintenance.js';
 import { loadOrCreateDeviceIdentity, readDeviceIdentity, updateDeviceDisplayName } from '../device-identity.js';
 import { createDesktopCredentialStore, CredentialStoreError } from '../credential-store.js';
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
-import { deviceRuntimePermissionStatus, ensureAwhDeviceRuntime, repairAwhDeviceRuntime, type DeviceRuntimePermissionStatus, type DeviceBootstrapResult } from '../device-bootstrap.js';
+import { ensureAwhDeviceRuntime, repairAwhDeviceRuntime, type DeviceRuntimePermissionStatus, type DeviceBootstrapResult } from '../device-bootstrap.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
 import { ControlPlaneWorkerClient } from '../control-plane-worker-client.js';
 import { ControlPlaneWorkerRuntime } from '../control-plane-worker-runtime.js';
@@ -80,6 +82,8 @@ let lastRemoteRuntime: ReturnType<typeof sanitizedTunnelRuntime> | null = null;
 let autopilotRuntime: { key: string; runner: AutopilotRunner } | null = null;
 let workerRuntime: { key: string; runtime: ControlPlaneWorkerRuntime } | null = null;
 let workerTimer: NodeJS.Timeout | null = null;
+let workerHeartbeatTimer: NodeJS.Timeout | null = null;
+let workerHeartbeatRunning = false;
 let trayRefreshTimer: NodeJS.Timeout | null = null;
 let liveMonitorTimer: NodeJS.Timeout | null = null;
 let emergencyHotkeyReady = false;
@@ -326,7 +330,7 @@ function packagedAgentRuntime(): boolean {
 function packagedWatchdogScriptPath(): string {
   const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
   if (packagedAgentRuntime() && typeof resourcesPath === 'string' && resourcesPath.trim()) {
-    return join(resourcesPath, 'app.asar', 'dist', 'agent-watchdog.js');
+    return join(resourcesPath, 'app.asar.unpacked', 'dist', 'agent-watchdog.js');
   }
   return join(dirname(fileURLToPath(import.meta.url)), '..', 'agent-watchdog.js');
 }
@@ -467,8 +471,15 @@ async function runWorkerOnce() {
   if (workerRunning) return { ok: false, error: 'WORKER_BUSY', message: 'Worker is already running' };
   workerRunning = true;
   refreshTray();
-  try { const result = await controlPlaneWorker(config).runOnce(); workerConnectionState = 'CONNECTED'; lastWorkerError=null; return { ok: true, ...result }; }
-  catch { workerConnectionState = 'OFFLINE'; lastWorkerError='WORKER_RUN_FAILED'; return { ok: false, error: 'WORKER_RUN_FAILED', message: 'Worker could not complete a safe run' }; }
+  try {
+    const result = await controlPlaneWorker(config).runOnce();
+    if (lastWorkerError === 'WORKER_RUN_FAILED') lastWorkerError = null;
+    return { ok: true, ...result };
+  }
+  catch {
+    lastWorkerError='WORKER_RUN_FAILED';
+    return { ok: false, error: 'WORKER_RUN_FAILED', message: 'Worker could not complete a safe run' };
+  }
   finally { workerRunning = false; refreshTray(); }
 }
 
@@ -555,18 +566,49 @@ async function takeOverWorkspace() {
   } catch { return { ok: false, error: 'WORKSPACE_TAKEOVER_FAILED', message: 'AWH ยังรับ workspace นี้ต่อไม่ได้ เพราะ lease หรือ checkpoint ยังไม่พร้อม' }; }
 }
 
+async function runWorkerHeartbeatOnce() {
+  const config = loadConfig();
+  if (!startupPermissionsReady) return { ok: false, error: 'PERMISSIONS_REQUIRED' };
+  if (!config.controlPlaneWorker) return { ok: false, error: 'WORKER_DISABLED' };
+  if (workerHeartbeatRunning) return { ok: false, error: 'HEARTBEAT_BUSY' };
+  workerHeartbeatRunning = true;
+  try {
+    const state = workerRunning ? 'WORKING' : 'READY';
+    const heartbeat = await controlPlaneWorker(config).heartbeatOnly(state);
+    workerConnectionState = 'CONNECTED';
+    if (lastWorkerError === 'WORKER_HEARTBEAT_FAILED') lastWorkerError = null;
+    return { ok: true, ...heartbeat };
+  } catch {
+    workerConnectionState = 'OFFLINE';
+    lastWorkerError = 'WORKER_HEARTBEAT_FAILED';
+    return { ok: false, error: 'WORKER_HEARTBEAT_FAILED' };
+  } finally {
+    workerHeartbeatRunning = false;
+    refreshTray();
+  }
+}
+
 function stopWorkerLoop(): void {
   if (workerTimer) clearInterval(workerTimer);
+  if (workerHeartbeatTimer) clearInterval(workerHeartbeatTimer);
   workerTimer = null;
+  workerHeartbeatTimer = null;
   emergencyStopForeground();
 }
 
 function startWorkerLoop(): void {
   const config = loadConfig();
-  if (!startupPermissionsReady || !config.controlPlaneWorker || workerTimer) return;
-  void runWorkerOnce();
-  workerTimer = setInterval(() => { void runWorkerOnce(); }, 30_000);
-  workerTimer.unref?.();
+  if (!startupPermissionsReady || !config.controlPlaneWorker) return;
+  if (!workerHeartbeatTimer) {
+    void runWorkerHeartbeatOnce();
+    workerHeartbeatTimer = setInterval(() => { void runWorkerHeartbeatOnce(); }, 30_000);
+    workerHeartbeatTimer.unref?.();
+  }
+  if (!workerTimer) {
+    void runWorkerOnce();
+    workerTimer = setInterval(() => { void runWorkerOnce(); }, 30_000);
+    workerTimer.unref?.();
+  }
 }
 
 async function enrollmentState() {
@@ -591,6 +633,23 @@ async function activateConnectedDevicePolicy(): Promise<void> {
 }
 
 
+async function agentOwnedPermissionStatus(requestPermissions = false): Promise<DeviceRuntimePermissionStatus> {
+  if (process.platform !== 'darwin') {
+    return { schemaVersion: 1, runtime: 'AWH Device Runtime', accessibility: true, screenCapture: 'granted', microphone: 'granted', automation: 'granted', ready: true, requested: requestPermissions };
+  }
+  await app.whenReady();
+  const accessibility = systemPreferences.isTrustedAccessibilityClient(requestPermissions === true);
+  let screenCapture = systemPreferences.getMediaAccessStatus('screen');
+  if (requestPermissions === true && screenCapture !== 'granted') {
+    try { await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 }, fetchWindowIcons: false }); } catch {}
+    screenCapture = systemPreferences.getMediaAccessStatus('screen');
+  }
+  const microphone = systemPreferences.getMediaAccessStatus('microphone');
+  const automation = 'unknown';
+  const ready = accessibility === true && screenCapture === 'granted';
+  return { schemaVersion: 1, runtime: 'AWH Device Runtime', accessibility, screenCapture, microphone, automation, ready, requested: requestPermissions };
+}
+
 type StartupPermissionState = {
   ready: boolean;
   platform: NodeJS.Platform;
@@ -612,12 +671,16 @@ async function startupPermissionState(): Promise<StartupPermissionState> {
   const internal = { write: config.allowWrite, execute: config.allowExec, codex: config.allowCodex, worker: config.controlPlaneWorker };
   const internalReady = internal.write && internal.execute && internal.codex && internal.worker;
   let runtime: DeviceRuntimePermissionStatus | null = null;
+  let runtimeError: string | null = null;
   let osReady = true;
   const missing: string[] = [];
 
   if (process.platform === 'darwin') {
-    try { runtime = await deviceRuntimePermissionStatus(undefined, false); }
-    catch { runtime = null; }
+    try { runtime = await agentOwnedPermissionStatus(false); }
+    catch (error) {
+      runtime = null;
+      runtimeError = error instanceof Error ? error.message : String(error);
+    }
     if (runtime?.accessibility !== true) missing.push('accessibility');
     if (runtime?.screenCapture !== 'granted') missing.push('screen-recording');
     // Microphone and Automation are capability-scoped permissions. They are
@@ -632,17 +695,29 @@ async function startupPermissionState(): Promise<StartupPermissionState> {
   if (!internal.worker) missing.push('worker');
 
   const ready = osReady && internalReady;
+  await writeFile(join(config.dataDir, 'permission-state.json'), JSON.stringify({
+    schemaVersion: 1,
+    at: new Date().toISOString(),
+    ready,
+    internalReady,
+    osReady,
+    internal,
+    runtime,
+    runtimeError,
+    missing: [...new Set(missing)],
+  }, null, 2) + '\n', 'utf8').catch(() => undefined);
+  if (ready && stored.permissionSetupVersion !== PERMISSION_SETUP_VERSION) {
+    await saveStoredSettings(config.dataDir, { ...stored, permissionSetupVersion: PERMISSION_SETUP_VERSION });
+  }
   startupPermissionsReady = ready;
-  return { ready, platform: process.platform, internalReady, osReady, setupVersion: stored.permissionSetupVersion ?? null, internal, runtime, missing: [...new Set(missing)] };
+  return { ready, platform: process.platform, internalReady, osReady, setupVersion: ready ? PERMISSION_SETUP_VERSION : stored.permissionSetupVersion ?? null, internal, runtime, missing: [...new Set(missing)] };
 }
 
 async function authorizeStartupPermissions(): Promise<StartupPermissionState & { requested: true }> {
   const config = loadConfig();
-  const bootstrap = await ensureDeviceRuntimeSingleFlight(config.dataDir);
-  lastDeviceRuntimeBootstrap = bootstrap;
   let runtime: DeviceRuntimePermissionStatus | null = null;
-  if (bootstrap.state === 'READY' && process.platform === 'darwin') {
-    try { runtime = await deviceRuntimePermissionStatus(undefined, true); } catch { runtime = null; }
+  if (process.platform === 'darwin') {
+    try { runtime = await agentOwnedPermissionStatus(true); } catch { runtime = null; }
   }
   const stored = loadStoredSettings(config.dataDir);
   const permissionSetupComplete = process.platform !== 'darwin' || (runtime?.accessibility === true && runtime?.screenCapture === 'granted');
@@ -684,6 +759,7 @@ async function openStartupPermissionSettings(kind: unknown): Promise<{ ok: boole
 async function ensureConnectedDeviceRuntime(): Promise<void> {
   const config = loadConfig();
   const runtime = await ensureDeviceRuntimeSingleFlight(config.dataDir);
+  lastDeviceRuntimeBootstrap = runtime;
   if (runtime.state !== 'READY' || !startupPermissionsReady) return;
   // Remote Desktop Commander is an independent fallback transport.
   // AWH must never provision or start a second RDC runtime from inside the Agent.
@@ -1469,19 +1545,24 @@ async function startAfterReady(): Promise<void> {
   const config = loadConfig();
   await agentWatchdog?.markHealthy().catch(() => undefined);
   const localEnrollment = await enrollmentState().catch(() => ({ ok: false, enrolled: false, hubConfigured: Boolean(config.hubApiBase) }));
-  const stored = loadStoredSettings(config.dataDir);
-  const firstPermissionSetup = process.platform === 'darwin' && stored.permissionSetupVersion !== PERMISSION_SETUP_VERSION;
-  if (localEnrollment.enrolled !== true || firstPermissionSetup) showLocalBridge();
+  if (localEnrollment.enrolled !== true) showLocalBridge();
   void (async () => {
-    lastDeviceRuntimeBootstrap = await ensureDeviceRuntimeSingleFlight(config.dataDir);
-    const permissions = await startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState));
+    let permissions = await startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState));
+    if (permissions.ready !== true && process.platform === 'darwin') {
+      const requested = await authorizeStartupPermissions().catch(() => null);
+      if (requested) permissions = requested;
+    }
     if (permissions.ready !== true) {
       showLocalBridge();
       return;
     }
     startWorkerLoop();
-    await ensureConnectedDeviceRuntime().catch(() => undefined);
-    if (loadConfig().controlPlaneWorker) void runWorkerOnce();
+    void reconcileDesktopCoreUpdateBackups().catch((error) => {
+      console.warn(`AWH_AGENT_BACKUP_CLEANUP_FAILED ${error instanceof Error ? error.message : String(error)}`);
+    });
+    void ensureConnectedDeviceRuntime().catch((error) => {
+      console.warn(`AWH_DEVICE_RUNTIME_BACKGROUND_BOOTSTRAP_FAILED ${error instanceof Error ? error.message : String(error)}`);
+    });
   })();
   app.on('activate', () => {
     void (async () => {

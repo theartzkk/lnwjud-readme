@@ -52,7 +52,7 @@ test('packaged Agent starts its production watchdog before app ready and keeps s
   assert.match(source, /startCrashWatchdog\(\);[\s\S]*startCrashWatchdogMonitor\(\);[\s\S]*mainWindow = await createWindow\(false\);/);
   assert.match(source, /function packagedWatchdogScriptPath\(\): string/);
   assert.match(source, /resourcesPath.*process as NodeJS\.Process/);
-  assert.match(source, /join\(resourcesPath, 'app\.asar', 'dist', 'agent-watchdog\.js'\)/);
+  assert.match(source, /join\(resourcesPath, 'app\.asar\.unpacked', 'dist', 'agent-watchdog\.js'\)/);
   assert.match(source, /fileURLToPath\(import\.meta\.url\)/);
   assert.match(source, /startAgentWatchdog\(config\.dataDir, process\.execPath, packagedWatchdogScriptPath\(\)\)/);
   assert.doesNotMatch(source, /startAgentWatchdog\(config\.dataDir, process\.execPath, join\(app\.getAppPath\(\), 'dist', 'agent-watchdog\.js'\)\)/);
@@ -95,8 +95,19 @@ test('core permission bootstrap is Accessibility plus Screen Recording only', ()
   assert.match(source, /if \(nextMain\.includes\(permissionDispatch\)\)[\s\S]*else if \(nextMain\.includes\(runtimeDispatch\)\)/);
   assert.match(source, /const ready = accessibility === true && screenCapture === "granted";/);
   assert.doesNotMatch(source, /askForMediaAccess\("microphone"\)/);
+  assert.match(source, /mkdtemp\(join\(tmpdir\(\), 'awh-device-permission-'\)\)/);
+  assert.match(source, /LNWJUD_DATA_PATH: dataPath/);
+  assert.match(source, /await rm\(probeRoot, \{ recursive: true, force: true \}\)/);
   const desktop = readFileSync(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  assert.match(desktop, /async function agentOwnedPermissionStatus\(requestPermissions = false\)/);
+  assert.match(desktop, /systemPreferences\.isTrustedAccessibilityClient\(requestPermissions === true\)/);
+  assert.match(desktop, /systemPreferences\.getMediaAccessStatus\('screen'\)/);
+  assert.match(desktop, /desktopCapturer\.getSources\(\{ types: \['screen'\]/);
+  assert.doesNotMatch(desktop, /deviceRuntimePermissionStatus\(/);
+  assert.match(desktop, /if \(permissions\.ready !== true && process\.platform === 'darwin'\)[\s\S]*authorizeStartupPermissions\(\)/);
   assert.match(desktop, /osReady = runtime !== null && runtime\.accessibility === true && runtime\.screenCapture === 'granted';/);
+  assert.match(desktop, /if \(ready && stored\.permissionSetupVersion !== PERMISSION_SETUP_VERSION\)[\s\S]*permissionSetupVersion: PERMISSION_SETUP_VERSION/);
+  assert.doesNotMatch(desktop, /firstPermissionSetup/);
 });
 
 test('AWH Agent cannot provision an internal Remote Desktop Commander/SystemRuntime duplicate', () => {
@@ -130,6 +141,14 @@ test('macOS Device Runtime patch reconciles Accessibility health and removes leg
   assert.match(source, /\.awh-read-/);
   assert.match(source, /codesign[\s\S]*--verify[\s\S]*--deep[\s\S]*--strict[\s\S]*180_000/);
   assert.match(source, /codesign', \['--verify', '--deep', '--strict', appRoot\], appRoot, 180_000/);
+  assert.match(source, /DEVICE_RUNTIME_VERIFY_UNSTABLE_DESIGNATED_REQUIREMENT/);
+  assert.match(source, /verifyMacEngineBundleStable\(appRoot: string, arch: 'arm64' \| 'x64', attempts = 3\)/);
+  assert.match(source, /setTimeout\(resolve, attempt \* 150\)/);
+  assert.match(source, /AWH_DEVICE_RUNTIME_ACTIVE_VERIFY_RETRY_EXHAUSTED/);
+  assert.match(source, /AWH_DEVICE_RUNTIME_TARGET_VERIFY_RETRY_EXHAUSTED/);
+  assert.match(source, /verifyMacEngineBundleStable\(app, arch\)/);
+  assert.match(source, /verifyMacEngineBundleStable\(staged, arch\)/);
+  assert.match(source, /verifyMacEngineBundleStable\(target, arch\)/);
 });
 
 test('headless Device Runtime honors one explicit exact-action owner approval exactly once', () => {
@@ -169,5 +188,33 @@ test('desktop device runtime bootstrap is single-flight across concurrent caller
   assert.match(source, /const active = await deviceRuntimeBootstrapInFlight;/);
   assert.match(source, /forceRepair \? repairAwhDeviceRuntime\(dataDir\) : ensureAwhDeviceRuntime\(dataDir\)/);
   assert.match(source, /ensureDeviceRuntimeSingleFlight\(config\.dataDir, true\)/);
-  assert.equal(source.match(/ensureDeviceRuntimeSingleFlight\(config\.dataDir/g)?.length, 4);
+  assert.equal(source.match(/ensureDeviceRuntimeSingleFlight\(config\.dataDir/g)?.length, 2);
+});
+
+test('desktop worker heartbeat is not blocked by Device Runtime bootstrap or permission authorization', () => {
+  const source = readFileSync(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const authorizeStart = source.indexOf('async function authorizeStartupPermissions()');
+  const authorizeEnd = source.indexOf('async function openStartupPermissionSettings', authorizeStart);
+  const authorize = source.slice(authorizeStart, authorizeEnd);
+  assert.doesNotMatch(authorize, /await ensureDeviceRuntimeSingleFlight/);
+
+  const startReady = source.indexOf('async function startAfterReady()');
+  const appActivate = source.indexOf("app.on('activate'", startReady);
+  const startup = source.slice(startReady, appActivate);
+  const permissionIndex = startup.indexOf('startupPermissionState()');
+  const workerIndex = startup.indexOf('startWorkerLoop()');
+  const cleanupIndex = startup.indexOf('void reconcileDesktopCoreUpdateBackups()');
+  const runtimeIndex = startup.indexOf('void ensureConnectedDeviceRuntime()');
+  assert.ok(permissionIndex >= 0 && workerIndex > permissionIndex && cleanupIndex > workerIndex && runtimeIndex > workerIndex);
+  assert.doesNotMatch(startup.slice(permissionIndex, workerIndex), /await ensureDeviceRuntimeSingleFlight|await reconcileDesktopCoreUpdateBackups/);
+  assert.match(source, /lastDeviceRuntimeBootstrap = runtime;/);
+  assert.match(source, /let workerHeartbeatTimer: NodeJS\.Timeout \| null = null;/);
+  assert.match(source, /async function runWorkerHeartbeatOnce\(\)/);
+  assert.match(source, /controlPlaneWorker\(config\)\.heartbeatOnly\(state\)/);
+  assert.match(source, /workerHeartbeatTimer = setInterval\(\(\) => \{ void runWorkerHeartbeatOnce\(\); \}, 30_000\)/);
+  assert.match(source, /workerTimer = setInterval\(\(\) => \{ void runWorkerOnce\(\); \}, 30_000\)/);
+  const bootstrapSource = readFileSync(new URL('../src/device-bootstrap.ts', import.meta.url), 'utf8');
+  const clientSource = readFileSync(new URL('../src/lnwjud-device-client.ts', import.meta.url), 'utf8');
+  assert.match(bootstrapSource, /LnwjudDeviceClient\.openWithSpec\([\s\S]*MAC_RUNTIME_EXECUTABLE/);
+  assert.match(clientSource, /static async openWithSpec\(spec: LnwjudLaunchSpec, workspace: string\)/);
 });

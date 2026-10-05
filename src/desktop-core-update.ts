@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { access, chmod, cp, lstat, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { access, chmod, cp, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep, win32 as pathWin32 } from 'node:path';
 import { spawn } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
@@ -151,6 +151,43 @@ export function currentApplicationRoot(platform:NodeJS.Platform=process.platform
     return execPath.slice(0,index+4);
   }
   throw new Error('CORE_UPDATE_PLATFORM_UNSUPPORTED');
+}
+
+export async function reconcileDesktopCoreUpdateBackups(platform:NodeJS.Platform=process.platform,execPath=process.execPath):Promise<{previousRoot:string|null;removed:string[]}>{
+  if(platform!=='darwin')return {previousRoot:null,removed:[]};
+  const currentRoot=currentApplicationRoot(platform,execPath),parent=dirname(currentRoot),base=basename(currentRoot),previousRoot=currentRoot+'.previous';
+  const legacy:Array<{path:string;mtimeMs:number;rollback:boolean}>=[];
+  for(const entry of await readdir(parent,{withFileTypes:true})){
+    const name=entry.name,full=join(parent,name);
+    if(full===currentRoot||full===previousRoot)continue;
+    const rollback=name===base+'.awh-previous'||name.startsWith(base+'.awh-prev-')||name.startsWith(base+'.rollback-')||(name.startsWith(base+'.pre-')&&name.endsWith('-runtime-repair'));
+    const transient=name.startsWith(base+'.awh-next-')||name.startsWith(base+'.failed-');
+    if(!rollback&&!transient)continue;
+    let info;
+    try{info=await lstat(full);}catch{continue;}
+    if(!info.isDirectory()||info.isSymbolicLink())continue;
+    legacy.push({path:full,mtimeMs:info.mtimeMs,rollback});
+  }
+  let retained:string|null=null;
+  try{
+    const info=await lstat(previousRoot);
+    if(info.isDirectory()&&!info.isSymbolicLink())retained=previousRoot;
+  }catch{}
+  const removed:string[]=[];
+  if(retained===null){
+    const candidate=legacy.filter((item)=>item.rollback).sort((a,b)=>b.mtimeMs-a.mtimeMs)[0];
+    if(candidate){
+      await rename(candidate.path,previousRoot);
+      retained=previousRoot;
+      const index=legacy.indexOf(candidate);
+      if(index>=0)legacy.splice(index,1);
+    }
+  }
+  for(const item of legacy){
+    await rm(item.path,{recursive:true,force:true});
+    removed.push(item.path);
+  }
+  return {previousRoot:retained,removed};
 }
 
 function executableRelative(appRoot:string,execPath:string):string{

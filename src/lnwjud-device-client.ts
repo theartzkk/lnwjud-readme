@@ -113,14 +113,18 @@ export class LnwjudDeviceClient {
     this.process.once('exit', (code) => this.rejectAll(new Error('AWH_DEVICE_RUNTIME_EXIT_' + String(code ?? -1))));
   }
 
-  static async open(workspace: string): Promise<LnwjudDeviceClient> {
-    const spec = await discoverLnwjudLaunchSpec();
-    if (!spec) throw new Error('AWH_DEVICE_RUNTIME_UNAVAILABLE');
+  static async openWithSpec(spec: LnwjudLaunchSpec, workspace: string): Promise<LnwjudDeviceClient> {
     await mkdir(workspace, { recursive: true, mode: 0o700 });
     const client = new LnwjudDeviceClient(spec, workspace);
     const discovered = await client.request('server/discover', {});
     if (!discovered || typeof discovered !== 'object' || Array.isArray(discovered) || !('result' in (discovered as Record<string, unknown>))) { client.close(); throw new Error('AWH_DEVICE_RUNTIME_PROTOCOL_UNAVAILABLE'); }
     return client;
+  }
+
+  static async open(workspace: string): Promise<LnwjudDeviceClient> {
+    const spec = await discoverLnwjudLaunchSpec();
+    if (!spec) throw new Error('AWH_DEVICE_RUNTIME_UNAVAILABLE');
+    return this.openWithSpec(spec, workspace);
   }
 
   private meta(): Record<string, unknown> {

@@ -56,9 +56,12 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
   assert.match(forge, /const icon = targetPlatform/);
   assert.match(forge, /\n    icon,\n/);
   assert.match(forge, /noMsi:\s*true/);
+  assert.match(forge, /asar:\s*\{\s*unpack:\s*'\*\*\/dist\/agent-watchdog\.js'\s*\}/);
+  assert.match(desktop, /app\.asar\.unpacked[',\s]+['"]dist['"][,\s]+['"]agent-watchdog\.js['"]/);
   assert.match(forge, /\^\\\/dist-web\(\$\|\\\/\)/);
   assert.match(forge, /\^\\\/out\(\$\|\\\/\)/);
   assert.match(forge, /\^\\\/\\\.awh\(\$\|\\\/\)/);
+  assert.match(forge, /\^\\\/\\\.worktrees\(\$\|\\\/\)/);
   assert.match(forge, /\^\\\/\\\.awh-local\(\$\|\\\/\)/);
   assert.match(forge, /\^\\\/\\\.git\(\$\|\\\/\)/);
   assert.match(desktop, /SQUIRREL_STARTUP/);

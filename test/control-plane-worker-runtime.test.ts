@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from '../src/control-plane-worker-client.js';
-import { buildCodexTaskInstruction, deviceExecutionCapabilities, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
+import { buildCodexTaskInstruction, deviceExecutionCapabilities, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities, workerHeartbeatCapabilitiesWithMode } from '../src/control-plane-worker-runtime.js';
 import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
 import { execCommand } from '../src/process.js';
 import { normalizedDeviceActionArguments, type DeviceAction } from '../src/lnwjud-device-client.js';
@@ -52,6 +52,15 @@ test('device process primitives inherit the active AWH workspace id without cont
   assert.equal(normalizedDeviceActionArguments(action('input_event'), workspaceId).userConfirmed, true);
   assert.equal('workspaceId' in normalizedDeviceActionArguments(action('dom_cdp'), workspaceId), false);
   assert.equal('workspaceId' in normalizedDeviceActionArguments(action('read_file'), workspaceId), false);
+});
+
+test('worker heartbeat reserves one bounded slot for runtime mode', () => {
+  const base = Array.from({ length: 24 }, (_, index) => `cap.fixture.${String(index).padStart(2, '0')}`);
+  const heartbeat = workerHeartbeatCapabilitiesWithMode(base, 'ON');
+  assert.equal(heartbeat.length, 24);
+  assert.equal(heartbeat[0], 'runtime.ai.on');
+  assert.equal(heartbeat.includes('cap.fixture.00'), true);
+  assert.equal(heartbeat.includes('cap.fixture.23'), false);
 });
 
 test('desktop worker runtime is wired to heartbeat and truthful idle state', async () => {

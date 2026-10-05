@@ -8,6 +8,7 @@ import {
   desktopPackagePath,
   effectiveDesktopUpdateChannel,
   prepareDesktopCoreUpdateSwap,
+  reconcileDesktopCoreUpdateBackups,
   resolveDesktopCoreUpdateCandidate,
   writeDesktopCoreUpdateHealth,
   type StagedDesktopCoreUpdate,
@@ -54,6 +55,28 @@ test('atomic swap preparation copies next release beside current app and emits r
   const helper=await readFile(plan.helper,'utf8');
   assert.match(helper,/HEALTH_FAILED/);assert.match(helper,/mv "\$PREVIOUS" "\$CURRENT"/);
   assert.equal(plan.previousRoot,current+'.previous');
+});
+
+test('mac backup reconciliation retains one rollback and removes stale repair/update copies',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'awh-core-cleanup-'));
+  const current=join(root,'AWH Agent.app'),execPath=join(current,'Contents','MacOS','AWH Agent');
+  await mkdir(join(current,'Contents','MacOS'),{recursive:true});await writeFile(execPath,'current');
+  const legacyRollback=current+'.awh-prev-d213',legacyNext=current+'.awh-next-old',legacyFailed=current+'.failed-old',legacyRepair=current+'.pre-73428-runtime-repair';
+  for(const path of [legacyRollback,legacyNext,legacyFailed,legacyRepair])await mkdir(path,{recursive:true});
+  const first=await reconcileDesktopCoreUpdateBackups('darwin',execPath);
+  assert.equal(first.previousRoot,current+'.previous');
+  await access(current+'.previous');
+  await assert.rejects(()=>access(legacyNext));
+  await assert.rejects(()=>access(legacyFailed));
+  await assert.rejects(()=>access(legacyRepair));
+  await assert.rejects(()=>access(legacyRollback));
+  const secondRollback=current+'.awh-prev-repeat',secondNext=current+'.awh-next-repeat';
+  await mkdir(secondRollback,{recursive:true});await mkdir(secondNext,{recursive:true});
+  const second=await reconcileDesktopCoreUpdateBackups('darwin',execPath);
+  assert.equal(second.previousRoot,current+'.previous');
+  await access(current+'.previous');
+  await assert.rejects(()=>access(secondRollback));
+  await assert.rejects(()=>access(secondNext));
 });
 
 test('core update health marker is constrained to AWH update root',async()=>{

@@ -133,9 +133,14 @@ test('default desktop surface is a thin AWH Agent bridge and keeps advanced cont
   assert.match(main, /startupPermissionState/);
   assert.match(main, /authorizeStartupPermissions/);
   assert.match(main, /PERMISSIONS_REQUIRED/);
-  assert.match(main, /if \(!startupPermissionsReady \|\| !config\.controlPlaneWorker \|\| workerTimer\) return/);
+  assert.match(main, /if \(!startupPermissionsReady \|\| !config\.controlPlaneWorker\) return/);
+  assert.match(main, /if \(!workerHeartbeatTimer\)[\s\S]*runWorkerHeartbeatOnce/);
+  assert.match(main, /if \(!workerTimer\)[\s\S]*runWorkerOnce/);
   assert.match(renderer, /Promise\.allSettled/);
   assert.match(renderer, /window\.awhConnect\.getPermissionState/);
+  assert.match(renderer, /PERMISSION_RETRY_DELAYS_MS = \[1200, 2500, 5000, 8000, 12000\]/);
+  assert.match(renderer, /schedulePermissionRetry\(permissions, enrolled\)/);
+  assert.match(renderer, /permissionRetryTimer = setTimeout\(\(\) => \{ permissionRetryTimer = null; void refresh\(\); \}, delay\)/);
   assert.match(renderer, /window\.awhConnect\.authorizePermissions/);
   assert.match(renderer, /window\.awhConnect\.openAwhWeb/);
   assert.match(renderer, /window\.awhConnect\.login/);
