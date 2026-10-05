@@ -1,12 +1,38 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "authority": "design/UX-ACCEPTANCE.md",
+  "minimumDocumentWidth": 320,
   "viewports": [
-    { "id": "mobile-390", "width": 390, "height": 844, "required": true },
-    { "id": "mobile-430", "width": 430, "height": 932, "required": true },
-    { "id": "tablet-820", "width": 820, "height": 1180, "required": true },
-    { "id": "desktop-1366", "width": 1366, "height": 768, "required": true },
-    { "id": "desktop-1440", "width": 1440, "height": 900, "required": true }
+    {
+      "id": "mobile-390",
+      "width": 390,
+      "height": 844,
+      "required": true
+    },
+    {
+      "id": "mobile-430",
+      "width": 430,
+      "height": 932,
+      "required": true
+    },
+    {
+      "id": "tablet-820",
+      "width": 820,
+      "height": 1180,
+      "required": true
+    },
+    {
+      "id": "desktop-1366",
+      "width": 1366,
+      "height": 768,
+      "required": true
+    },
+    {
+      "id": "desktop-1440",
+      "width": 1440,
+      "height": 900,
+      "required": true
+    }
   ],
   "universalAssertions": [
     "http-success",
@@ -17,29 +43,121 @@
     "thai-not-clipped",
     "approved-asset-authority",
     "no-unintended-layout-flash",
-    "navigation-owner-correct"
+    "navigation-owner-correct",
+    "primary-action-visible",
+    "touch-target-contract",
+    "focus-not-obscured",
+    "loading-error-recovery-deliberate",
+    "overlay-focus-owner-correct",
+    "long-thai-content-safe",
+    "role-presentation-correct"
   ],
   "surfaces": {
     "awh": {
       "overlay": "design/overlays/awh.md",
-      "scenarios": ["public-root", "authenticated-root-portfolio", "workspace-chat", "tasks", "profile-menu"],
-      "keyboardViewports": ["mobile-390", "mobile-430"]
+      "scenarios": [
+        "public-root",
+        "authenticated-root-portfolio",
+        "workspace-chat",
+        "tasks",
+        "profile-menu",
+        "control-panel",
+        "settings"
+      ],
+      "keyboardViewports": [
+        "mobile-390",
+        "mobile-430"
+      ]
     },
     "bay-excuse-x": {
       "overlay": "design/overlays/bay-excuse-x.md",
-      "scenarios": ["dashboard", "attendance", "timetable", "student-care", "control-center"]
+      "scenarios": [
+        "dashboard",
+        "attendance",
+        "timetable",
+        "student-care",
+        "control-center",
+        "student-card",
+        "role-navigation"
+      ]
+    },
+    "bay-assessment": {
+      "overlay": "design/overlays/bay-assessment.md",
+      "scenarios": [
+        "teacher-entry",
+        "submission-status",
+        "answer-key-edit",
+        "print-center",
+        "answer-sheet",
+        "scanner-review",
+        "logout"
+      ],
+      "keyboardViewports": [
+        "mobile-390",
+        "mobile-430"
+      ]
+    },
+    "bay-cooperative": {
+      "overlay": "design/overlays/bay-cooperative.md",
+      "scenarios": [
+        "pos-ready",
+        "student-selected",
+        "amount-entry",
+        "commit-success",
+        "offline-queue",
+        "daily-close"
+      ],
+      "keyboardViewports": [
+        "mobile-390",
+        "mobile-430"
+      ]
     },
     "bay-learnlab": {
       "overlay": "design/overlays/bay-learnlab.md",
-      "scenarios": ["student", "teacher-workspace", "classroom-live", "projector"]
+      "scenarios": [
+        "student",
+        "teacher-workspace",
+        "worksheet-studio",
+        "classroom-live",
+        "projector"
+      ],
+      "keyboardViewports": [
+        "mobile-390",
+        "mobile-430"
+      ]
+    },
+    "bay-line": {
+      "overlay": "design/overlays/bay-line.md",
+      "scenarios": [
+        "rich-menu-teacher",
+        "rich-menu-cooperative",
+        "rich-menu-admin",
+        "mini-app-entry",
+        "substitute-teaching-flow",
+        "permission-denied"
+      ],
+      "keyboardViewports": [
+        "mobile-390",
+        "mobile-430"
+      ]
     },
     "school-website": {
       "overlay": "design/overlays/school-website.md",
-      "scenarios": ["public-home", "news-content", "parent-connect-entry"]
+      "scenarios": [
+        "public-home",
+        "news-content",
+        "services",
+        "parent-connect-entry",
+        "search",
+        "role-launcher"
+      ]
     },
     "bay-hub": {
       "overlay": "design/overlays/bay-hub.md",
-      "scenarios": ["ecosystem-home", "release-status"]
+      "scenarios": [
+        "ecosystem-home",
+        "release-status"
+      ]
     }
   }
 }
