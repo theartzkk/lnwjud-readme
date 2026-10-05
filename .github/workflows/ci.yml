@@ -1,3 +1,4 @@
+# CI rationalization: migration-safe contracts must accept only explicitly supported marker shapes.
 name: CI
 
 on:
