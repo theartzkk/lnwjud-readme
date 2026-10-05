@@ -615,7 +615,8 @@ test('Update Center owner actions keep target-scoped feedback and expose only sa
   assert.match(script,/item\.canCancel===true&&item\.taskId/);
   assert.match(script,/await cancelTask\(item\.taskId\)/);
   assert.match(script,/TASK_NOT_CANCELLABLE/);
-  assert.match(script,/event\?\.state\|\|item\?\.taskState/);
+  assert.match(script,/const state=String\(event\?\.state\|\|item\?\.taskState\|\|''\)\.toUpperCase\(\)/);
+  assert.doesNotMatch(script,/const progress=Math\.max\(0,Math\.min\(100,Number\(event\?\.progress/);
   assert.match(script,/item\?\.canCancel===true/);
   assert.match(script,/function reconcileTargetFeedback\(item\)/);
   assert.match(script,/item\.state==='UPDATE_AVAILABLE'&&item\.actionable===true&&!item\.taskId&&!item\.approvalId/);
