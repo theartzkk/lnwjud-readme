@@ -365,6 +365,9 @@ final class HubCoreReleaseService
             if(!is_array($checkpoint)||($checkpoint['repository']??null)!=='awh')continue;
             $target=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
             if(preg_match('/^[0-9a-f]{40}$/',$target)!==1||preg_match('/^[0-9a-f]{40}$/',$base)!==1)continue;
+            $metadataRepair=($checkpoint['metadataRepair']??false)===true;
+            $repairKind=is_string($checkpoint['repairKind']??null)?(string)$checkpoint['repairKind']:'';
+            if($metadataRepair&&$repairKind==='SOURCE_PROMOTION_CHAIN_GAP')continue;
             $notes=is_array($checkpoint['releaseNotes']??null)?$checkpoint['releaseNotes']:null;
             $track=is_array($notes)&&is_string($notes['releaseTrack']??null)?strtolower((string)$notes['releaseTrack']):null;
             if($track===null){
@@ -378,6 +381,8 @@ final class HubCoreReleaseService
             $audit=['sha'=>$target,'previousSha'=>$base,'authority'=>'SOURCE_PROMOTION_AUDIT','releaseTrack'=>$track,'observedAt'=>(string)$row['updated_at']];
             $missionId=is_string($checkpoint['missionExecutionId']??null)?strtolower((string)$checkpoint['missionExecutionId']):null;
             $bundleSha=is_string($checkpoint['bundleSha256']??null)?strtolower((string)$checkpoint['bundleSha256']):null;
+            if(($bundleSha===null||preg_match('/^[a-f0-9]{64}$/',$bundleSha)!==1)&&$metadataRepair&&is_array($notes))
+                $bundleSha=HubUpdateTargetRegistry::sourceMetadataRepairDigest('awh',$base,$target,$notes,$repairKind);
             if(is_string($missionId)&&preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/',$missionId)===1)$audit['missionExecutionId']=$missionId;
             if(is_string($bundleSha)&&preg_match('/^[a-f0-9]{64}$/',$bundleSha)===1)$audit['artifactDigest']=$bundleSha;
             if(is_array($notes))$audit['releaseNotes']=$notes;
@@ -450,7 +455,12 @@ final class HubCoreReleaseService
             if(!is_array($checkpoint)||($checkpoint['repository']??null)!=='awh')continue;
             $segmentTarget=strtolower((string)($checkpoint['targetSha']??''));$segmentBase=strtolower((string)($checkpoint['expectedMainSha']??''));
             $bundle=strtolower((string)($checkpoint['bundleSha256']??''));$notes=$checkpoint['releaseNotes']??null;
-            if(preg_match('/^[a-f0-9]{40}$/',$segmentTarget)!==1||preg_match('/^[a-f0-9]{40}$/',$segmentBase)!==1||preg_match('/^[a-f0-9]{64}$/',$bundle)!==1||!is_array($notes))continue;
+            if(preg_match('/^[a-f0-9]{40}$/',$segmentTarget)!==1||preg_match('/^[a-f0-9]{40}$/',$segmentBase)!==1||!is_array($notes))continue;
+            if(preg_match('/^[a-f0-9]{64}$/',$bundle)!==1){
+                if(($checkpoint['metadataRepair']??false)!==true)continue;
+                $repairKind=is_string($checkpoint['repairKind']??null)?(string)$checkpoint['repairKind']:'SOURCE_PROMOTION_METADATA_REPAIR';
+                $bundle=HubUpdateTargetRegistry::sourceMetadataRepairDigest('awh',$segmentBase,$segmentTarget,$notes,$repairKind);
+            }
             $track=is_string($notes['releaseTrack']??null)?strtolower((string)$notes['releaseTrack']):'awh';
             if(!isset($byTarget[$segmentTarget]))$byTarget[$segmentTarget]=[
                 'base'=>$segmentBase,'target'=>$segmentTarget,'track'=>$track,'bundleSha256'=>$bundle,

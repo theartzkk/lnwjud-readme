@@ -194,6 +194,20 @@ final class HubUpdateTargetRegistry
         return ['tracks'=>$list,'sharedPaths'=>$shared,'ownedPaths'=>$owned];
     }
 
+    /** @param array<string,mixed> $releaseNotes */
+    public static function sourceMetadataRepairDigest(string $repository,string $base,string $target,array $releaseNotes,string $repairKind): string
+    {
+        return hash('sha256',json_encode([
+            'schemaVersion'=>1,
+            'kind'=>'SOURCE_PROMOTION_METADATA_REPAIR',
+            'repository'=>strtolower(trim($repository)),
+            'baseSha'=>strtolower(trim($base)),
+            'targetSha'=>strtolower(trim($target)),
+            'repairKind'=>$repairKind,
+            'releaseNotes'=>$releaseNotes,
+        ],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));
+    }
+
     /** @param list<string> $paths */
     private static function bayReleaseTrackForPaths(array $paths): ?string
     {

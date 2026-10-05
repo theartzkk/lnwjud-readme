@@ -1043,9 +1043,11 @@ final class HubOperatorBridgeService
         if(!$predecessor||(!$successor&&!$tipRepair))throw new HubOperatorBridgeException('Metadata repair is not bounded by verified promotion history','OPERATOR_SOURCE_METADATA_REPAIR_BOUNDARY');
 
         $releaseNotes=$this->releaseNotesForPromotion($repoReal,$repository,$base,$target,$at);
+        $repairKind=$tipRepair?'SOURCE_PROMOTION_TIP_GAP':'SOURCE_PROMOTION_CHAIN_GAP';
         $releaseNotes['generatedFrom']=$tipRepair?'EXACT_GIT_DIFF_METADATA_TIP_REPAIR':'EXACT_GIT_DIFF_METADATA_CHAIN_REPAIR';
         if(!HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes,true))throw new HubOperatorBridgeException('Release details could not be reconstructed','OPERATOR_RELEASE_DETAILS_REQUIRED');
-        $checkpoint=['repository'=>$repository,'expectedMainSha'=>$base,'targetSha'=>$target,'missionExecutionId'=>$missionId,'releaseNotes'=>$releaseNotes,'metadataRepair'=>true,'repairKind'=>$tipRepair?'SOURCE_PROMOTION_TIP_GAP':'SOURCE_PROMOTION_CHAIN_GAP'];
+        $repairDigest=HubUpdateTargetRegistry::sourceMetadataRepairDigest($repository,$base,$target,$releaseNotes,$repairKind);
+        $checkpoint=['repository'=>$repository,'expectedMainSha'=>$base,'targetSha'=>$target,'bundleSha256'=>$repairDigest,'missionExecutionId'=>$missionId,'releaseNotes'=>$releaseNotes,'metadataRepair'=>true,'repairKind'=>$repairKind];
         $authority=$this->acquireMutationAuthority($projectId,'Repair exact source promotion metadata '.$repository.' '.substr($target,0,12),'source.promote',$checkpoint,$at);
         $success=false;
         try{

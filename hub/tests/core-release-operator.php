@@ -200,6 +200,22 @@ try{
     cr_assert(($platformDependencyStatus['sourcePromotion']['sha']??null)===$platformDependencySha&&($platformDependencyStatus['sourcePromotion']['platformAnchorSha']??null)===$platformSha&&($platformDependencyStatus['sourcePromotion']['authority']??null)==='CANONICAL_SOURCE_CHAIN_VERIFIED','VPS Platform release target advances to canonical main when a trusted cross-track dependency follows the latest Platform segment');
     cr_assert(($platformDependencyStatus['releaseDetailsReady']??null)===true&&($platformDependencyStatus['releaseBlocker']??null)===null&&($platformDependencyStatus['releaseNotes']['releaseTrack']??null)==='vps-platform','cross-track dependency closure preserves VPS Platform release-note ownership and remains release-ready');
     cr_assert(($platformDependencyStatus['sourcePromotion']['sourceChainSegmentCount']??0)===3&&preg_match('/^[a-f0-9]{64}$/',(string)($platformDependencyStatus['sourcePromotion']['sourceChainDigest']??''))===1,'VPS Platform shared-source closure is bound to a deterministic chain digest');
+
+    // Historical metadata repair can be newer in audit time than the promotion it repairs.
+    // It must contribute deterministic chain evidence without stealing latest release identity.
+    $historicalRepairBase=str_repeat('1',40);$historicalRepairTarget=str_repeat('2',40);
+    $historicalRepairTask='a53b45c0-23e1-408d-ae0f-ac5eca7f6900';$historicalRepairExecution='b53b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $historicalRepairNotes=cr_release_notes($historicalRepairBase,$historicalRepairTarget,'vps-platform');
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Historical Platform metadata repair fixture','COMPLETED',NULL,NULL,100,'metadata repaired',NULL,'historical-platform-metadata-repair',NULL,:at,:at,NULL)")
+        ->execute(['task'=>$historicalRepairTask,'user'=>$owner,'project'=>$project,'at'=>'2026-09-23T01:00:03+00:00']);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")
+        ->execute(['execution'=>$historicalRepairExecution,'task'=>$historicalRepairTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$historicalRepairBase,'targetSha'=>$historicalRepairTarget,'missionExecutionId'=>$platformMissionExecution,'releaseNotes'=>$historicalRepairNotes,'metadataRepair'=>true,'repairKind'=>'SOURCE_PROMOTION_CHAIN_GAP'],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:00:03+00:00']);
+    $repairChainMethod=new ReflectionMethod(HubCoreReleaseService::class,'sourcePromotionChain');
+    $repairChain=$repairChainMethod->invoke($platformService,$historicalRepairBase,$historicalRepairTarget);
+    cr_assert(is_array($repairChain)&&count($repairChain)===1&&preg_match('/^[a-f0-9]{64}$/',(string)($repairChain[0]['bundleSha256']??''))===1,'legacy metadata-repair evidence receives a deterministic chain digest even when the historical row predates bundleSha256 repair evidence');
+    $afterHistoricalRepair=$platformService->status($session['sessionToken']);
+    cr_assert(($afterHistoricalRepair['sourcePromotion']['sha']??null)===$platformDependencySha&&($afterHistoricalRepair['sourcePromotion']['authority']??null)==='CANONICAL_SOURCE_CHAIN_VERIFIED'&&($afterHistoricalRepair['releaseDetailsReady']??null)===true,'historical CHAIN_GAP repair never steals latest Platform promotion or makes an already-ready release fail closed');
+
     file_put_contents($canonicalGit.'/refs/heads/platform/production',$platformSha."\n");
     $deployedAnchorStatus=$platformService->status($session['sessionToken']);
     cr_assert(($deployedAnchorStatus['sourcePromotion']['sha']??null)===$platformDependencySha&&($deployedAnchorStatus['sourcePromotion']['platformAnchorSha']??null)===$platformSha&&($deployedAnchorStatus['sourcePromotion']['authority']??null)==='CANONICAL_SOURCE_CHAIN_VERIFIED','deployed VPS Platform anchor continues to follow trusted shared-source successors without requiring a second Platform promotion edge');
