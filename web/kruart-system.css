@@ -632,3 +632,74 @@ button:not(:disabled){cursor:pointer}
 .product-dashboard .awh-home-hero h1{color:var(--k-navy)!important;line-height:1.3!important;letter-spacing:-.02em!important}
 .product-dashboard .awh-command-form{border-color:#c7deef!important;background:rgba(255,255,255,.96)!important;box-shadow:0 8px 22px rgba(20,61,117,.06)!important}
 .product-dashboard .awh-command-send{min-height:var(--k-touch)!important;background:var(--k-blue)!important;color:var(--k-surface)!important;box-shadow:var(--k-shadow)!important}
+
+
+/* KRUART Experience Wave — readable, touch-first owner workspace.
+ * This intentionally raises the operational typography floor and simplifies
+ * mobile density. It is loaded last so legacy micro-copy cannot regress it. */
+.owner-golden-home{max-width:1320px;gap:20px 22px}
+.owner-section-title>div>span,.owner-today-head .eyebrow,
+.owner-control-copy .eyebrow,.owner-golden-footer .eyebrow{font-size:12px;line-height:1.4}
+.owner-section-title h2,.owner-today-head h2{font-size:24px;line-height:1.25}
+.owner-section-title>a,.owner-today-link{font-size:13px;min-height:44px;display:inline-flex;align-items:center}
+.owner-quick-panel,.owner-today-panel{padding:22px}
+.owner-quick-list{gap:10px;margin-top:14px}
+.owner-quick-row{min-height:72px;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;padding:11px 12px;border-radius:16px}
+.owner-quick-icon{width:44px;height:44px;border-radius:13px}
+.owner-quick-icon img{width:36px;height:36px}
+.owner-quick-row strong{font-size:15px;line-height:1.35}
+.owner-quick-row small{font-size:12px;line-height:1.45}
+.owner-quick-row b{font-size:12px}
+.owner-reference-hero-panel .eyebrow{font-size:12px}
+.owner-reference-hero-panel>p:not(.eyebrow){font-size:15px;line-height:1.55}
+.owner-command-form input{font-size:16px}
+.owner-command-form button{min-width:82px;min-height:48px;font-size:14px}
+.owner-command-suggestions{gap:8px;margin-top:12px}
+.owner-command-suggestions button{min-height:44px;padding:8px 13px;font-size:12px}
+.owner-featured-systems .ecosystem-project-body>small,
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card) small{font-size:12px!important;line-height:1.4!important}
+.owner-featured-systems .ecosystem-project-body>p{font-size:13px!important;line-height:1.5!important}
+.owner-featured-systems .ecosystem-project-body .ecosystem-project-action,
+.owner-systems .ecosystem-project-body .ecosystem-project-action{min-height:44px!important;font-size:12px!important}
+.owner-live-overall{min-height:32px;font-size:12px}
+.owner-live-list{gap:8px}
+.owner-live-row{min-height:52px;padding:9px 10px}
+.owner-live-row strong{font-size:13px;line-height:1.35}
+.owner-live-row small{font-size:11px;line-height:1.4}
+.owner-summary span{font-size:12px!important}
+.owner-control-copy>p:not(.eyebrow),.owner-golden-footer p:not(.eyebrow){font-size:13px;line-height:1.5}
+.owner-control-card .ecosystem-owner-grid a{min-height:44px!important;font-size:12px!important}
+.owner-golden-footer button{min-height:44px;font-size:13px}
+
+@media(max-width:760px){
+  .owner-golden-home{width:calc(100% - 20px);gap:14px;margin-top:12px!important}
+  .owner-reference-hero{min-height:330px;padding:12px}
+  .owner-reference-hero-panel{width:100%;max-width:390px;padding:20px 16px}
+  .owner-reference-hero-panel h1{font-size:22px}
+  .owner-reference-hero-panel h1 strong{font-size:34px}
+  .owner-reference-hero-panel>p:not(.eyebrow){font-size:14px}
+  .owner-command-form{grid-template-columns:minmax(0,1fr) 64px}
+  .owner-command-form input{min-height:48px!important;font-size:16px}
+  .owner-command-form button{min-width:64px;min-height:48px;font-size:13px}
+  .owner-command-suggestions{display:flex}
+  .owner-command-suggestions button{flex:1 1 calc(50% - 4px);min-height:44px;font-size:11px}
+  .owner-quick-panel,.owner-today-panel{padding:16px}
+  .owner-quick-row{min-height:68px;grid-template-columns:44px minmax(0,1fr)}
+  .owner-quick-row b{display:none}
+  .owner-quick-row strong{font-size:14px}
+  .owner-quick-row small{font-size:12px}
+  .owner-featured-systems .ecosystem-project-body>small{font-size:12px!important}
+  .owner-featured-systems .ecosystem-project-body>p{font-size:12px!important;-webkit-line-clamp:2}
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card){grid-template-columns:112px minmax(0,1fr)!important;min-height:124px!important}
+  .owner-control-card{padding:18px 116px 18px 16px!important}
+  .owner-control-copy>p:not(.eyebrow){font-size:12px}
+  .owner-control-card .ecosystem-owner-grid{max-width:170px}
+  .owner-control-card .ecosystem-owner-grid a{font-size:11px!important}
+  .owner-golden-footer p:not(.eyebrow){font-size:12px}
+}
+@media(max-width:430px){
+  .owner-reference-hero{min-height:348px}
+  .owner-reference-hero-panel h1 strong{font-size:32px}
+  .owner-section-title h2,.owner-today-head h2{font-size:21px}
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card){grid-template-columns:96px minmax(0,1fr)!important}
+}
