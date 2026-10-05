@@ -615,7 +615,7 @@ test('Update Center owner actions keep target-scoped feedback and expose only sa
   assert.match(script,/item\.canCancel===true&&item\.taskId/);
   assert.match(script,/await cancelTask\(item\.taskId\)/);
   assert.match(script,/TASK_NOT_CANCELLABLE/);
-  assert.match(script,/item\?\.taskState\|\|event\?\.state/);
+  assert.match(script,/event\?\.state\|\|item\?\.taskState/);
   assert.match(script,/item\?\.canCancel===true/);
   assert.match(script,/function reconcileTargetFeedback\(item\)/);
   assert.match(script,/item\.state==='UPDATE_AVAILABLE'&&item\.actionable===true&&!item\.taskId&&!item\.approvalId/);
@@ -683,7 +683,11 @@ test('Update Center accessibility contract keeps live regions bounded and contro
   assert.match(script,/function itemRequiresReview\(item\)/);
   assert.match(script,/document\.title='มีอัปเดต '\+counts\.update/);
   assert.match(script,/filterMode==='ATTENTION'&&!itemRequiresReview\(item\)/);
-  assert.match(script,/meter\.setAttribute\('aria-valuenow'/);
+  assert.doesNotMatch(page,/id="operation-progress-meter"[^>]*aria-valuenow=/);
+  assert.match(script,/meter\.removeAttribute\('aria-valuenow'\)/);
+  assert.match(script,/aria-valuetext/);
+  assert.doesNotMatch(script,/Math\.round\(progress\)\+'%'/);
+  assert.doesNotMatch(script,/operation-progress-bar'\)\.style\.width=progress\+'%'/);
   assert.match(script,/step\.setAttribute\('aria-current','step'\)/);
   assert.match(script,/card\.setAttribute\('aria-labelledby',h3\.id\)/);
   assert.match(script,/link\.setAttribute\('aria-label','เปิด '\+item\.name\+' ในแท็บใหม่'\)/);
@@ -946,9 +950,11 @@ test('Update Center owner flow is per-target, queue-aware, exact-target pinned, 
   assert.match(script,/!active&&\/\(\?:เริ่มอัปเดตแล้ว\|เข้าคิวแล้ว\)/);
   assert.match(script,/function ownerStageElapsed\(event\)/);
   assert.match(script,/ขั้นนี้ \$\{minutes\} นาที/);
-  assert.match(script,/if\(progress<23\)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'\+elapsed/);
-  assert.match(script,/if\(progress<55\)return 'กำลังตรวจความพร้อมและ QA ก่อนติดตั้ง'\+elapsed/);
-  assert.match(script,/const thresholds=\[22,54,84,98,100\]/);
+  assert.match(script,/RUNNING:'กำลังดำเนินการตามขั้นตอนที่บันทึกไว้'/);
+  assert.match(script,/VERIFYING:'กำลังตรวจการทำงานของรุ่นใหม่และยืนยันผล'/);
+  assert.match(script,/RECOVERING:'กำลังกู้และทำต่อจาก checkpoint เดิม'/);
+  assert.match(script,/const explicitStage=\{PREPARING:0,QA:0,DEPLOYING:2,VERIFYING:3\}\[truthState\]/);
+  assert.doesNotMatch(script,/const thresholds=\[22,54,84,98,100\]/);
   assert.match(script,/ownerReleaseNoteText/);
   assert.match(script,/แก้สิทธิ์ระบบ Managed Hosting ให้จัดการบัญชีบริการได้อย่างเสถียร/);
 });

@@ -1163,15 +1163,27 @@ function renderProgress(){
   const queuedOnly=item?itemQueued(item):(!localOperation&&queuedPins.length>0);
   const queuedPin=queuedOnly&&!item?queuedPins[0]:null;
   const localForItem=!item||localOperation?.key===item?.key?localOperation:null;
-  const progress=queuedOnly?0:Math.max(0,Math.min(100,Number(item?.progressEvent?.progress??item?.progress??(waiting?5:localForItem?.progress??15))));
   const operationName=item?.name||localForItem?.name||queuedPin?.name||'ระบบ';
-  $('operation-progress-title').textContent=waiting?'รอยืนยันก่อนติดตั้ง':queuedOnly?('รอคิวอัปเดต '+operationName):('กำลังอัปเดต '+operationName);
-  $('operation-progress-percent').textContent=queuedOnly?'รอคิว':Math.round(progress)+'%';
-  $('operation-progress-bar').style.width=progress+'%';
-  const meter=$('operation-progress-meter');
-  if(queuedOnly){meter.removeAttribute('aria-valuenow');meter.setAttribute('aria-valuetext','รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ');}
-  else{meter.setAttribute('aria-valuenow',String(Math.round(progress)));meter.setAttribute('aria-valuetext',Math.round(progress)+' เปอร์เซ็นต์');}
   const event=item?.progressEvent||null;
+  const truthState=queuedOnly?'QUEUED':waiting?'WAITING_FOR_APPROVAL':String(event?.state||item?.taskState||'RUNNING').toUpperCase();
+  const truthLabel={
+    QUEUED:'อยู่ในคิว',
+    WAITING_FOR_WORKER:'รอ executor',
+    WAITING_FOR_APPROVAL:'รออนุมัติ',
+    PREPARING:'กำลังเตรียม',
+    QA:'กำลังทดสอบ',
+    RUNNING:'กำลังทำ',
+    DEPLOYING:'กำลังติดตั้ง',
+    UPDATING:'กำลังอัปเดต',
+    VERIFYING:'กำลังตรวจ',
+    RECOVERING:'กำลังกู้ต่อ'
+  }[truthState]||'กำลังทำ';
+  $('operation-progress-title').textContent=waiting?'รออนุมัติก่อนติดตั้ง':queuedOnly?('รอคิวอัปเดต '+operationName):('กำลังอัปเดต '+operationName);
+  $('operation-progress-percent').textContent=truthLabel;
+  $('operation-progress-bar').style.width='0';
+  const meter=$('operation-progress-meter');
+  meter.removeAttribute('aria-valuenow');
+  meter.setAttribute('aria-valuetext',queuedOnly?'รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':truthLabel);
   const signalFresh=liveSignalFresh();
   const eventFresh=signalFresh&&progressEventFresh(event);
   $('operation-progress-message').textContent=queuedOnly?'รับคำสั่งแล้ว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':ownerProgressMessage(item,event,waiting);
@@ -1183,16 +1195,15 @@ function renderProgress(){
     queueHost.hidden=names.length===0;
     queueHost.textContent=names.length===0?'':'รอคิว '+names.length+' ระบบ · '+names.join(' · ');
   }
-  host.dataset.active=!waiting&&!queuedOnly&&progress<100?'true':'false';
+  host.dataset.active=!waiting&&!queuedOnly&&!['COMPLETED','FAILED','CANCELLED'].includes(truthState)?'true':'false';
   host.dataset.live=eventFresh?'true':'false';
-  const thresholds=[22,54,84,98,100];
+  const explicitStage={PREPARING:0,QA:0,DEPLOYING:2,VERIFYING:3}[truthState];
   [...$('operation-steps').children].forEach((step,index)=>{
-    const previous=index===0?0:thresholds[index-1];
-    const status=queuedOnly?'pending':progress>=thresholds[index]?'done':(progress>=previous?'active':'pending');
+    const status=Number.isInteger(explicitStage)?(index<explicitStage?'done':index===explicitStage?'active':'pending'):'pending';
     step.dataset.status=status;
     if(status==='active')step.setAttribute('aria-current','step');else step.removeAttribute('aria-current');
     const label=String(step.textContent||'ขั้นตอน');
-    step.setAttribute('aria-label',label+' · '+(status==='done'?'เสร็จแล้ว':status==='active'?'กำลังทำ':'รอดำเนินการ'));
+    step.setAttribute('aria-label',label+' · '+(status==='done'?'เสร็จแล้ว':status==='active'?'กำลังทำ':'ยังไม่มีหลักฐานยืนยันขั้นนี้'));
   });
 }
 

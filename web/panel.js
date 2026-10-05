@@ -142,8 +142,7 @@ function renderUpdateSummary(snapshot,error=null){
     .slice(0,3);
   if(!attentionItems.length){host.append(row('ทุกระบบที่แสดง','ไม่มีรายการที่ต้องจัดการตอนนี้','พร้อม','READY'));return;}
   for(const item of attentionItems){
-    const progress=Number(item?.progress);
-    const detail=(item?.reason||'ดูรายละเอียดใน Update Center')+(Number.isFinite(progress)&&progress>0?' · '+Math.round(progress)+'%':'');
+    const detail=item?.reason||'ดูรายละเอียดใน Update Center';
     const tone=String(item?.state)==='BLOCKED'?'CRITICAL':'WARNING';
     host.append(row(String(item?.name||'ระบบ'),detail,updateStateLabel(item?.state),tone));
   }
@@ -316,7 +315,7 @@ function makeControlButton(label,run,{tone='',confirmText=null,busyLabel='กำ
 const TASK_TERMINAL_STATES=new Set(['COMPLETED','FAILED','CANCELLED','SUPERSEDED']);
 const TASK_RUNNING_STATES=new Set(['RUNNING','VERIFYING','RECOVERING','PREPARING','QA','DEPLOYING','UPDATING']);
 function taskStateLabel(state){
-  return ({CREATED:'พร้อมเริ่ม',PENDING:'รอเริ่ม',QUEUED:'อยู่ในคิว',WAITING_FOR_WORKER:'รอ executor',WAITING_FOR_APPROVAL:'รอยืนยัน',STALE_RESUMABLE:'พร้อมทำต่อ',BLOCKED:'ติดเงื่อนไข',PREPARING:'กำลังเตรียม',QA:'กำลังทดสอบ',DEPLOYING:'กำลังติดตั้ง',UPDATING:'กำลังอัปเดต',RUNNING:'กำลังทำ',VERIFYING:'กำลังตรวจ',RECOVERING:'กำลังกู้ต่อ',COMPLETED:'เสร็จ',FAILED:'ล้มเหลว',CANCELLED:'ยกเลิกแล้ว',SUPERSEDED:'มีงานใหม่แทนแล้ว'})[String(state||'')]||String(state||'—');
+  return ({CREATED:'พร้อมเริ่ม',PENDING:'รอเริ่ม',QUEUED:'อยู่ในคิว',WAITING_FOR_WORKER:'รอ executor',WAITING_FOR_APPROVAL:'รอยืนยัน',STALE_RESUMABLE:'กำลังกู้จากงานเดิม',BLOCKED:'ติดเงื่อนไข',PREPARING:'กำลังเตรียม',QA:'กำลังทดสอบ',DEPLOYING:'กำลังติดตั้ง',UPDATING:'กำลังอัปเดต',RUNNING:'กำลังทำ',VERIFYING:'กำลังตรวจ',RECOVERING:'กำลังกู้ต่อ',COMPLETED:'เสร็จ',FAILED:'ล้มเหลว',CANCELLED:'ยกเลิกแล้ว',SUPERSEDED:'มีงานใหม่แทนแล้ว'})[String(state||'')]||String(state||'—');
 }
 function renderLiveTasks(control){
   cpControlData=control;
@@ -330,7 +329,7 @@ function renderLiveTasks(control){
   if($('cp-command-running'))$('cp-command-running').textContent=String(running.length);
   if(!active.length){empty(host,'ไม่มีงานที่กำลังทำหรือรออยู่');return;}
   for(const task of active){
-    const detail=[task.projectName,task.lastEvent?.message,Number.isFinite(Number(task.progress))?Math.round(Number(task.progress))+'%':null].filter(Boolean).join(' · ');
+    const detail=[task.projectName,task.lastEvent?.message].filter(Boolean).join(' · ');
     const item=row(task.goal||'งาน AWH',detail,taskStateLabel(task.state),task.state);
     if(task.canCancel===true){
       const actions=document.createElement('span');actions.className='cp-control-actions';
@@ -404,8 +403,8 @@ function renderCoreReleaseControl(status){
   const active=releases.find(item=>!['COMPLETED','FAILED','CANCELLED'].includes(String(item?.taskState||'')));
   button.disabled=true;button.dataset.releaseSha='';
   if(active){
-    button.textContent='AWH กำลังอัปเดต '+Math.max(0,Math.min(100,Number(active.progress||0)))+'%';
-    message.textContent=active.resultSummary||'Release controller กำลังทำงาน';return;
+    button.textContent='AWH · '+taskStateLabel(active.taskState||active.state||'RUNNING');
+    message.textContent=active.resultSummary||active.lastEvent?.message||'ระบบกำลังทำงานจากสถานะจริงของ release controller';return;
   }
   if(!target){button.textContent='ยังไม่มีรุ่นพร้อมอัปเดต';message.textContent=status?.releaseBlocker||'ยังไม่พบ canonical release target';return;}
   if(runtime&&target===runtime){button.textContent='AWH เป็นรุ่นล่าสุด';message.textContent='ระบบที่ใช้งานอยู่ตรงกับรุ่นล่าสุด';return;}
