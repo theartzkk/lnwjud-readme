@@ -5,10 +5,10 @@ import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   bindSchoolIdentity, exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadBayCommunicationStatus, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus, loadSchoolIdentityBindings, loadSchoolIdentityCandidates,
-  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadProviderHub, loadGroqProviderStatus, loadDecisionProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
+  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadProviderHub, loadGroqProviderStatus, loadDecisionProviderStatus, loadObservabilityStatus, loadHatchetStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
   recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokeDevice, revokePerson, revokeSchoolIdentity, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, testGroqProviderConnection, testDecisionProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
-  updateProviderCredential, updateProviderHubCredential, testProviderHubConnection, updateGroqProviderCredential, updateDecisionProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
+  updateProviderCredential, updateProviderHubCredential, testProviderHubConnection, updateGroqProviderCredential, updateDecisionProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateHatchetCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 (() => {
@@ -17,7 +17,7 @@ import {
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-arm64.zip', 'macOS Apple Silicon', 'mac-arm64'], ['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, providerHub: null, groqProvider: null, decisionProvider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, providerHub: null, groqProvider: null, decisionProvider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, hatchet: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
   const MAX_BRAND_DATA_URL_CHARS = 11500;
@@ -976,6 +976,14 @@ import {
   async function refreshObservabilitySoon() {
     await new Promise((resolve) => setTimeout(resolve, 2200));
     try { const data = await loadObservabilityStatus(); state.observability = data.observability; renderObservability(); } catch {}
+  }
+
+  function renderHatchet() {
+    const value = state.hatchet || {}; const configured = value.credentialConfigured === true;
+    const status = $('hatchet-status'); const dot = $('hatchet-dot'); const remove = $('hatchet-credential-remove');
+    if (status) status.textContent = configured ? 'Hatchet Cloud credential พร้อม · รอหรือกำลังเปิด ReadyIDC worker' : 'ยังไม่ได้เชื่อม Hatchet Cloud';
+    if (dot) { dot.classList.toggle('good', configured); dot.classList.toggle('attention', !configured); }
+    if (remove) remove.disabled = !configured;
   }
 
   function renderOwnerSelfService() {
@@ -2074,8 +2082,8 @@ import {
     catch { if (isOwner()) message('product-settings-message', 'ยังโหลดการตั้งค่าลักษณะของ AWH ไม่ได้'); }
     if (isOwner()) {
       ensureOwnerSelfServiceSurface(); ensureProviderSelfServiceSurface();
-      const project = selectedProject(); const requests = [loadProviderStatus(), loadProviderHub(), loadGroqProviderStatus(), loadDecisionProviderStatus(), loadObservabilityStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
-      const [providerResult, providerHubResult, groqResult, decisionProviderResult, observabilityResult, capabilitiesResult, peopleResult, accountRequestsResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
+      const project = selectedProject(); const requests = [loadProviderStatus(), loadProviderHub(), loadGroqProviderStatus(), loadDecisionProviderStatus(), loadObservabilityStatus(), loadHatchetStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
+      const [providerResult, providerHubResult, groqResult, decisionProviderResult, observabilityResult, hatchetResult, capabilitiesResult, peopleResult, accountRequestsResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
       if (providerResult.status === 'fulfilled') { state.provider = providerResult.value.provider; renderProvider(); }
       else message('provider-status', 'ยังโหลดสถานะ AI ไม่ได้ ลองรีเฟรชอีกครั้ง');
       if(providerHubResult.status==='fulfilled'){state.providerHub=providerHubResult.value;renderProviderHub();}else{const list=$('provider-hub-list');if(list)list.textContent='ยังโหลด AI Providers ไม่ได้';}
@@ -2085,6 +2093,8 @@ import {
       else message('jev-status', 'ยังโหลดสถานะ Jev ไม่ได้ · AWH ยังใช้ routing เดิมได้ตามปกติ');
       if (observabilityResult.status === 'fulfilled') { state.observability = observabilityResult.value.observability; renderObservability(); }
       else message('observability-status', 'ยังโหลดสถานะ Honeycomb ไม่ได้');
+      if (hatchetResult.status === 'fulfilled') { state.hatchet = hatchetResult.value.hatchet; renderHatchet(); }
+      else message('hatchet-status', 'ยังโหลดสถานะ Hatchet ไม่ได้');
       if (capabilitiesResult.status === 'fulfilled') { state.capabilities = capabilitiesResult.value; renderCapabilitySurface(); }
       if (peopleResult.status === 'fulfilled') state.people = Array.isArray(peopleResult.value.people) ? peopleResult.value.people : [];
       if (accountRequestsResult.status === 'fulfilled') state.accountRequests = Array.isArray(accountRequestsResult.value.requests) ? accountRequestsResult.value.requests : [];
@@ -2359,6 +2369,18 @@ import {
     message('observability-message', 'กำลังหยุดการเชื่อม…');
     try { const data = await withOwnerStepUp(()=>updateObservabilityCredential('REMOVE'),'การยกเลิก Honeycomb'); state.observability = data.observability; renderObservability(); message('observability-message', 'หยุดการเชื่อมแล้ว และกำลังกลับสู่ local preflight'); refreshObservabilitySoon(); }
     catch (error) { message('observability-message', error instanceof Error ? error.message : 'ยังหยุดการเชื่อมไม่ได้'); }
+  });
+  $('hatchet-credential-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault(); const field = $('hatchet-api-key'); const button = event.currentTarget.querySelector('button[type="submit"]'); if (!field?.value.trim()) { message('hatchet-message', 'วาง Hatchet Cloud token ก่อน'); return; }
+    button.disabled = true; message('hatchet-message', 'กำลังบันทึก token แบบ write-only…');
+    try { const data = await withOwnerStepUp(()=>updateHatchetCredential('SET', field.value),'การเชื่อม Hatchet Cloud'); state.hatchet = data.hatchet; renderHatchet(); message('hatchet-message', 'บันทึก Hatchet credential แล้ว'); }
+    catch (error) { message('hatchet-message', error instanceof Error ? error.message : 'ยังเชื่อม Hatchet ไม่ได้'); }
+    finally { field.value = ''; button.disabled = false; }
+  });
+  $('hatchet-credential-remove')?.addEventListener('click', async () => {
+    message('hatchet-message', 'กำลังยกเลิก Hatchet credential…');
+    try { const data = await withOwnerStepUp(()=>updateHatchetCredential('REMOVE'),'การยกเลิก Hatchet Cloud'); state.hatchet = data.hatchet; renderHatchet(); message('hatchet-message', 'ยกเลิก Hatchet credential แล้ว'); }
+    catch (error) { message('hatchet-message', error instanceof Error ? error.message : 'ยังยกเลิก Hatchet ไม่ได้'); }
   });
   $('system-check-inline')?.addEventListener('click', () => $('system-check')?.click());
   installButtons().forEach((button) => button.addEventListener('click', installWebApp));

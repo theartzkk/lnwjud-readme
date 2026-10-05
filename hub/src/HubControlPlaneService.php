@@ -2276,6 +2276,33 @@ final class HubControlPlaneService
         } catch (HubProviderCredentialStoreException $error) { throw new HubControlPlaneException('Observability credential could not be changed', $error->codeName); }
     }
 
+    public function hatchetStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertSelfServiceReady(); $this->assertOwner((string) $session['user_id']);
+        try {
+            $store = HubProviderCredentialStore::fromEnvironment('hatchet');
+            $configured = $store->configured();
+            return ['schemaVersion' => 1, 'hatchet' => ['credentialConfigured' => $configured, 'state' => $configured ? 'CONFIGURED' : 'NOT_CONFIGURED']];
+        } catch (HubProviderCredentialStoreException $error) { throw new HubControlPlaneException('Hatchet status is unavailable', $error->codeName); }
+    }
+
+    /** Hatchet Cloud secrets are write-only and share the governed provider-secret authority. */
+    public function updateHatchetCredential(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['action', 'schemaVersion', 'secret']);
+        if (($payload['schemaVersion'] ?? null) !== 1 || !is_string($payload['action'] ?? null) || (!is_null($payload['secret'] ?? null) && !is_string($payload['secret']))) throw new HubControlPlaneException('Hatchet credential request is invalid', 'PROVIDER_CREDENTIAL_INVALID');
+        $this->assertSelfServiceReady(); $this->assertOwner((string) $session['user_id']);
+        try { if (HubTrustPolicy::requiresStepUp('provider.credential')) HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
+        $action = strtoupper((string) $payload['action']);
+        try {
+            $store = HubProviderCredentialStore::fromEnvironment('hatchet');
+            if ($action === 'SET' && is_string($payload['secret'])) $store->replace($payload['secret']);
+            elseif ($action === 'REMOVE' && $payload['secret'] === null) $store->remove();
+            else throw new HubProviderCredentialStoreException('Hatchet credential is invalid', 'PROVIDER_CREDENTIAL_INVALID');
+            return $this->hatchetStatus($sessionToken, $now);
+        } catch (HubProviderCredentialStoreException $error) { throw new HubControlPlaneException('Hatchet credential could not be changed', $error->codeName); }
+    }
+
     public function providerStatus(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);
