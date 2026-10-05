@@ -64,6 +64,10 @@ function persistPinnedOperations(){
     sessionStorage.setItem(OWNER_OPERATION_STORAGE_KEY,JSON.stringify(value));
   }catch{}
 }
+function syncPinnedOperationProjection(){
+  if(!center)return;
+  summary();renderNextAction();renderProgress();
+}
 function pinnedOperationFor(key){return typeof key==='string'?pinnedOperations.get(key)||null:null;}
 function pinnedFor(item){return Boolean(pinnedOperationFor(item?.key));}
 function clearPinnedOperation(key){
@@ -93,6 +97,7 @@ function beginPinnedOperation(item,name,queuedHint=false){
   pinnedOperations.set(key,operation);persistPinnedOperations();
   if(!queuedHint)localOperation={key,name,progress:6,message:'กำลังส่งคำสั่งและตรึงรุ่นที่อนุมัติ'};
   targetFeedback.set(key,{text:queuedHint?'กำลังส่งคำขอเข้าคิว · รุ่นที่เลือกจะไม่ถูกสลับระหว่างรอ':'กำลังส่งคำสั่งและตรึงรุ่นที่อนุมัติ',tone:'info'});
+  syncPinnedOperationProjection();
   return operation;
 }
 function pinAcceptedOperation(item,name,request,progress,messageText,queuedHint=false){
@@ -103,6 +108,7 @@ function pinAcceptedOperation(item,name,request,progress,messageText,queuedHint=
   pinnedOperations.set(key,operation);persistPinnedOperations();
   if(!queued)localOperation={key,name,progress,message:messageText};
   targetFeedback.set(key,{text:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':'เริ่มอัปเดตแล้ว · ระบบกำลังทำงานและตรวจผลให้อัตโนมัติ',tone:'info'});
+  syncPinnedOperationProjection();
   return queued;
 }
 function markPinnedOutcomeUnknown(item,name){
@@ -110,6 +116,7 @@ function markPinnedOutcomeUnknown(item,name){
   const previous=pinnedOperations.get(key)||{key,name,target:operationTarget(item)||null,acceptedAt:Date.now()};
   pinnedOperations.set(key,{...previous,key,name,status:'OUTCOME_UNKNOWN',outcomeUnknownAt:Date.now()});persistPinnedOperations();
   targetFeedback.set(key,{text:'การตอบกลับขาดหายหลังส่งคำสั่ง · กำลังยืนยันงานเดิมให้อัตโนมัติ',tone:'info'});
+  syncPinnedOperationProjection();
 }
 function queuedPinnedOperations(){return [...pinnedOperations.values()].filter((operation)=>operation?.status==='QUEUED');}
 function reconcilePinnedOperations(){
@@ -701,23 +708,23 @@ function ownerStageElapsed(event){
   return minutes>=1?` · ขั้นนี้ ${minutes} นาที`:'';
 }
 function ownerProgressMessage(item,event,waiting){
-  if(waiting)return 'พร้อมแล้ว · รอการยืนยันก่อนเริ่มขั้นติดตั้ง';
-  const state=String(item?.taskState||event?.state||'').toUpperCase();
-  const progress=Math.max(0,Math.min(100,Number(event?.progress??item?.progress??localOperation?.progress??0)));
+  if(waiting)return 'รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติจากงานเดิม';
+  const state=String(event?.state||item?.taskState||'').toUpperCase();
   const raw=String(event?.message||'').trim();
   const elapsed=ownerStageElapsed(event);
   if(raw&&!/worker|release controller|authority|lease|mutation|candidate|source sha|exact[- ]sha/i.test(raw))return raw+elapsed;
-  if(state==='RUNNING'){
-    if(progress<23)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'+elapsed;
-    if(progress<55)return 'กำลังตรวจความพร้อมและ QA ก่อนติดตั้ง'+elapsed;
-    if(progress<60)return 'สำรองข้อมูลพร้อมแล้ว · กำลังเริ่มติดตั้ง'+elapsed;
-    if(progress<74)return 'กำลังเตรียมส่วนประกอบของระบบสำหรับรุ่นใหม่'+elapsed;
-    if(progress<88)return 'กำลังเปิดใช้บริการและหน้าเว็บรุ่นใหม่'+elapsed;
-    if(progress<99)return 'กำลังตรวจการทำงานของรุ่นใหม่รอบสุดท้าย'+elapsed;
-    return 'ตรวจรอบสุดท้ายผ่านแล้ว · กำลังปิดงานอัปเดต'+elapsed;
-  }
-  const mapped={QUEUED:'รับคำสั่งแล้ว · กำลังเข้าคิว',WAITING_FOR_WORKER:'รับคำสั่งแล้ว · อยู่ในคิวอัปเดต',PREPARING:'กำลังตรวจความพร้อมและเตรียมการ',QA:'กำลังทดสอบความพร้อมก่อนติดตั้ง',VERIFYING:'กำลังตรวจการทำงานของรุ่นใหม่และยืนยันผล',RECOVERING:'กำลังทำต่อจากจุดที่ปลอดภัย'}[state];
-  return mapped||localOperation?.message||'กำลังดำเนินการและตรวจผล';
+  const mapped={
+    QUEUED:'รับคำสั่งแล้ว · กำลังเข้าคิว',
+    WAITING_FOR_WORKER:'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติ',
+    PREPARING:'กำลังตรวจความพร้อมและเตรียมการ',
+    QA:'กำลังทดสอบความพร้อมก่อนติดตั้ง',
+    RUNNING:'กำลังดำเนินการตามขั้นตอนที่บันทึกไว้',
+    DEPLOYING:'กำลังติดตั้งรุ่นที่อนุมัติ',
+    UPDATING:'กำลังอัปเดตจากงานเดิม',
+    VERIFYING:'กำลังตรวจการทำงานของรุ่นใหม่และยืนยันผล',
+    RECOVERING:'กำลังกู้และทำต่อจาก checkpoint เดิม'
+  }[state];
+  return (mapped||localOperation?.message||'กำลังดำเนินการจากสถานะจริงของระบบ')+elapsed;
 }
 function reconcileTargetFeedback(item){
   if(!item?.key||!targetFeedback.has(item.key))return;
@@ -725,7 +732,7 @@ function reconcileTargetFeedback(item){
   if(item.state==='CURRENT')targetFeedback.set(item.key,{text:'อัปเดตสำเร็จ · เป็นรุ่นล่าสุด',tone:'good'});
   else if(itemQueued(item))targetFeedback.set(item.key,{text:'รับคำสั่งแล้ว · รอคิวอัปเดต'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
   else if(item.state==='UPDATING')targetFeedback.set(item.key,{text:ownerProgressMessage(item,item.progressEvent,false)+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
-  else if(item.state==='WAITING_FOR_APPROVAL')targetFeedback.set(item.key,{text:'พบงานอัปเดตเดิมที่พร้อมทำต่อ · ใช้งานรายการเดิมได้ทันที'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
+  else if(item.state==='WAITING_FOR_APPROVAL')targetFeedback.set(item.key,{text:'รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติจากงานเดิม'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
 }
 async function cancelUpdate(item){
   if(!item?.taskId||item.canCancel!==true)throw Object.assign(new Error('งานเริ่มขั้นที่หยุดไม่ได้แล้ว'),{code:'TASK_NOT_CANCELLABLE'});

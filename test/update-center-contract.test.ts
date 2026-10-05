@@ -295,6 +295,7 @@ test('Update Center gives the owner one human-readable next action before techni
   assert.match(script,/function ownerFacingName\(item\)/);
   assert.match(script,/ระบบพื้นฐาน AWH/);
   assert.match(css,/\.updates-next/);
+  assert.match(css,/\.updates-next>a\{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-height:44px;padding:11px 16px;text-decoration:none;text-align:center;line-height:1\.25\}/);
   assert.match(css,/\.updates-next>a\{width:100%;min-height:48px\}/);
 });
 
@@ -940,6 +941,8 @@ test('Update Center owner flow is per-target, queue-aware, exact-target pinned, 
   assert.match(script,/ใช้สถานะล่าสุด · จะตรวจใหม่อัตโนมัติ/);
   assert.match(script,/const storageBlocked=Boolean\(telemetryReady\)/);
   assert.match(script,/function reconcileRecoveredActionMessage\(\)/);
+  assert.match(script,/function syncPinnedOperationProjection\(\)/);
+  assert.ok((script.match(/syncPinnedOperationProjection\(\);/g)||[]).length>=3,'pinned operation submit, accept and outcome-unknown paths must refresh the owner summary immediately');
   assert.match(script,/!active&&\/\(\?:เริ่มอัปเดตแล้ว\|เข้าคิวแล้ว\)/);
   assert.match(script,/function ownerStageElapsed\(event\)/);
   assert.match(script,/ขั้นนี้ \$\{minutes\} นาที/);
