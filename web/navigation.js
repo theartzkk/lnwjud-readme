@@ -70,6 +70,20 @@ function stabilizeDialogVisualViewport() {
   window.setTimeout(syncDialogVisualViewport, 240);
 }
 
+function revealFocusedDialogControl(event) {
+  if (!hasDom()) return;
+  const target = isElement(event?.target) ? event.target : document.activeElement;
+  if (!isElement(target)) return;
+  if (!target.matches('input:not([type="button"]):not([type="submit"]):not([type="file"]), textarea, select, [contenteditable="true"]')) return;
+  if (!target.closest('[data-awh-dialog-open="1"], .sheet, .awh-tool-dialog, .awh-search-dialog, .awh-automation-sheet')) return;
+  stabilizeDialogVisualViewport();
+  if (window.matchMedia?.('(max-width: 680px)').matches !== true) return;
+  window.requestAnimationFrame?.(() => {
+    target.scrollIntoView?.({ block: 'center', inline: 'nearest', behavior: 'auto' });
+    syncDialogVisualViewport();
+  });
+}
+
 function focusable(dialog) {
   if (!isElement(dialog)) return [];
   return [...dialog.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
@@ -198,11 +212,7 @@ if (hasDom()) {
   window.addEventListener('resize', stabilizeDialogVisualViewport, { passive: true });
   window.visualViewport?.addEventListener('resize', stabilizeDialogVisualViewport, { passive: true });
   window.visualViewport?.addEventListener('scroll', stabilizeDialogVisualViewport, { passive: true });
-  document.addEventListener('focusin', (event) => {
-    if (isElement(event.target) && event.target.closest('[data-awh-dialog-open="1"], .sheet, .awh-tool-dialog, .awh-search-dialog, .awh-automation-sheet')) {
-      stabilizeDialogVisualViewport();
-    }
-  }, { passive: true });
+  document.addEventListener('focusin', revealFocusedDialogControl, { passive: true });
   document.addEventListener('focusout', () => window.setTimeout(syncDialogVisualViewport, 0), { passive: true });
   document.addEventListener('keydown', handleDialogKeyboard);
   syncDialogVisualViewport();

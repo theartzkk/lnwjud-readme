@@ -137,6 +137,18 @@ test('KRUART experience contract prevents navigation and portal drift', async ()
   assert.deepEqual([...contract.releaseGroups['line-oa'].targets].sort(), ['awh-line-gateway','line-oa']);
   assert.equal(contract.interaction.touchTargetPx, 44);
   assert.equal(contract.interaction.safeAreaRequired, true);
+  assert.equal(contract.interaction.mobileInputMinFontPx, 16);
+  assert.equal(contract.interaction.visualViewportRequired, true);
+  assert.equal(contract.interaction.focusedControlMustRemainVisible, true);
+  assert.equal(contract.interaction.keyboardDismissRestoresLayout, true);
+  assert.equal(contract.interaction.dynamicViewportUnitRequired, true);
+  assert.equal(contract.interaction.minimumViewportPx, 320);
+  assert.deepEqual(contract.interaction.keyboardReferenceViewportsPx, [390, 430]);
+  assert.equal(contract.experienceGate.rejectHorizontalOverflow, true);
+  assert.equal(contract.experienceGate.rejectFocusedControlOcclusion, true);
+  assert.equal(contract.experienceGate.rejectSoftwareKeyboardOverlay, true);
+  assert.equal(contract.experienceGate.rejectMobileInputZoom, true);
+  assert.equal(contract.experienceGate.requireKeyboardDismissRecovery, true);
 
   const index = await read('web/index.html');
   const ownerNav = index.match(/<nav id="owner-global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
