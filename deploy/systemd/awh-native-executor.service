@@ -15,6 +15,7 @@ Environment=AWH_ARTIFACT_ROOT=/var/lib/awh-hub/artifacts
 Environment=AWH_TASK_WORKSPACE_ROOT=/var/lib/awh-hub/task-workspaces
 Environment=AWH_TASK_TRANSFER_ROOT=/var/lib/awh-hub/task-transfers
 Environment=AWH_PROVIDER_CREDENTIAL_ROOT=/var/lib/awh-hub/provider-credentials
+Environment=AWH_HATCHET_DISPATCH_MODE=1
 ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/awh-native-executor.php
 NoNewPrivileges=true
 PrivateTmp=true
