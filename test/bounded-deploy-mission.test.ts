@@ -298,4 +298,10 @@ test('control-plane dry-run terminates after cleanup instead of surviving SIGTER
   assert.match(source, /WEB_BUILD_ROOT\/\.awh-build\/awh-source\.zip/);
   assert.match(source, /ASSEMBLY_FILES/);
   assert.match(source, /tar -czf "\$BUNDLE" -C "\$ROOT" \$SOURCE_FILES -C "\$WEB_BUILD_ROOT" \$ASSEMBLY_FILES/);
+  for (const required of [
+    'deploy/hatchet/worker/package.json',
+    'deploy/hatchet/worker/worker.cjs',
+    'deploy/systemd/awh-hatchet-worker.service',
+    'deploy/hatchet/install-readyidc-worker.sh',
+  ]) assert.ok(source.includes(required), `VPS Platform release manifest includes ${required}`);
 });
