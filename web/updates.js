@@ -423,6 +423,40 @@ function itemVisibility(item){
 function primaryItems(){
   return (center?.items||[]).filter((item)=>itemVisibility(item)==='PRIMARY');
 }
+function ownerFacingName(item){
+  if(item?.adapter==='PLATFORM_RELEASE')return 'ระบบพื้นฐาน AWH';
+  if(item?.adapter==='CORE_RELEASE')return 'AWH';
+  return String(item?.name||'ระบบ');
+}
+function renderNextAction(){
+  const host=$('updates-next'),title=$('updates-next-title'),detail=$('updates-next-detail'),action=$('updates-next-action');
+  if(!host||!title||!detail||!(action instanceof HTMLAnchorElement))return;
+  const items=primaryItems();
+  const active=items.find((item)=>itemQueued(item)||item.state==='UPDATING'||pinnedFor(item));
+  const waiting=items.find((item)=>item.state==='WAITING_FOR_APPROVAL');
+  const update=items.find((item)=>item.state==='UPDATE_AVAILABLE'&&item.actionable!==false);
+  const review=items.filter((item)=>itemRequiresReview(item));
+  action.hidden=true;host.dataset.state='ready';
+  if(active){
+    title.textContent='ระบบกำลังทำงานต่อให้อยู่';
+    detail.textContent=ownerFacingName(active)+' กำลังดำเนินการ · ระบบจะติดตามผลให้อัตโนมัติ';
+    host.dataset.state='progress';return;
+  }
+  const next=waiting||update;
+  if(next){
+    title.textContent=waiting?'มีงานเดิมรอคุณทำต่อ':'มี 1 รายการให้คุณเลือกอัปเดต';
+    detail.textContent=ownerFacingName(next)+(waiting?' พร้อมทำต่อจากงานเดิม':' พร้อมอัปเดตเมื่อคุณต้องการ');
+    action.href='#update-card-'+safeDomId(next.key);action.textContent=waiting?'ไปทำต่อ':'ดูรายการนี้';action.hidden=false;
+    host.dataset.state='action';return;
+  }
+  if(review.length){
+    title.textContent='ตอนนี้ยังไม่ต้องกดอะไร';
+    detail.textContent='AWH กำลังตรวจ '+review.length+' รายการที่ยังไม่พร้อมดำเนินการ และจะไม่ฝืนอัปเดต';
+    host.dataset.state='checking';return;
+  }
+  title.textContent='ไม่ต้องทำอะไรตอนนี้';
+  detail.textContent='ระบบที่พร้อมใช้งานเป็นรุ่นปัจจุบัน และไม่มีงานรอการตัดสินใจ';
+}
 
 function summary(){
   const counts={current:0,update:0,progress:0,queue:0,attention:0};
@@ -717,6 +751,8 @@ function ownerReleaseNoteText(value){
     ['reclaim merged durable worktrees','คืนพื้นที่จากชุดงานพัฒนาที่รวมเสร็จแล้วอัตโนมัติ'],
     ['harden permanent closure baseline','เสริม baseline สำหรับการปิดงานและบำรุงรักษาระยะยาว'],
     ['let pressure guard reclaim durable worktrees','ให้ Storage Guard คืนพื้นที่จากชุดงานที่ใช้เสร็จแล้วอัตโนมัติ'],
+    ['add governed hatchet credential ingress','เพิ่มจุดเชื่อม Hatchet Cloud ใน AWH โดยเก็บ token แบบไม่แสดงกลับ'],
+    ['fix-vps-platform-hide-hatchet-helper-output','ซ่อนรายละเอียดภายในของระบบพื้นฐานที่ผู้ใช้ไม่จำเป็นต้องเห็น'],
   ]);
   return known.get(normalized.toLowerCase())||normalized||raw;
 }
@@ -889,11 +925,11 @@ function renderCard(item){
   reconcileTargetFeedback(item);
   const card=document.createElement('article');card.className='update-card';card.dataset.key=item.key;
   card.dataset.attention=String(itemNeedsAttention(item));card.dataset.state=String(item?.state||'UNKNOWN');
-  const baseId='update-card-'+safeDomId(item.key);
+  const baseId='update-card-'+safeDomId(item.key);card.id=baseId;
 
   const main=document.createElement('div');main.className='update-card-main';
   const title=document.createElement('div');title.className='update-title';
-  const h3=document.createElement('h3');h3.id=baseId+'-title';h3.textContent=item.name;
+  const h3=document.createElement('h3');h3.id=baseId+'-title';h3.textContent=ownerFacingName(item);
   const status=visibleItemStatus(item);
   const chip=document.createElement('span');chip.className='update-chip';chip.dataset.state=status.state;chip.textContent=status.label;chip.setAttribute('aria-label','สถานะ: '+status.label);
   title.append(h3,chip);main.append(title);card.setAttribute('aria-labelledby',h3.id);
@@ -917,8 +953,8 @@ function renderCard(item){
   renderTargetHistory(item,main);
   main.append(technicalDetails(item));
   const actions=document.createElement('div');actions.className='update-actions';
-  if(item.adapter==='PLATFORM_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(accessibleAction(actionButton(actionLabel(item,'อัปเดต VPS'),()=>updatePlatform(item),'primary-button',item.key),item,reason.id,'อัปเดต VPS Platform'));
-  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate)actions.append(accessibleAction(actionButton(actionLabel(item,'ทำต่อ VPS Platform'),()=>updatePlatform(item),'primary-button',item.key),item,reason.id,'ทำต่อการอัปเดต VPS Platform'));
+  if(item.adapter==='PLATFORM_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(accessibleAction(actionButton(actionLabel(item,'อัปเดตระบบพื้นฐาน'),()=>updatePlatform(item),'primary-button',item.key),item,reason.id,'อัปเดตระบบพื้นฐาน AWH'));
+  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate)actions.append(accessibleAction(actionButton(actionLabel(item,'ทำต่อระบบพื้นฐาน'),()=>updatePlatform(item),'primary-button',item.key),item,reason.id,'ทำต่อการอัปเดตระบบพื้นฐาน AWH'));
   else if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(accessibleAction(actionButton(actionLabel(item,item.runtimeState==='SPLIT'?'ปรับ Runtime และอัปเดต':'อัปเดต AWH'),()=>updateAwh(item),'primary-button',item.key),item,reason.id,item.runtimeState==='SPLIT'?'ปรับ Runtime และอัปเดต AWH':'อัปเดต AWH'));
   else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate)actions.append(accessibleAction(actionButton(actionLabel(item,'ทำต่อ AWH'),()=>updateAwh(item),'primary-button',item.key),item,reason.id,'ทำต่อการอัปเดต AWH'));
   else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidateReleaseSha&&item.candidateVersion)actions.append(accessibleAction(actionButton(actionLabel(item,'ทำต่อ LearnLab'),()=>resumeLearnLab(item),'primary-button',item.key),item,reason.id,'ทำต่อการอัปเดต LearnLab'));
@@ -1017,7 +1053,7 @@ function render(){
     section.append(head,list);host.append(section);
   }
   if(!host.childElementCount){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ไม่พบระบบตามตัวกรองนี้';host.append(empty);}
-  renderRuntimeHealth();renderReleaseInfrastructure();renderHistory();summary();renderProgress();
+  renderRuntimeHealth();renderReleaseInfrastructure();renderHistory();summary();renderNextAction();renderProgress();
 }
 
 function relativeLiveTime(value){

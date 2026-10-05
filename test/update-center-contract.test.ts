@@ -283,6 +283,21 @@ test('Update Center keeps compatibility/internal targets out of the owner summar
   assert.match(service,/\(\$item\['visibility'\] \?\? 'ADVANCED'\) !== 'PRIMARY'/);
 });
 
+test('Update Center gives the owner one human-readable next action before technical detail', async()=>{
+  const [html,script,css]=await Promise.all([
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.css'),'utf8'),
+  ]);
+  assert.match(html,/id="updates-next"/);
+  assert.match(html,/ตอนนี้ต้องทำอะไร/);
+  assert.match(script,/function renderNextAction\(\)/);
+  assert.match(script,/function ownerFacingName\(item\)/);
+  assert.match(script,/ระบบพื้นฐาน AWH/);
+  assert.match(css,/\.updates-next/);
+  assert.match(css,/\.updates-next>a\{width:100%;min-height:48px\}/);
+});
+
 test('Update Center mobile surface stays light and legacy baselines remain fail-closed', async()=>{
   const [css,service,learnLab,script]=await Promise.all([
     readFile(join(ROOT,'web/updates.css'),'utf8'),
@@ -333,7 +348,7 @@ test('release targets recover legacy pending approvals with one repeated Owner U
   assert.match(service,/candidateReleaseSha/);
   assert.match(service,/candidateVersion/);
   assert.match(script,/ทำต่อ AWH/);
-  assert.match(script,/ทำต่อ VPS Platform/);
+  assert.match(script,/ทำต่อระบบพื้นฐาน/);
   assert.match(script,/ทำต่อ LearnLab/);
   assert.match(script,/ทำต่อ Assessment/);
   assert.match(script,/requestLearnLabRelease\(item\.candidateReleaseSha,item\.candidateVersion\)/);

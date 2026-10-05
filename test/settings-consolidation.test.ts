@@ -17,6 +17,8 @@ test('generic AWH Settings hub is removed from the user-facing shell',async()=>{
   assert.match(html,/id="settings-panel-start" class="settings-panel" hidden/);
   assert.match(app,/focusedSettingsCopy/);
   assert.match(app,/requestedSettings\?\.startsWith\('panel:'\)/);
+  assert.match(app,/value === 'hatchet'/);
+  assert.match(app,/openAccount\('system'\).*hatchet-api-key/s);
 });
 
 test('owner administration is native to Control Panel and has no Settings bounce',async()=>{

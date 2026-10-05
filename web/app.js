@@ -1581,6 +1581,7 @@ import {
   function requestedOwnerSettings() {
     try {
       const value = new URL(window.location.href).searchParams.get('awh-settings');
+      if (value === 'hatchet') return 'hatchet';
       if (['ai','system','people'].includes(value)) return 'panel:' + ({ ai: 'ai', system: 'overview', people: 'users' })[value];
       return ['account','devices','data','brand'].includes(value) ? value : null;
     } catch { return null; }
@@ -1754,6 +1755,7 @@ import {
     const statusPromise = fetch('/bay/api/status.php', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
       .then(async (response) => response.ok ? await response.json() : null)
       .catch(() => null);
+    const hatchetPromise = isOwner() ? loadHatchetStatus().catch(() => null) : Promise.resolve(null);
     try {
       const [projectResponse, releaseResponse] = await Promise.all([
         fetch('/bay/data/projects.json', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }),
@@ -1831,15 +1833,29 @@ import {
     const readyServices = criticalServices.filter((item)=>liveServiceState(item)==='ready');
     const checkingServices = criticalServices.filter((item)=>liveServiceState(item)==='checking');
     const attentionServices = criticalServices.filter((item)=>liveServiceState(item)==='attention');
+    const hatchetNeedsSetup = isOwner() && state.hatchet !== null && state.hatchet?.credentialConfigured !== true;
+    const ownerAttentionCount = attentionServices.length + (hatchetNeedsSetup ? 1 : 0);
     const responsiveServices = criticalServices.filter((item)=>item?.ok===true||item?.reachable===true);
     set('ecosystem-project-count', directoryProjects.length);
     set('ecosystem-active-count', liveServices.length ? responsiveServices.length : projects.filter((item)=>item?.status==='active').length);
-    set('ecosystem-pilot-count', liveServices.length ? attentionServices.length : projects.filter((item)=>item?.status==='pilot').length);
+    set('ecosystem-pilot-count', (liveServices.length || state.hatchet !== null) ? ownerAttentionCount : projects.filter((item)=>item?.status==='pilot').length);
     set('ecosystem-release-count', releases.length);
+    const todayLink=$('owner-today-link');
+    if(todayLink){
+      todayLink.href=hatchetNeedsSetup?'./?awh-settings=hatchet':'./panel.html#overview';
+      todayLink.textContent=hatchetNeedsSetup?'ต้องทำต่อ: เชื่อม Hatchet Cloud ›':'เปิดศูนย์ดูแลระบบ ›';
+    }
     const liveList=$('ecosystem-live-list'); const liveOverall=$('ecosystem-live-overall');
     if(liveList){
       liveList.replaceChildren();
-      for(const service of criticalServices.slice(0,4)){
+      if(hatchetNeedsSetup){
+        const row=document.createElement('div'); row.className='owner-live-row attention';
+        const dot=document.createElement('i'); const copy=document.createElement('span');
+        const name=document.createElement('strong'); name.textContent='Hatchet Cloud';
+        const detail=document.createElement('small'); detail.textContent='ยังไม่ได้เชื่อม · แตะด้านล่างเพื่อทำต่อ';
+        copy.append(name,detail); row.append(dot,copy); liveList.append(row);
+      }
+      for(const service of criticalServices.slice(0,hatchetNeedsSetup?3:4)){
         const liveState=liveServiceState(service);
         const row=document.createElement('div'); row.className=`owner-live-row ${liveState}`;
         const dot=document.createElement('i'); const copy=document.createElement('span');
@@ -1856,9 +1872,9 @@ import {
     }
     if(liveOverall){
       const allReady=criticalServices.length>0&&readyServices.length===criticalServices.length;
-      liveOverall.className=`owner-live-overall ${attentionServices.length?'attention':allReady?'ready':'checking'}`;
-      liveOverall.textContent=attentionServices.length
-        ? `${attentionServices.length} เรื่องต้องจัดการ`
+      liveOverall.className=`owner-live-overall ${ownerAttentionCount?'attention':allReady?'ready':'checking'}`;
+      liveOverall.textContent=ownerAttentionCount
+        ? `${ownerAttentionCount} เรื่องต้องจัดการ`
         : allReady
           ? 'ทุกระบบปกติ'
           : checkingServices.length ? `ออนไลน์ · กำลังยืนยัน ${checkingServices.length} ระบบ` : 'กำลังตรวจ…';
@@ -1866,11 +1882,10 @@ import {
     const ownerTools=$('ecosystem-owner-tools'); if(ownerTools) ownerTools.hidden=state.control?.role!=='OWNER';
     };
     paint();
-    const statusData = await statusPromise;
-    if (statusData) {
-      liveServices = Array.isArray(statusData?.services) ? statusData.services : [];
-      paint();
-    }
+    const [statusData, hatchetData] = await Promise.all([statusPromise, hatchetPromise]);
+    if (statusData) liveServices = Array.isArray(statusData?.services) ? statusData.services : [];
+    if (hatchetData?.hatchet) state.hatchet = hatchetData.hatchet;
+    paint();
   }
 
   function render(data) {
@@ -2562,7 +2577,9 @@ import {
       message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดพื้นที่ทำงานไม่ครบ');
       return null;
     });
-    if (requestedSettings) void openAccount(requestedSettings);
+    if (requestedSettings === 'hatchet') {
+      void openAccount('system').then(() => window.requestAnimationFrame(() => $('hatchet-api-key')?.focus()));
+    } else if (requestedSettings) void openAccount(requestedSettings);
     void loadProductSettings().then((value) => { state.productSettings = value.settings; applyProductSettings(); }).catch(() => undefined);
 
     await hydration;

@@ -1,4 +1,4 @@
-import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, loadControlData, listManagedSites, loadProviderStatus, loadProviderHub, updateProviderHubCredential, testProviderHubConnection, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, updatePersonAccess, cancelTask, decideApproval, revokeDevice, managedSiteAction, loadCoreReleaseStatus, requestCoreRelease } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, loadControlData, listManagedSites, loadProviderStatus, loadProviderHub, updateProviderHubCredential, testProviderHubConnection, updateProviderPolicy, loadHatchetStatus, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, updatePersonAccess, cancelTask, decideApproval, revokeDevice, managedSiteAction, loadCoreReleaseStatus, requestCoreRelease } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
@@ -16,14 +16,23 @@ function row(title,detail,label,state=''){
   copy.append(strong,small);item.append(copy,chip);return item;
 }
 function empty(host,text){host.replaceChildren();const n=document.createElement('div');n.className='cp-empty';n.textContent=text;host.append(n);}
+function syncCommandAttention(){
+  const count=document.querySelectorAll('#cp-attention .cp-row').length;
+  if($('cp-command-attention-count'))$('cp-command-attention-count').textContent=String(count);
+  if($('cp-command-attention-note'))$('cp-command-attention-note').textContent=count?'เปิดดูแล้วทำต่อได้ทันที':'ไม่มีเรื่องเร่งด่วน';
+  if($('cp-command-summary'))$('cp-command-summary').textContent=count?count+' เรื่องควรจัดการ':'ระบบพร้อมใช้งาน';
+  const primary=$('cp-command-primary');
+  if(primary instanceof HTMLAnchorElement){primary.href=count?'#cp-attention-wrap':'./';primary.textContent=count?'ดูสิ่งที่ต้องทำ':'กลับ AWH';}
+}
 function attention(title,detail,state='WARNING',action=null){
   const wrap=$('cp-attention-wrap'),host=$('cp-attention');if(!wrap||!host)return;
   wrap.hidden=false;
-  const item=row(title,detail,state,state);
+  const label=bad(state)?'ต้องแก้':'ต้องดู';
+  const item=row(title,detail,label,state);
   if(action?.href&&action?.label){
     const link=document.createElement('a');link.className='cp-row-action';link.href=action.href;link.textContent=action.label;item.append(link);
   }
-  host.append(item);
+  host.append(item);syncCommandAttention();
 }
 function healthTone(state){
   const value=String(state||'UNKNOWN').toUpperCase();
@@ -80,24 +89,21 @@ function renderCommandCenter(data){
   const server=data?.telemetry?.server||{},storage=data?.storage||server?.storage||{},deployment=data?.deployment||{},queue=data?.queue||{};
   const workers=Array.isArray(data?.workers)?data.workers:[];
   const readyWorkers=workers.filter(worker=>['READY','WORKING'].includes(String(worker?.state||''))).length;
-  const attentionCount=document.querySelectorAll('#cp-attention .cp-row').length;
   const activeTasks=Number(queue.activeTaskCount||0);
-  const summary=$('cp-command-summary'),note=$('cp-command-note');
-  if(summary)summary.textContent=attentionCount?attentionCount+' เรื่องควรจัดการ':'ระบบพร้อมใช้งาน';
+  const note=$('cp-command-note');
   if(note){
     const source=deployment.sourceState==='MATCHED'?'รุ่นระบบตรงกัน':'กำลังตรวจรุ่นระบบ';
     const disk=Number(storage.freeBytes)>0?'พื้นที่ว่าง '+bytes(storage.freeBytes):'กำลังตรวจพื้นที่';
     note.textContent=source+' · '+activeTasks+' งานกำลังทำ · '+disk;
   }
-  if($('cp-command-attention-count'))$('cp-command-attention-count').textContent=attentionCount?String(attentionCount):'0';
-  if($('cp-command-attention-note'))$('cp-command-attention-note').textContent=attentionCount?'เปิดดูและจัดการด้านล่าง':'ไม่มีเรื่องเร่งด่วน';
+  syncCommandAttention();
   if($('cp-command-running'))$('cp-command-running').textContent=String(activeTasks);
   if($('cp-command-devices'))$('cp-command-devices').textContent=readyWorkers+'/'+workers.length;
 }
 const shortSha=(value)=>typeof value==='string'&&/^[0-9a-f]{40}$/i.test(value)?value.slice(0,9):'—';
 const updateStateLabel=(state)=>({
   CURRENT:'ล่าสุด',INTERNAL_MANAGED:'ล่าสุด',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'รอยืนยัน',UPDATING:'กำลังอัปเดต',
-  BLOCKED:'ต้องตรวจ',SOURCE_READY:'Source พร้อม',REMOTE_CHECK_REQUIRED:'กำลังตรวจ',BASELINE_REQUIRED:'ต้องผูก Production',MIGRATION_REQUIRED:'ต้องย้าย Deploy',UNREGISTERED:'ยังไม่ลงทะเบียน',
+  BLOCKED:'ต้องตรวจ',SOURCE_READY:'มีรุ่นรอเตรียม',REMOTE_CHECK_REQUIRED:'กำลังตรวจ',BASELINE_REQUIRED:'ต้องตั้งค่าครั้งแรก',MIGRATION_REQUIRED:'ต้องปรับระบบอัปเดต',UNREGISTERED:'ยังไม่พร้อมใช้งาน',
 })[String(state||'')]||String(state||'ต้องตรวจ');
 
 function renderUpdateSummary(snapshot,error=null){
@@ -393,10 +399,10 @@ function renderCoreReleaseControl(status){
     message.textContent=active.resultSummary||'Release controller กำลังทำงาน';return;
   }
   if(!target){button.textContent='ยังไม่มีรุ่นพร้อมอัปเดต';message.textContent=status?.releaseBlocker||'ยังไม่พบ canonical release target';return;}
-  if(runtime&&target===runtime){button.textContent='AWH เป็นรุ่นล่าสุด';message.textContent='Production ตรงกับ canonical '+shortSha(target);return;}
+  if(runtime&&target===runtime){button.textContent='AWH เป็นรุ่นล่าสุด';message.textContent='ระบบที่ใช้งานอยู่ตรงกับรุ่นล่าสุด';return;}
   if(status?.releaseDetailsReady===false){button.textContent='รุ่นนี้ยังปล่อยไม่ได้';message.textContent=status?.releaseBlocker||'Release details ยังไม่พร้อม';return;}
   button.disabled=false;button.dataset.releaseSha=target;button.textContent='อัปเดต AWH → '+shortSha(target);
-  message.textContent='Production '+shortSha(runtime)+' · รุ่นพร้อม '+shortSha(target)+' · ใช้ Core Release authority เดิม';
+  message.textContent='มี AWH รุ่นใหม่พร้อม · ระบบจะใช้ขั้นตอนอัปเดตที่ปลอดภัยเดิม';
 }
 
 function renderSites(sitesData){
@@ -485,6 +491,12 @@ function renderProviderHub(data){
   test.addEventListener('click',async()=>{test.disabled=true;msg.textContent='กำลังทดสอบ…';try{await testProviderHubConnection(provider.providerId);await reload();}catch(error){msg.textContent=error instanceof Error?error.message:'ทดสอบไม่ผ่าน';}finally{test.disabled=false;}});
   remove.addEventListener('click',async()=>{remove.disabled=true;msg.textContent='กำลังยกเลิก…';try{await updateProviderHubCredential(provider.providerId,'REMOVE',null);await reload();}catch(error){msg.textContent=error instanceof Error?error.message:'ยังยกเลิกไม่ได้';}finally{remove.disabled=false;}});
  }}
+function renderHatchetOwnerStatus(data){
+  const configured=data?.hatchet?.credentialConfigured===true;
+  const status=$('cp-hatchet-status');
+  if(status)status.textContent=configured?'พร้อมใช้งาน · credential ถูกเก็บแบบไม่แสดงกลับ':'ยังไม่เชื่อม · กดเชื่อมได้จาก AWH โดยตรง';
+  if(!configured)attention('เชื่อม Hatchet Cloud','เหลือเชื่อม token เพื่อให้งานที่ใช้ Cloud worker พร้อมทำงาน','WARNING',{label:'เชื่อมตอนนี้',href:'./?awh-settings=hatchet'});
+}
 function filterMenus(query){
   const q=String(query||'').trim().toLowerCase();
   for(const node of document.querySelectorAll('[data-cp-keywords]')){
@@ -553,7 +565,7 @@ async function load(){
     $('cp-updated').textContent='ตรวจข้อมูลแล้ว · '+Math.max(1,Math.round(performance.now()-started))+' ms';
     void renderExternalCapabilities();
 
-    Promise.allSettled([listManagedSites(),loadProviderStatus(),loadPeopleAccess(),loadControlData(),loadCoreReleaseStatus(),loadProviderHub()]).then((secondary)=>{
+    Promise.allSettled([listManagedSites(),loadProviderStatus(),loadPeopleAccess(),loadControlData(),loadCoreReleaseStatus(),loadProviderHub(),loadHatchetStatus()]).then((secondary)=>{
       if(secondary[0].status==='fulfilled'){renderSites(secondary[0].value);renderLiveSites(secondary[0].value);}
       else if($('cp-live-sites'))empty($('cp-live-sites'),'ยังโหลด Managed Sites ไม่สำเร็จ');
       if(secondary[1].status==='fulfilled')renderProvider(secondary[1].value);
@@ -562,8 +574,11 @@ async function load(){
         for(const id of ['cp-live-tasks','cp-live-approvals','cp-live-devices'])if($(id))empty($(id),'ยังโหลด Control Plane ไม่สำเร็จ');
       }
       if(secondary[4].status==='fulfilled')renderCoreReleaseControl(secondary[4].value);
-      if(secondary[5].status==='fulfilled')renderProviderHub(secondary[5].value); else if($('cp-provider-list'))empty($('cp-provider-list'),'ยังโหลด AI Providers ไม่สำเร็จ');
       else if($('cp-core-release-state'))$('cp-core-release-state').textContent='ยังโหลดสถานะ Core Release ไม่สำเร็จ';
+      if(secondary[5].status==='fulfilled')renderProviderHub(secondary[5].value);
+      else if($('cp-provider-list'))empty($('cp-provider-list'),'ยังโหลด AI Providers ไม่สำเร็จ');
+      if(secondary[6].status==='fulfilled')renderHatchetOwnerStatus(secondary[6].value);
+      else if($('cp-hatchet-status'))$('cp-hatchet-status').textContent='ยังตรวจสถานะ Hatchet ไม่สำเร็จ';
     });
   }catch(error){
     const overall=$('cp-overall');overall.className='cp-overall bad';overall.textContent='ศูนย์ดูแลระบบต้องตรวจ';

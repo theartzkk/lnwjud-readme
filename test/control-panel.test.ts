@@ -97,6 +97,10 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.match(js,/loadControlData\(\)/);
   assert.match(js,/listManagedSites/);
   assert.match(js,/loadProviderStatus/);
+  assert.match(js,/loadHatchetStatus/);
+  assert.match(js,/renderHatchetOwnerStatus/);
+  assert.match(js,/\.\/\?awh-settings=hatchet/);
+  assert.match(html,/id="cp-hatchet-status"/);
   assert.match(js,/if\(!session\)\{location\.assign/);
   const loadBody=js.slice(js.indexOf('async function load(){'));
   assert.ok(loadBody.indexOf('requireOwnerSession()')<loadBody.indexOf('loadInfrastructureCompat()'));
@@ -104,6 +108,7 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.doesNotMatch(html,/password|api[_ -]?key|secret/i);
   assert.match(css,/\.cp-sidebar/);
   assert.match(css,/@media\(max-width:840px\)/);
+  assert.match(css,/\.cp-command-primary,.cp-command-secondary,.cp-section-action\{min-height:48px;font-size:13px\}/);
 });
 
 test('Control Panel uses a bounded infrastructure summary route',async()=>{

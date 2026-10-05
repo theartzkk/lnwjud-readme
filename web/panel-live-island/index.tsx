@@ -229,7 +229,7 @@ function LiveControlApp() {
   return <>
     <Toaster position="top-right" richColors closeButton />
     <div className="awh-live-toolbar">
-      <div><span>LIVE CONTROL</span><strong>สั่งงาน → เห็นคิว → ติดตาม → ตรวจผล</strong>
+      <div><span>ควบคุมงานจริง</span><strong>สั่งงาน → เห็นคิว → ติดตาม → ตรวจผล</strong>
         <small>{loading ? "กำลังเชื่อม Control Plane…" : queryError ? "บางสถานะยังโหลดไม่ครบ" : "ข้อมูลสด · " + activeTasks.length + " งานกำลังทำ"}</small></div>
       <div className="awh-live-toolbar-actions">
         <button type="button" onClick={() => setPaletteOpen(true)}><CommandIcon size={15} /> ค้นหาและสั่งงาน <kbd>⌘K</kbd></button>
@@ -243,9 +243,9 @@ function LiveControlApp() {
 
     <section className="awh-live-release">
       <div className="awh-live-release-icon"><Server size={20} /></div>
-      <div className="awh-live-release-copy"><small>AWH PRODUCTION</small>
-        <strong>{activeRelease ? "กำลังอัปเดต " + Math.round(Number(activeRelease.progress ?? 0)) + "%" : releaseReady ? "มีรุ่นพร้อม " + short(sourceSha) : sourceSha === runtimeSha ? "เป็นรุ่นล่าสุด" : "กำลังตรวจ release"}</strong>
-        <span>Production {short(runtimeSha)} · Canonical {short(sourceSha)}</span>
+      <div className="awh-live-release-copy"><small>รุ่น AWH</small>
+        <strong>{activeRelease ? "กำลังอัปเดต " + Math.round(Number(activeRelease.progress ?? 0)) + "%" : releaseReady ? "มีรุ่นใหม่พร้อมอัปเดต" : sourceSha === runtimeSha ? "เป็นรุ่นล่าสุด" : "กำลังตรวจรุ่นระบบ"}</strong>
+        <span>{sourceSha === runtimeSha ? "ระบบที่ใช้งานอยู่ตรงกับรุ่นล่าสุด" : "AWH กำลังตรวจความสอดคล้องของรุ่น"}</span>
       </div>
       {releaseReady && <ActionButton disabled={mutation.isPending} onClick={() => runAction({
         kind: "core-release", label: "อัปเดต AWH เป็น " + short(sourceSha), queue: "คิวปล่อยรุ่น AWH", releaseSha: sourceSha,
