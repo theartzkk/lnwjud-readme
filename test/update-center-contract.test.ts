@@ -934,6 +934,8 @@ test('Update Center owner flow is per-target, queue-aware, exact-target pinned, 
   assert.match(operator,/PLATFORM_MAINTENANCE_FREEZE'\)continue/);
   assert.match(script,/ใช้สถานะล่าสุด · จะตรวจใหม่อัตโนมัติ/);
   assert.match(script,/const storageBlocked=Boolean\(telemetryReady\)/);
+  assert.match(script,/function reconcileRecoveredActionMessage\(\)/);
+  assert.match(script,/!active&&\/\(\?:เริ่มอัปเดตแล้ว\|เข้าคิวแล้ว\)/);
   assert.match(script,/function ownerStageElapsed\(event\)/);
   assert.match(script,/ขั้นนี้ \$\{minutes\} นาที/);
   assert.match(script,/if\(progress<23\)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'\+elapsed/);

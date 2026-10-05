@@ -1006,9 +1006,9 @@ function orderedRows(rows,groupKey){
 function reconcileRecoveredActionMessage(){
   const host=$('updates-message');
   const text=String(host?.textContent||'').trim();
-  const stale=text==='AWH ไม่สามารถดำเนินการได้ในขณะนี้'||text.startsWith('AWH ยังอัปเดตไม่ได้');
-  if(!stale)return;
   const active=primaryItems().find((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
+  const stale=text==='AWH ไม่สามารถดำเนินการได้ในขณะนี้'||text.startsWith('AWH ยังอัปเดตไม่ได้')||(!active&&/(?:เริ่มอัปเดตแล้ว|เข้าคิวแล้ว).*ระบบจะทำต่อ|เริ่มอัปเดตแล้ว · ระบบกำลังทำงาน/.test(text));
+  if(!stale)return;
   if(active){
     message(active.name+' กำลังดำเนินการอยู่ · ระบบจะติดตามและตรวจผลให้อัตโนมัติ','info');
     return;
