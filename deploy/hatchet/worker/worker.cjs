@@ -27,7 +27,7 @@ const workflow=hatchet.workflow({
  concurrency:{maxRuns:1,limitStrategy:ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,expression:"input.resource"},
  idempotency:{strategy:"status",expression:"input.executionId",fallbackTtlMs:86400000}
 });
-workflow.task({name:"awh-execution-envelope-v1",retries:2,fn:async(input,ctx)=>{
+workflow.task({name:"awh-execution-envelope-v1",retries:16,backoff:{factor:2,maxSeconds:3600},fn:async(input,ctx)=>{
  if(!input||input.schemaVersion!==1) throw new Error("AWH_ENVELOPE_INVALID");
  if(typeof input.executionId!=="string"||!/^[0-9a-f-]{36}$/i.test(input.executionId)) throw new Error("AWH_EXECUTION_ID_INVALID");
  if(typeof input.resource!=="string"||input.resource.length<1||input.resource.length>160) throw new Error("AWH_RESOURCE_INVALID");
@@ -35,7 +35,10 @@ workflow.task({name:"awh-execution-envelope-v1",retries:2,fn:async(input,ctx)=>{
  const response=await bridgeCall(["execute",input.executionId]);
  const result=response.result;
  if(!result||result.executionId!==input.executionId) throw new Error("AWH_EXECUTION_NOT_READY");
- return {schemaVersion:1,executionId:input.executionId,resource:input.resource,canonicalState:String(result.state||"UNKNOWN"),idempotent:result.idempotent===true,retryCount:ctx.retryCount(),productionMutationAuthority:false,provider:"hatchet-readyidc"};
+ const canonicalState=String(result.state||"UNKNOWN");
+ if(canonicalState==="QUEUED") throw new Error("AWH_CANONICAL_RETRY_PENDING");
+ if(!["COMPLETED","FAILED","CANCELLED","WAITING_FOR_APPROVAL","WAITING_FOR_CAPABILITY"].includes(canonicalState)) throw new Error("AWH_CANONICAL_STATE_NOT_TERMINAL");
+ return {schemaVersion:1,executionId:input.executionId,resource:input.resource,canonicalState,idempotent:result.idempotent===true,retryCount:ctx.retryCount(),productionMutationAuthority:false,provider:"hatchet-readyidc"};
 }});
 let dispatching=false;
 async function dispatchOnce(){

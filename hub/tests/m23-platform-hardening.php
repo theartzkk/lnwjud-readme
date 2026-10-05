@@ -75,6 +75,9 @@ try{
  m23_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id='$staleExec'")->fetchColumn()==='FAILED','stale execution becomes FAILED');
  m23_assert($pdo->query("SELECT state FROM control_execution_envelopes WHERE execution_id='$staleExec'")->fetchColumn()==='RELEASED','stale mutation envelope is released');
  m23_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id='$freshExec'")->fetchColumn()==='QUEUED','fresh retry remains queued');
+ $hatchetWorker=(string)file_get_contents(dirname(__DIR__,2).'/deploy/hatchet/worker/worker.cjs');
+ m23_assert(str_contains($hatchetWorker,'retries:16,backoff:{factor:2,maxSeconds:3600}')&&str_contains($hatchetWorker,'AWH_CANONICAL_RETRY_PENDING'),'Hatchet owns bounded retry cadence while canonical retry safety remains authoritative');
+ m23_assert(str_contains($hatchetWorker,'idempotency:{strategy:"status",expression:"input.executionId"')&&str_contains($hatchetWorker,'AWH_CANONICAL_STATE_NOT_TERMINAL'),'Hatchet retry remains idempotent on the canonical execution id and fails closed on unknown state');
  m23_assert($pdo->query('PRAGMA integrity_check')->fetchColumn()==='ok'&&$pdo->query('PRAGMA foreign_key_check')->fetchAll()===[],'M23 database integrity remains clean');
  echo "AWH M23 Platform Hardening: PASS\n";
 } finally {
