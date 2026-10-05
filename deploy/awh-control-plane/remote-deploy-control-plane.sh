@@ -1440,7 +1440,7 @@ fi
 if test "$PLATFORM_HARDENING" = 1; then
   sudo install -d -o root -g root -m 0755 "$EXECUTOR_BACKUP_ROOT"
   if sudo test -f "$HATCHET_SERVICE_UNIT"; then sudo cp -p "$HATCHET_SERVICE_UNIT" "$HATCHET_SERVICE_BACKUP"; HATCHET_UNIT_PREEXISTING=1; fi
-  sudo sh "$RELEASE/deploy/hatchet/install-readyidc-worker.sh" --prepare
+  sudo sh "$RELEASE/deploy/hatchet/install-readyidc-worker.sh" --prepare >/dev/null
   HATCHET_UNIT_INSTALLED=1
   sudo systemctl is-enabled --quiet awh-hatchet-worker.service
   stage HATCHET_WORKER_PREPARED

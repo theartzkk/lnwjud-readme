@@ -283,6 +283,12 @@ test('platform connector helper logs stay out of the strict typed deploy stream'
   assert.match(remote, /stage VPS_DIRECT_CONNECTOR_READY/);
 });
 
+test('Hatchet installer success chatter stays out of the strict typed deploy stream', async () => {
+  const remote = await readFile('deploy/awh-control-plane/remote-deploy-control-plane.sh', 'utf8');
+  assert.match(remote, /install-readyidc-worker\.sh" --prepare >\/dev\/null/);
+  assert.match(remote, /stage HATCHET_WORKER_PREPARED/);
+});
+
 test('control-plane dry-run terminates after cleanup instead of surviving SIGTERM', async () => {
   const source = await readFile('deploy/awh-control-plane/deploy-control-plane.sh', 'utf8');
   assert.match(source, /trap cleanup EXIT/);
