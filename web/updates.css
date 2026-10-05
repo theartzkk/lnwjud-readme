@@ -258,8 +258,9 @@ html{scroll-padding-top:calc(var(--updates-header-height,64px) + 12px)}
 /* Native modal confirmation keeps focus, Escape, and screen-reader semantics. */
 dialog.updates-dialog:not([open]){display:none}
 dialog.updates-dialog[open]{
-  position:fixed;inset:0;display:grid;width:100%;max-width:none;height:100%;margin:0;padding:20px;
-  place-items:center;border:0;background:transparent;overflow:auto;
+  position:fixed;top:var(--awh-visual-viewport-top,0px);right:0;bottom:auto;left:0;display:grid;width:100%;max-width:none;
+  height:var(--awh-visual-viewport-height,100dvh);max-height:var(--awh-visual-viewport-height,100dvh);margin:0;padding:20px;
+  place-items:center;border:0;background:transparent;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
 }
 dialog.updates-dialog::backdrop{background:rgba(12,28,52,.42);backdrop-filter:blur(4px)}
 dialog.updates-dialog .updates-dialog-card{margin:0;border:1px solid var(--update-line)}

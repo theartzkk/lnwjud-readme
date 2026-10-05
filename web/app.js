@@ -210,16 +210,17 @@ import {
     if (privilegedPromptPromise) return privilegedPromptPromise;
     privilegedPromptPromise = new Promise((resolve) => {
       const overlay = document.createElement('div');
-      overlay.className = 'awh-stepup-overlay';
+      overlay.className = 'sheet awh-stepup-overlay';
       overlay.setAttribute('role', 'dialog');
       overlay.setAttribute('aria-modal', 'true');
       overlay.setAttribute('aria-labelledby', 'awh-stepup-title');
       const card = document.createElement('form');
-      card.className = 'awh-stepup-card';
+      card.className = 'sheet-card awh-stepup-card';
       card.innerHTML = '<span class="eyebrow">SECURITY</span><h2 id="awh-stepup-title">ยืนยันก่อนทำรายการสำคัญ</h2><p class="muted"></p><label for="awh-stepup-password">รหัสผ่าน AWH ปัจจุบัน</label><input id="awh-stepup-password" type="password" autocomplete="current-password" required /><p class="form-message" role="status"></p><div class="form-actions"><button class="secondary-button" type="button" data-stepup-cancel>ยกเลิก</button><button class="primary-button" type="submit">ยืนยันและทำต่อ</button></div>';
       card.querySelector('.muted').textContent = `${label} เป็นรายการที่ต้องยืนยันตัวตนอีกครั้งเพื่อป้องกันการเปลี่ยนแปลงที่มีความเสี่ยงสูง`;
       const input = card.querySelector('#awh-stepup-password');
       const finish = (value) => {
+        closeAwhDialog(overlay, { history: false });
         overlay.remove();
         resolve(value);
       };
@@ -234,7 +235,7 @@ import {
       });
       overlay.append(card);
       document.body.append(overlay);
-      window.setTimeout(() => input.focus(), 0);
+      openAwhDialog(overlay, { history: false });
     }).finally(() => { privilegedPromptPromise = null; });
     return privilegedPromptPromise;
   }

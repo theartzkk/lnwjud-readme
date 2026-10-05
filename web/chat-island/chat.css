@@ -109,12 +109,16 @@ body.awh-modern-chat-ready #awh-chat-root{display:flex!important;min-height:0;fl
 .awh-sidebar-backdrop{display:none}
 @media(max-width:840px){
   #awh-chat-root{height:100%}.awh-chat-shell{grid-template-columns:1fr}
-  .awh-chat-sidebar{position:fixed;z-index:120;top:0;bottom:0;left:0;width:min(86vw,320px);transform:translateX(-105%);transition:transform .2s ease;box-shadow:10px 0 32px rgba(28,46,64,.12)}
+  .awh-chat-sidebar{position:fixed;z-index:120;top:var(--awh-visual-viewport-top,0px);bottom:auto;left:0;width:min(86vw,320px);height:var(--awh-visual-viewport-height,100dvh);max-height:var(--awh-visual-viewport-height,100dvh);transform:translateX(-105%);transition:transform .2s ease;box-shadow:10px 0 32px rgba(28,46,64,.12)}
   .awh-chat-sidebar.is-open{transform:translateX(0)}.awh-sidebar-close,.awh-menu-button{display:inline-grid}
-  .awh-sidebar-backdrop{position:fixed;z-index:110;inset:0;display:block;border:0;background:rgba(24,34,45,.16)}
+  .awh-sidebar-backdrop{position:fixed;z-index:110;top:var(--awh-visual-viewport-top,0px);right:0;bottom:auto;left:0;height:var(--awh-visual-viewport-height,100dvh);display:block;border:0;background:rgba(24,34,45,.16)}
   .awh-chat-header{min-height:50px;padding:6px 10px}.awh-context-chips span:first-child{display:none}.awh-context-chips span{max-width:145px}
   .awh-message{width:min(100% - 24px,760px)}.awh-user-bubble{max-width:88%}
   .awh-composer-footer{padding:7px 9px calc(8px + env(safe-area-inset-bottom))}.awh-composer{border-radius:17px}
+  .awh-chat-search{min-height:44px}.awh-chat-search input{font-size:16px}
+  .awh-icon-action,.awh-send-button,.awh-stop-button{width:44px;height:44px}
+  .awh-ui-button-md,.awh-ui-button-sm,.awh-ui-button-icon{min-width:44px;min-height:44px}
+  .awh-starter-prompts button,.awh-message-menu button,.awh-composer-assist button,.awh-message-action,.awh-message-more>summary{min-height:44px}
 }
 @media(max-width:480px){
   .awh-chat-header{gap:7px}.awh-chat-title span{display:none}.awh-context-chips span{max-width:120px}

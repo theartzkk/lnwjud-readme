@@ -89,15 +89,15 @@ function renderCommandCenter(data){
   const server=data?.telemetry?.server||{},storage=data?.storage||server?.storage||{},deployment=data?.deployment||{},queue=data?.queue||{};
   const workers=Array.isArray(data?.workers)?data.workers:[];
   const readyWorkers=workers.filter(worker=>['READY','WORKING'].includes(String(worker?.state||''))).length;
-  const activeTasks=Number(queue.activeTaskCount||0);
+  const trackedTasks=Number(queue.activeTaskCount||0);
   const note=$('cp-command-note');
   if(note){
     const source=deployment.sourceState==='MATCHED'?'รุ่นระบบตรงกัน':'กำลังตรวจรุ่นระบบ';
     const disk=Number(storage.freeBytes)>0?'พื้นที่ว่าง '+bytes(storage.freeBytes):'กำลังตรวจพื้นที่';
-    note.textContent=source+' · '+activeTasks+' งานกำลังทำ · '+disk;
+    note.textContent=source+' · '+trackedTasks+' งานที่ระบบกำลังติดตาม · '+disk;
   }
   syncCommandAttention();
-  if($('cp-command-running'))$('cp-command-running').textContent=String(activeTasks);
+  if($('cp-command-running'))$('cp-command-running').textContent='—';
   if($('cp-command-devices'))$('cp-command-devices').textContent=readyWorkers+'/'+workers.length;
 }
 const shortSha=(value)=>typeof value==='string'&&/^[0-9a-f]{40}$/i.test(value)?value.slice(0,9):'—';
@@ -228,8 +228,12 @@ function renderEcosystem(data){
   const labels={awh:'AWH Control Plane',bay:'BAY EXCUSE X',learnlab:'BAY LearnLab',website:'เว็บไซต์โรงเรียน'};
   for(const service of services){
     const detail=service.detail||'HTTP '+(service.http??'—')+' · '+(service.latencyMs??'—')+' ms';
-    host.append(row(labels[service.id]||service.name||service.id,detail,service.ok?'Online':'ต้องตรวจ',service.ok?'READY':'FAILED'));
-    if(service.critical&&service.ok!==true)attention((labels[service.id]||service.name||service.id)+' ผิดปกติ',detail,'CRITICAL');
+    const http=Number(service.http);
+    const publicReachable=Number.isFinite(http)&&http>=200&&http<500;
+    const verificationPending=service.ok!==true&&publicReachable&&/ยังไม่ยืนยัน|กำลังยืนยัน|authenticated|post[- ]login|verification/i.test(detail);
+    const state=service.ok?'READY':verificationPending?'VERIFYING':'FAILED';
+    host.append(row(labels[service.id]||service.name||service.id,detail,service.ok?'Online':verificationPending?'กำลังยืนยัน':'ต้องตรวจ',state));
+    if(service.critical&&service.ok!==true&&!verificationPending)attention((labels[service.id]||service.name||service.id)+' ผิดปกติ',detail,'CRITICAL');
   }
 }
 function renderAgentControl(data){
@@ -309,16 +313,21 @@ function makeControlButton(label,run,{tone='',confirmText=null,busyLabel='กำ
   });
   return button;
 }
+const TASK_TERMINAL_STATES=new Set(['COMPLETED','FAILED','CANCELLED','SUPERSEDED']);
+const TASK_RUNNING_STATES=new Set(['RUNNING','VERIFYING','RECOVERING','PREPARING','QA','DEPLOYING','UPDATING']);
 function taskStateLabel(state){
-  return ({QUEUED:'อยู่ในคิว',WAITING_FOR_WORKER:'รออุปกรณ์',WAITING_FOR_APPROVAL:'รอยืนยัน',RUNNING:'กำลังทำ',VERIFYING:'กำลังตรวจ',RECOVERING:'กำลังกู้ต่อ',COMPLETED:'เสร็จ',FAILED:'ล้มเหลว',CANCELLED:'ยกเลิกแล้ว'})[String(state||'')]||String(state||'—');
+  return ({CREATED:'พร้อมเริ่ม',PENDING:'รอเริ่ม',QUEUED:'อยู่ในคิว',WAITING_FOR_WORKER:'รอ executor',WAITING_FOR_APPROVAL:'รอยืนยัน',STALE_RESUMABLE:'พร้อมทำต่อ',BLOCKED:'ติดเงื่อนไข',PREPARING:'กำลังเตรียม',QA:'กำลังทดสอบ',DEPLOYING:'กำลังติดตั้ง',UPDATING:'กำลังอัปเดต',RUNNING:'กำลังทำ',VERIFYING:'กำลังตรวจ',RECOVERING:'กำลังกู้ต่อ',COMPLETED:'เสร็จ',FAILED:'ล้มเหลว',CANCELLED:'ยกเลิกแล้ว',SUPERSEDED:'มีงานใหม่แทนแล้ว'})[String(state||'')]||String(state||'—');
 }
 function renderLiveTasks(control){
   cpControlData=control;
   const host=$('cp-live-tasks');if(!host)return;
   const tasks=Array.isArray(control?.tasks)?control.tasks:[];
-  const active=tasks.filter(task=>!['COMPLETED','FAILED','CANCELLED'].includes(String(task?.state||''))).slice(0,8);
+  const unfinished=tasks.filter(task=>!TASK_TERMINAL_STATES.has(String(task?.state||'')));
+  const running=unfinished.filter(task=>TASK_RUNNING_STATES.has(String(task?.state||'')));
+  const waiting=unfinished.filter(task=>!TASK_RUNNING_STATES.has(String(task?.state||'')));
+  const active=[...running,...waiting].slice(0,8);
   host.replaceChildren();
-  if($('cp-command-running'))$('cp-command-running').textContent=String(active.length);
+  if($('cp-command-running'))$('cp-command-running').textContent=String(running.length);
   if(!active.length){empty(host,'ไม่มีงานที่กำลังทำหรือรออยู่');return;}
   for(const task of active){
     const detail=[task.projectName,task.lastEvent?.message,Number.isFinite(Number(task.progress))?Math.round(Number(task.progress))+'%':null].filter(Boolean).join(' · ');

@@ -42,8 +42,12 @@ test('V1.3 owner center unifies existing owner surfaces without a new authority'
 });
 
 test('M20 owner Source Authority reuses the bounded control adapter instead of creating browser authority', async () => {
-  const source = await readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8');
+  const [source, adapter] = await Promise.all([
+    readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'control-plane-adapter.js'), 'utf8'),
+  ]);
   assert.match(source, /source-authority/);
+  assert.match(adapter, /\[1, 2\]\.includes\(value\.schemaVersion\)/);
   assert.match(source, /import\('\.\/control-plane-adapter\.js\?release=__AWH_WEB_RELEASE_ID__'\)/);
   assert.match(source, /api\.loadProjectSourceAuthority\(select\.value\)/);
   assert.match(source, /api\.updateProjectSourceAuthority\(\{ projectId: select\.value, action: 'BIND'/);

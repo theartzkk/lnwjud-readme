@@ -90,3 +90,34 @@ body { overflow-x: clip; }
 :where(.awh-heading-actions) { display: flex; flex-wrap: wrap; }
 :where(.awh-recent-item > span, .awh-status-item > span:last-child, .awh-artifact-card > span:last-child, .awh-pulse-card > span:last-child) { min-width: 0; max-width: 100%; flex: 1 1 auto; }
 :where(.awh-status-item strong, .awh-status-item small, .awh-recent-item strong, .awh-recent-item small, .awh-tool-copy strong, .awh-tool-copy small, .awh-artifact-card strong, .awh-artifact-card small, .awh-owner-command-copy strong, .awh-owner-command-copy small, .awh-pulse-card strong, .awh-pulse-card small, .awh-pulse-card em) { overflow-wrap: anywhere; word-break: break-word; }
+
+/* One visual-viewport authority for every floating owner surface. */
+:where(.awh-tool-dialog, .awh-search-dialog, .awh-automation-sheet) {
+  top: var(--awh-visual-viewport-top, 0px) !important;
+  right: 0 !important;
+  bottom: auto !important;
+  left: 0 !important;
+  height: var(--awh-visual-viewport-height, 100dvh) !important;
+  max-height: var(--awh-visual-viewport-height, 100dvh) !important;
+}
+
+:where(.awh-tool-dialog-card, .awh-search-card, .awh-automation-panel) {
+  max-height: calc(var(--awh-visual-viewport-height, 100dvh) - 8px) !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* iOS Safari zooms focused controls below 16px. Touch actions also share the
+ * 44px minimum from the KRUART experience contract. */
+@media (max-width: 760px) {
+  :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+    textarea,
+    select
+  ) { font-size: 16px !important; }
+
+  :where(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], select, summary) {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}
