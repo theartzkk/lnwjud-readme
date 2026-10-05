@@ -1502,6 +1502,22 @@ final class HubOperatorBridgeService
         if($q->rowCount()!==1)throw new HubOperatorBridgeException('Release details could not be bound to source promotion','OPERATOR_RELEASE_DETAILS_REQUIRED');
     }
 
+    private function beginImmediateWithRetry(): void
+    {
+        $last=null;
+        foreach([0,100000,300000] as $delay){
+            if($delay>0)usleep($delay);
+            try{$this->pdo->exec('BEGIN IMMEDIATE');return;}
+            catch(PDOException $error){
+                $last=$error;$info=$error->errorInfo;$sqliteCode=is_array($info)&&isset($info[1])?(int)$info[1]:0;$message=strtolower($error->getMessage());
+                $busy=in_array($sqliteCode,[5,6],true)||str_contains($message,'database is locked')||str_contains($message,'database is busy');
+                if(!$busy)throw $error;
+            }
+        }
+        if($last instanceof PDOException)throw $last;
+        throw new RuntimeException('SQLite write authority unavailable');
+    }
+
     /** @param array<string,mixed> $checkpoint @return array{executionId:string,taskId:string,projectId:string,leaseExpiresAt:string,joined?:bool} */
     private function acquireMutationAuthority(string $projectId,string $goal,string $capability,array $checkpoint,string $at,int $leaseSeconds=300,string $leaseOwner='operator-bridge'): array
     {
@@ -1509,7 +1525,7 @@ final class HubOperatorBridgeService
         if($leaseSeconds<60||$leaseSeconds>14400||preg_match('/^[a-z][a-z0-9-]{2,31}$/',$leaseOwner)!==1)throw new HubOperatorBridgeException('Mutation lease request is invalid','OPERATOR_REQUEST_INVALID');
         $lease=gmdate('c',strtotime($at)+$leaseSeconds); $taskId=self::uuid(); $executionId=self::uuid();
         try{
-            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->beginImmediateWithRetry();
             if($capability===self::MISSION_CAPABILITY){
                 $requestedTrack=is_string($checkpoint['requestedReleaseTrack']??null)?strtolower(trim((string)$checkpoint['requestedReleaseTrack'])):'';
                 $requestedWorkstream=is_string($checkpoint['workstreamKey']??null)?strtolower(trim((string)$checkpoint['workstreamKey'])):'';
@@ -1546,7 +1562,7 @@ final class HubOperatorBridgeService
     private function releaseMutationAuthority(array $authority,bool $success,string $at): void
     {
         try{
-            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->beginImmediateWithRetry();
             (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState($authority['executionId'],'RELEASED',null,$at);
             $state=$success?'COMPLETED':'FAILED';$summary=$success?'Guarded operator mutation completed':'Guarded operator mutation failed and released authority';$error=$success?null:'OPERATOR_MUTATION_FAILED';
             $this->pdo->prepare('UPDATE control_task_executions SET state=:state,lease_owner=NULL,lease_expires_at=NULL,last_error_code=:error,updated_at=:at WHERE execution_id=:execution')->execute(['state'=>$state,'error'=>$error,'at'=>$at,'execution'=>$authority['executionId']]);
