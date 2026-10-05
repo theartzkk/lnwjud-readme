@@ -125,6 +125,8 @@ final class HubDurableExecutionService
         $recovered = count($this->recoverExpired($at));
         $continuationRecovered=$this->recoverFailedContinuations($at);
         $results = []; $completed = 0; $waiting = 0; $failed = 0;
+        if(getenv('AWH_HATCHET_DISPATCH_MODE')==='1')
+            return ['processed'=>0,'completed'=>0,'waiting'=>0,'failed'=>0,'recovered'=>$recovered,'continuationRecovered'=>$continuationRecovered,'results'=>[]];
         for ($i = 0; $i < $maxItems; $i++) {
             $result = $this->runOnce($now);
             if ($result === null) break;
