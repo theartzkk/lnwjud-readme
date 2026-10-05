@@ -414,13 +414,14 @@ final class HubCoreReleaseService
             return $audit;
         }
         if($this->releaseTrack!=='vps-platform'||hash_equals($trackSha,$main))return $audit;
-        $chain=$this->sourcePromotionChain($platform,$main);
+        $chainBase=hash_equals($platform,$main)?$trackSha:$platform;
+        $chain=$this->sourcePromotionChain($chainBase,$main);
         if(!is_array($chain)){
             $audit['authority']='CANONICAL_SHARED_REPO_CHAIN_INCOMPLETE';
             return $audit;
         }
         $platformSegments=array_values(array_filter($chain,static fn(array $segment): bool => hash_equals((string)($segment['track']??''),'vps-platform')));
-        $latestPlatformTarget=$platformSegments===[]?$platform:(string)$platformSegments[count($platformSegments)-1]['target'];
+        $latestPlatformTarget=$platformSegments===[]?$chainBase:(string)$platformSegments[count($platformSegments)-1]['target'];
         if(!hash_equals($latestPlatformTarget,$trackSha)){
             $audit['authority']='CANONICAL_SHARED_REPO_CHAIN_INCOMPLETE';
             return $audit;
