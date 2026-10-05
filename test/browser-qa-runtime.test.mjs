@@ -30,6 +30,9 @@ test('VPS browser QA runtime is pinned, browser-reuse-only and Thai-ready', asyn
   assert.match(install, /ln -sfn "\$CHROME" "\$ROOT\/chrome-current"/);
   assert.doesNotMatch(install, /playwright\s+install|apt-get[^\n]*(chromium|google-chrome)/);
   assert.match(verify, /AWH_BROWSER_QA_NODE_BIN/);
+  assert.match(verify, /AWH_BROWSER_QA_AXE_MISSING/);
+  assert.match(verify, /AWH_BROWSER_QA_AXE_INVALID/);
+  assert.match(verify, /AWH_AXE_CORE_PATH/);
   assert.match(verify, /ldd "\$AWH_CHROME_PATH"/);
   assert.match(runner, /control-web-fixture\.mjs/);
   assert.match(runner, /accessibility-browser\.mjs/);
