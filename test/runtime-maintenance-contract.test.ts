@@ -33,6 +33,7 @@ test('runtime and dependency maintenance are declarative and do not require depl
   assert.match(manifest.linuxConnector.nodeRuntime.minimumVersion,/^\d+\.\d+\.\d+$/);
   assert.match(manifest.linuxConnector.nodeRuntime.asset.sha256,/^[0-9a-f]{64}$/);
   assert.match(manifest.browserQa.playwrightVersion,/^\d+\.\d+\.\d+$/);
+  assert.match(manifest.browserQa.axeCoreVersion,/^\d+\.\d+\.\d+$/);
 
   assert.match(bootstrap,/DEVICE_RUNTIME_RELEASE\.nodeRuntime\.version/);
   assert.match(bootstrap,/DEVICE_RUNTIME_RELEASE\.version/);
@@ -48,6 +49,7 @@ test('runtime and dependency maintenance are declarative and do not require depl
   assert.match(executable(connectorInstall),/manifest_value version/);
   assert.match(executable(connectorVerify),/EXPECTED_AGENT_VERSION=\$\(manifest_value version\)/);
   assert.match(executable(browserQa),/manifest_value browserQa\.playwrightVersion/);
+  assert.match(executable(browserQa),/manifest_value browserQa\.axeCoreVersion/);
   assert.match(macInstaller,/device-runtime-release\.json/);
   assert.doesNotMatch(executable(macInstaller),/^EXPECTED=\d+\.\d+\.\d+$/m);
   assert.match(packagedVerifier,/package\.json/);
