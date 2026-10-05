@@ -220,6 +220,10 @@ try{
     $deployedAnchorStatus=$platformService->status($session['sessionToken']);
     cr_assert(($deployedAnchorStatus['sourcePromotion']['sha']??null)===$platformDependencySha&&($deployedAnchorStatus['sourcePromotion']['platformAnchorSha']??null)===$platformSha&&($deployedAnchorStatus['sourcePromotion']['authority']??null)==='CANONICAL_SOURCE_CHAIN_VERIFIED','deployed VPS Platform anchor continues to follow trusted shared-source successors without requiring a second Platform promotion edge');
     cr_assert(($deployedAnchorStatus['sourcePromotion']['sourceChainSegmentCount']??0)===1&&($deployedAnchorStatus['releaseDetailsReady']??null)===true&&($deployedAnchorStatus['releaseBlocker']??null)===null,'deployed anchor keeps one shared successor release-ready instead of failing closed on an empty Platform subchain');
+    file_put_contents($canonicalGit.'/refs/heads/platform/production',$platformDependencySha."\n");
+    $convergedSharedStatus=$platformService->status($session['sessionToken']);
+    cr_assert(($convergedSharedStatus['sourcePromotion']['sha']??null)===$platformDependencySha&&($convergedSharedStatus['sourcePromotion']['platformAnchorSha']??null)===$platformSha&&($convergedSharedStatus['sourcePromotion']['authority']??null)==='CANONICAL_SOURCE_CHAIN_VERIFIED','Platform status remains release-ready when a trusted shared successor has already converged platform/production to canonical main');
+    cr_assert(($convergedSharedStatus['sourcePromotion']['sourceChainSegmentCount']??0)===1&&($convergedSharedStatus['releaseDetailsReady']??null)===true&&($convergedSharedStatus['releaseBlocker']??null)===null,'converged shared runtime does not regress to Release details chain is incomplete');
     $queuedB=$platformService->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$platformDependencySha,'cleanupTopology'=>false],'2026-09-23T01:00:02+00:00');
     cr_assert(($queuedB['state']??null)==='WAITING_FOR_WORKER','B request is admitted while A is RUNNING');
     $queuedBExecution=(string)$queuedB['executionId'];$queuedBTask=(string)$queuedB['taskId'];
