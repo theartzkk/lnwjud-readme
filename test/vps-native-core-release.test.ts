@@ -66,6 +66,9 @@ test('VPS-native core release reuses canonical approval and deploy authorities',
   assert.match(remote, /verify_deploy_authority\(\)/);
   assert.match(remote, /deploy-execution-authority\.php" verify/);
   assert.match(remote, /DEPLOY_AUTHORITY_BORROWED/);
+  assert.match(remote, /DEPLOY_AUTHORITY_CONFLICT_TIMEOUT/);
+  assert.match(remote, /DEPLOY_AUTHORITY_WAIT_STARTED/);
+  assert.match(remote, /sleep 2/);
   assert.equal((remote.match(/verify_deploy_authority/g) ?? []).length, 12);
   assert.doesNotMatch(remote, /required_capability <> 'system\.core\.release'/);
 

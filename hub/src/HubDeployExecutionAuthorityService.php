@@ -94,11 +94,15 @@ final class HubDeployExecutionAuthorityService
                 if (is_string($expectedParentCapability) && !hash_equals($expectedParentCapability,$candidateCapability) && !$legacyPlatformBootstrap) continue;
                 if (is_string($expectedTrack) && !hash_equals($expectedTrack,$candidateTrack)) continue;
                 $registry=new HubCapabilityRegistryService($this->pdo);
+                if($releaseFamily==='platform'){
+                    $registry->updateEnvelopeState((string)$candidate['execution_id'],'WAITING',null,$at,true);
+                    $this->updateReleaseExecutionPhase((string)$candidate['execution_id'],'CUTOVER',$at);
+                }
                 $authority=$registry->activateExecutionAuthority((string)$candidate['execution_id'],$lease,$at,true);
                 if (($authority['granted']??false)!==true) throw new HubDeployExecutionAuthorityException('Owner-approved release authority is blocked','DEPLOY_AUTHORITY_CONFLICT');
                 $this->pdo->prepare("UPDATE control_task_executions SET lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('LEASED','RUNNING')")
                     ->execute(['lease'=>$lease,'at'=>$at,'execution'=>$candidate['execution_id']]);
-                $this->pdo->prepare("UPDATE control_tasks SET state='RUNNING',assigned_device_id=NULL,lease_expires_at=:lease,updated_at=:at WHERE task_id=:task AND state IN ('RUNNING','WAITING_FOR_WORKER')")
+                $this->pdo->prepare("UPDATE control_tasks SET state='RUNNING',assigned_device_id=NULL,lease_expires_at=:lease,progress=CASE WHEN progress<55 THEN 55 ELSE progress END,updated_at=:at WHERE task_id=:task AND state IN ('RUNNING','WAITING_FOR_WORKER')")
                     ->execute(['lease'=>$lease,'at'=>$at,'task'=>$candidate['task_id']]);
                 $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'RUNNING',35,'Guarded deployment borrowed owner-approved release authority',:at)")
                     ->execute(['id'=>self::uuid(),'task'=>$candidate['task_id'],'at'=>$at]);
@@ -195,6 +199,7 @@ final class HubDeployExecutionAuthorityService
             if(!is_array($row)||!in_array((string)$row['state'],['LEASED','RUNNING'],true)||(string)$row['task_state']!=='RUNNING'
                 ||!in_array((string)$row['required_capability'],[HubCoreReleaseService::CAPABILITY,HubCoreReleaseService::PLATFORM_CAPABILITY,'project.mutate.deploy'],true))
                 throw new HubDeployExecutionAuthorityException('Deploy execution is not runnable','DEPLOY_AUTHORITY_INVALID');
+            if(is_string($detail['phase']??null))$this->updateReleaseExecutionPhase(strtolower($executionId),(string)$detail['phase'],$at);
             $currentProgress=(int)$row['progress'];
             if((int)$detail['progress']<$currentProgress){
                 $this->pdo->exec('COMMIT');
@@ -205,6 +210,8 @@ final class HubDeployExecutionAuthorityService
             $last=$this->pdo->prepare("SELECT progress,message FROM control_task_events WHERE task_id=:task ORDER BY occurred_at DESC,event_id DESC LIMIT 1");
             $last->execute(['task'=>$taskId]);$previous=$last->fetch();
             if(is_array($previous)&&(int)$previous['progress']===$progress&&(string)($previous['message']??'')===(string)$detail['message']){
+                $this->pdo->prepare("UPDATE control_tasks SET updated_at=:at WHERE task_id=:task AND state='RUNNING'")->execute(['at'=>$at,'task'=>$taskId]);
+                $this->pdo->prepare("UPDATE control_task_executions SET updated_at=:at WHERE execution_id=:execution AND state IN ('LEASED','RUNNING')")->execute(['at'=>$at,'execution'=>strtolower($executionId)]);
                 $this->pdo->exec('COMMIT');
                 return ['recorded'=>false,'progress'=>$progress,'message'=>(string)$detail['message']];
             }
@@ -224,11 +231,17 @@ final class HubDeployExecutionAuthorityService
         }
     }
 
-    /** @return array{progress:int,message:string}|null */
+    /** @return array{progress:int,message:string,phase?:string}|null */
     private static function stageDetail(string $stage): ?array
     {
         return match($stage){
-            'EXECUTION_AUTHORITY_ACQUIRED'=>['progress'=>55,'message'=>'สำรองข้อมูลและเตรียมไฟล์รุ่นใหม่เรียบร้อยแล้ว กำลังเริ่มติดตั้ง'],
+            'RELEASE_PREFLIGHT'=>['progress'=>24,'message'=>'ตรวจ Source และเครื่องมือเรียบร้อยแล้ว · กำลังเตรียม QA','phase'=>'PREFLIGHT'],
+            'RELEASE_QA_STARTED'=>['progress'=>28,'message'=>'กำลังรัน QA ตามความเสี่ยงของรุ่นนี้','phase'=>'QA'],
+            'RELEASE_QA_PASSED'=>['progress'=>38,'message'=>'QA ผ่านแล้ว · กำลังเตรียม dry-run และ rollback rehearsal','phase'=>'QA'],
+            'RELEASE_REHEARSAL_STARTED'=>['progress'=>42,'message'=>'กำลังจำลอง deploy และ rollback ก่อนแตะ Production','phase'=>'REHEARSAL'],
+            'RELEASE_REHEARSAL_PASSED'=>['progress'=>50,'message'=>'Dry-run และ rollback rehearsal ผ่านแล้ว','phase'=>'REHEARSAL'],
+            'RELEASE_CUTOVER_WAIT'=>['progress'=>52,'message'=>'พร้อมติดตั้ง · กำลังรอเฉพาะช่วง shared-host cutover ที่ปลอดภัย','phase'=>'WAIT_CUTOVER'],
+            'EXECUTION_AUTHORITY_ACQUIRED'=>['progress'=>55,'message'=>'สำรองข้อมูลและไฟล์รุ่นใหม่พร้อมแล้ว · กำลังเริ่มติดตั้ง','phase'=>'CUTOVER'],
             'RUNTIME_LINEAGE_READY'=>['progress'=>60,'message'=>'Runtime lineage พร้อมแล้ว กำลังตรวจ dependency และ migration'],
             'NATIVE_EXECUTOR_QUIESCED','HOSTING_OPERATOR_QUIESCED'=>['progress'=>64,'message'=>'พัก writer ชั่วคราวอย่างปลอดภัย กำลังปรับระบบ'],
             'PLATFORM_HARDENING_MIGRATION_VERIFIED','IDENTITY_CONVERGENCE_MIGRATION_VERIFIED','VAULT_SOURCE_MIGRATION_VERIFIED','PROJECTS_READY'=>['progress'=>68,'message'=>'ฐานข้อมูลและ migration ผ่านการตรวจแล้ว'],
@@ -244,6 +257,7 @@ final class HubDeployExecutionAuthorityService
             'PROJECT_VAULT_SOURCE_SYNC'=>['progress'=>95,'message'=>'Source และ AWH Vault ซิงก์แล้ว'],
             'SOURCE_DRIFT_VERIFY'=>['progress'=>97,'message'=>'กำลังตรวจ Source drift รอบสุดท้าย'],
             'SOURCE_DRIFT_VERIFIED'=>['progress'=>99,'message'=>'ตรวจ Source drift ผ่านแล้ว กำลังปิด release'],
+            'RELEASE_FINALIZE'=>['progress'=>99,'message'=>'Production cutover ผ่านแล้ว · กำลังยืนยัน public release และปิดงาน','phase'=>'FINALIZE'],
             default=>null,
         };
     }
@@ -267,6 +281,9 @@ final class HubDeployExecutionAuthorityService
             // Borrowed AWH/VPS Platform release authority is owned by the parent
             // operator; guarded deploy must never terminate that task itself.
             if (in_array((string)$row['required_capability'],[HubCoreReleaseService::CAPABILITY,HubCoreReleaseService::PLATFORM_CAPABILITY],true)) {
+                $this->updateReleaseExecutionPhase($executionId,'FINALIZE',$at);
+                $this->pdo->prepare("UPDATE control_task_executions SET updated_at=:at WHERE execution_id=:execution AND state IN ('LEASED','RUNNING')")->execute(['at'=>$at,'execution'=>$executionId]);
+                $this->pdo->prepare("UPDATE control_tasks SET updated_at=:at WHERE task_id=:task AND state='RUNNING'")->execute(['at'=>$at,'task'=>$row['task_id']]);
                 $this->pdo->exec('COMMIT');
                 return;
             }
@@ -292,6 +309,24 @@ final class HubDeployExecutionAuthorityService
             if ($error instanceof HubDeployExecutionAuthorityException) throw $error;
             throw new HubDeployExecutionAuthorityException('Deploy authority could not be released');
         }
+    }
+
+    private function updateReleaseExecutionPhase(string $executionId,string $phase,string $at): void
+    {
+        if(!in_array($phase,['QUEUED','PREFLIGHT','QA','REHEARSAL','WAIT_CUTOVER','CUTOVER','ROLLBACK','FINALIZE'],true))
+            throw new HubDeployExecutionAuthorityException('Release execution phase is invalid','DEPLOY_AUTHORITY_INVALID');
+        $q=$this->pdo->prepare("SELECT required_capability,checkpoint_json FROM control_task_executions WHERE execution_id=:execution");
+        $q->execute(['execution'=>strtolower($executionId)]);$row=$q->fetch();
+        if(!is_array($row)||!in_array((string)$row['required_capability'],[HubCoreReleaseService::CAPABILITY,HubCoreReleaseService::PLATFORM_CAPABILITY],true))return;
+        $checkpoint=HubCoreReleaseService::checkpoint((string)$row['checkpoint_json'],false);
+        $current=$checkpoint['releaseExecution']??null;
+        if(!is_array($current))return;
+        if(($current['phase']??null)===$phase)return;
+        $checkpoint['releaseExecution']=['schemaVersion'=>1,'phase'=>$phase,'phaseStartedAt'=>$at];
+        $json=json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+        HubCoreReleaseService::checkpoint($json);
+        $this->pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution")
+            ->execute(['checkpoint'=>$json,'at'=>$at,'execution'=>strtolower($executionId)]);
     }
 
     private function assertSchema(): void

@@ -231,7 +231,7 @@ final class HubCoreReleaseOperator
 
             $args=[$node,$workspace.'/scripts/ops/bounded-deploy-mission.mjs',$modeArg,'--approve'];
             if(($checkpoint['cleanupTopology']??false)===true)$args[]='--cleanup-topology';
-            $this->event((string)$row['task_id'],'RUNNING',30,$label.' กำลังรัน bounded QA, backup, rollback และ Production gates',$at);
+            $this->event((string)$row['task_id'],'RUNNING',24,$label.' เตรียม Source และ toolchain แล้ว · กำลังเข้าสู่ bounded QA',$at);
             $result=$this->run($args,['cwd'=>$workspace,'env'=>$env],6900,'CORE_RELEASE_MISSION_COMMAND_FAILED');
             if(!str_contains($result['out'],'MISSION_RESULT=PASS'))throw new HubCoreReleaseOperatorException('Bounded release mission did not produce PASS evidence','CORE_RELEASE_MISSION_FAILED');
             $done=self::time(gmdate('c'));$this->complete($executionId,(string)$row['task_id'],$sha,'Deploy สำเร็จและผ่าน Production verification ครบ',$done);

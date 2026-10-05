@@ -127,7 +127,7 @@ final class HubCoreReleaseService
         $task=self::uuid();$execution=self::uuid();$approval=self::uuid();
         $notesJson=json_encode($deploymentNotes,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         $notesSha=hash('sha256',$notesJson);
-        $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','releaseNotesSha256'=>$notesSha,'missionExecutionId'=>$missionId,'scopeId'=>$scopeId,'artifactDigest'=>$artifactDigest];
+        $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','releaseNotesSha256'=>$notesSha,'missionExecutionId'=>$missionId,'scopeId'=>$scopeId,'artifactDigest'=>$artifactDigest,'releaseExecution'=>['schemaVersion'=>1,'phase'=>'QUEUED','phaseStartedAt'=>$at]];
         $scope=['schemaVersion'=>1,'taskId'=>$task,'projectId'=>self::PROJECT_ID,'releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','risk'=>'CRITICAL','releaseNotesSha256'=>$notesSha,'missionExecutionId'=>$missionId,'scopeId'=>$scopeId,'artifactDigest'=>$artifactDigest];
         $goal='Deploy '.$this->displayName.' release '.substr($sha,0,12).' ผ่าน bounded VPS-native release controller';
         try{
@@ -699,20 +699,25 @@ final class HubCoreReleaseService
         $legacyNotes=['cleanupTopology','mode','releaseMode','releaseNotesSha256','releaseSha','schemaVersion','transport'];
         $current=['cleanupTopology','mode','releaseMode','releaseNotesSha256','releaseSha','releaseTrack','schemaVersion','transport'];
         $scoped=['artifactDigest','cleanupTopology','missionExecutionId','mode','releaseMode','releaseNotesSha256','releaseSha','releaseTrack','schemaVersion','scopeId','transport'];
+        $currentExecution=[...$current,'releaseExecution'];
+        $scopedExecution=[...$scoped,'releaseExecution'];
         $actual=array_keys($v);sort($actual);
-        $legacySorted=$legacy;$legacyNotesSorted=$legacyNotes;$currentSorted=$current;$scopedSorted=$scoped;
-        sort($legacySorted);sort($legacyNotesSorted);sort($currentSorted);sort($scopedSorted);
+        $legacySorted=$legacy;$legacyNotesSorted=$legacyNotes;$currentSorted=$current;$scopedSorted=$scoped;$currentExecutionSorted=$currentExecution;$scopedExecutionSorted=$scopedExecution;
+        sort($legacySorted);sort($legacyNotesSorted);sort($currentSorted);sort($scopedSorted);sort($currentExecutionSorted);sort($scopedExecutionSorted);
         $mode=(string)($v['releaseMode']??'');
         $track=is_string($v['releaseTrack']??null)
             ? strtolower((string)$v['releaseTrack'])
             : match($mode){'AWH_CORE'=>'awh','PLATFORM_HARDENING'=>'vps-platform',default=>''};
         $mapping=($mode==='AWH_CORE'&&$track==='awh')||($mode==='PLATFORM_HARDENING'&&$track==='vps-platform');
         $legacyMode=in_array($mode,['AWH_CORE','PLATFORM_HARDENING'],true);
-        $keysOk=$actual===$currentSorted||$actual===$scopedSorted||(($actual===$legacySorted||$actual===$legacyNotesSorted)&&$legacyMode);
+        $keysOk=$actual===$currentSorted||$actual===$scopedSorted||$actual===$currentExecutionSorted||$actual===$scopedExecutionSorted||(($actual===$legacySorted||$actual===$legacyNotesSorted)&&$legacyMode);
         $notesSha=$v['releaseNotesSha256']??null;
-        $notesOk=($actual!==$currentSorted&&$actual!==$scopedSorted)||(is_string($notesSha)&&preg_match('/^[0-9a-f]{64}$/',$notesSha)===1);
-        $scopeOk=$actual!==$scopedSorted||(self::uuidValid((string)($v['missionExecutionId']??''))&&preg_match('/^scope-[a-f0-9]{32}$/',(string)($v['scopeId']??''))===1&&preg_match('/^[a-f0-9]{64}$/',(string)($v['artifactDigest']??''))===1);
-        $ok=$keysOk&&$notesOk&&$scopeOk&&$mapping&&($v['schemaVersion']??null)===1&&($v['mode']??null)==='CORE_RELEASE'&&($v['transport']??null)==='LOCAL'&&is_bool($v['cleanupTopology']??null)&&is_string($v['releaseSha']??null)&&preg_match('/^[0-9a-f]{40}$/',$v['releaseSha'])===1;
+        $notesOk=(!in_array($actual,[$currentSorted,$scopedSorted,$currentExecutionSorted,$scopedExecutionSorted],true))||(is_string($notesSha)&&preg_match('/^[0-9a-f]{64}$/',$notesSha)===1);
+        $scopedShape=$actual===$scopedSorted||$actual===$scopedExecutionSorted;
+        $scopeOk=!$scopedShape||(self::uuidValid((string)($v['missionExecutionId']??''))&&preg_match('/^scope-[a-f0-9]{32}$/',(string)($v['scopeId']??''))===1&&preg_match('/^[a-f0-9]{64}$/',(string)($v['artifactDigest']??''))===1);
+        $releaseExecution=$v['releaseExecution']??null;
+        $releaseExecutionOk=$releaseExecution===null||(is_array($releaseExecution)&&!array_is_list($releaseExecution)&&array_keys($releaseExecution)===['schemaVersion','phase','phaseStartedAt']&&($releaseExecution['schemaVersion']??null)===1&&in_array((string)($releaseExecution['phase']??''),['QUEUED','PREFLIGHT','QA','REHEARSAL','WAIT_CUTOVER','CUTOVER','ROLLBACK','FINALIZE'],true)&&is_string($releaseExecution['phaseStartedAt']??null)&&strtotime((string)$releaseExecution['phaseStartedAt'])!==false);
+        $ok=$keysOk&&$notesOk&&$scopeOk&&$releaseExecutionOk&&$mapping&&($v['schemaVersion']??null)===1&&($v['mode']??null)==='CORE_RELEASE'&&($v['transport']??null)==='LOCAL'&&is_bool($v['cleanupTopology']??null)&&is_string($v['releaseSha']??null)&&preg_match('/^[0-9a-f]{40}$/',$v['releaseSha'])===1;
         if(!$ok){if(!$strict)return [];throw new HubCoreReleaseException('Core release checkpoint is invalid','CORE_RELEASE_CHECKPOINT_INVALID');}
         $v['releaseTrack']=$track;
         return $v;

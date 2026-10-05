@@ -46,6 +46,25 @@ function run(command,args,{env={},forward=false,input=null}={}){
   });
 }
 
+let currentReleaseStage=null;
+let releaseStageReportBusy=false;
+async function reportReleaseStage(stage){
+  currentReleaseStage=stage;
+  const executionId=process.env.AWH_RELEASE_EXECUTION_ID??'';
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(executionId)||releaseStageReportBusy)return false;
+  const cli=join(ROOT,'hub/bin/deploy-execution-authority.php');
+  const db=process.env.AWH_HUB_DB_PATH||'/var/lib/awh-hub/awh.sqlite';
+  if(!existsSync(cli)||!existsSync(db))return false;
+  releaseStageReportBusy=true;
+  try{return (await run(process.env.AWH_PHP||'php',[cli,'stage',db,executionId,stage])).code===0;}
+  finally{releaseStageReportBusy=false;}
+}
+function startReleaseStageHeartbeat(){
+  if(!process.env.AWH_RELEASE_EXECUTION_ID)return;
+  const timer=setInterval(()=>{if(currentReleaseStage)void reportReleaseStage(currentReleaseStage);},15000);
+  timer.unref?.();
+}
+
 export function sanitizeFailureDiagnostic(value){
   const secret=/(?:password|passwd|secret|token|cookie|authorization|credential|session[_-]?id)/i;
   const lines=String(value??'').split(/\r?\n/)
@@ -452,7 +471,18 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   if(forward.code!==0)throw new Error('MISSION_RELEASE_NOT_FORWARD_FROM_RUNTIME');
   const changed=(await git(['diff','--name-only',`${production}..${head}`])).split(/\r?\n/).filter(Boolean); missionContext.changedFiles=changed.length; missionContext.changedPaths=changed.slice(0,80);
   let plan=await verificationPlanForFiles(changed); const staticEvalScenarios=await evalScenariosForFiles(changed); const durable=await durableRegressions(missionContext.changedPaths,{projectId:missionContext.projectId,releaseTrack:missionContext.releaseTrack}); const durableEvalScenarios=durable.ids; const evalScenarios=[...new Set([...staticEvalScenarios,...durableEvalScenarios])].sort();
-  if(durableEvalScenarios.length>0){plan={...plan,riskLevel:plan.riskLevel==='CRITICAL'?'CRITICAL':'HIGH',budget:'DEEP',reasons:[...new Set([...(plan.reasons??[]),'durable-incident-regression'])],requiredChecks:[...new Set([...(plan.requiredChecks??[]),'regression','repeat-regression',...durable.requiredChecks])]};console.log('MISSION_REGRESSION_REPLAY=DEEP');} missionContext.riskLevel=plan.riskLevel; missionContext.budget=plan.budget;
+  if(durableEvalScenarios.length>0){
+    const deepChecks=new Set(['repeat-regression','backup-proof','rollback-proof','source-drift','database-integrity']);
+    const durableNeedsDeep=durable.requiredChecks.some((check)=>deepChecks.has(check));
+    plan={
+      ...plan,
+      ...(durableNeedsDeep?{riskLevel:plan.riskLevel==='CRITICAL'?'CRITICAL':'HIGH',budget:'DEEP'}:{}),
+      reasons:[...new Set([...(plan.reasons??[]),'durable-incident-regression'])],
+      requiredChecks:[...new Set([...(plan.requiredChecks??[]),'regression',...durable.requiredChecks])],
+    };
+    console.log(`MISSION_REGRESSION_REPLAY=${durableNeedsDeep?'DEEP':'BOUNDED'}`);
+  }
+  missionContext.riskLevel=plan.riskLevel; missionContext.budget=plan.budget;
   const desktopImpact=desktopImpactForFiles(changed);
   // Core/Web and Desktop Agent are independent release tracks. A source delta may
   // affect the desktop product without forcing every Core/Web cutover to rebuild
@@ -483,9 +513,13 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   console.log(`MISSION_BASE_SHA=${production}`); console.log(`MISSION_RELEASE_SHA=${head}`); console.log(`MISSION_CHANGED_FILES=${changed.length}`);
   console.log(`MISSION_RISK=${plan.riskLevel}`); console.log(`MISSION_VERIFICATION_BUDGET=${plan.budget}`); console.log(`MISSION_REQUIRED_CHECKS=${plan.requiredChecks.join(',')}`); console.log(`MISSION_EVAL_SCENARIOS=${evalScenarios.join(',')}`);
   console.log(`MISSION_DESKTOP_DELTA=${desktopImpact?'YES':'NO'}`); console.log(`MISSION_DESKTOP_MODE=${reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS'}`); console.log(`MISSION_MODE=${mode.slice(2)}`);
+  await reportReleaseStage('RELEASE_PREFLIGHT');startReleaseStageHeartbeat();
+  await reportReleaseStage('RELEASE_QA_STARTED');
   const qa=await verifyByBudget(plan);
+  await reportReleaseStage('RELEASE_QA_PASSED');
   await assertCanonicalMainStable(main);
   await ensureRehearsalDependencies(await loadExecutionPolicy());
+  await reportReleaseStage('RELEASE_REHEARSAL_STARTED');
   const common=['--owner-auth',mode]; if(cleanup)common.push('--cleanup-topology');
   const env={AWH_RELEASE_COMMIT:head,...(reuse?{AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS:'1'}:{})};
   const rehearsal=await run(process.execPath,[GUARDED,'--dry-run',...common],{env,forward:true});
@@ -495,16 +529,19 @@ export async function runMission(rawArgs=process.argv.slice(2)){
     stderrTail:sanitizeFailureDiagnostic(rehearsal.stderrTail),
   };
   if(rehearsal.code!==0||!rehearsal.tail.includes('_DRY_RUN=PASS')) throw new Error('MISSION_REHEARSAL_FAILED');
+  await reportReleaseStage('RELEASE_REHEARSAL_PASSED');
   console.log('MISSION_REHEARSAL=PASS');
   const baseCapsule={schemaVersion:1,kind:'release-verification',executionId,scopeId,projectId:AWH_PROJECT_ID,releaseTrack,baseSha:production,releaseSha:head,changedFileCount:changed.length,changedPaths:missionContext.changedPaths??[],intelligence:plan,evalScenarios,qa,rehearsal:'PASS',desktopMode:reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS',startedAt,createdAt:new Date().toISOString()};
   if(!approved){await saveCapsule({...baseCapsule,state:'READY_FOR_APPROVAL',result:'REVIEW'});console.log('MISSION_STATE=READY_FOR_APPROVAL');console.log('MISSION_APPROVAL_REQUIRED=1');return;}
   console.log('MISSION_APPROVALS_CONSUMED=1');
   await assertCanonicalMainStable(main);
+  await reportReleaseStage('RELEASE_CUTOVER_WAIT');
   const deploy=await run(process.execPath,[GUARDED,'--deploy','--approve',...common],{env,forward:true});
   const deployEvidence=deployEvidenceFromResult(deploy);
   missionContext.deploy=deployEvidence;
   if(deploy.code!==0||!deploy.tail.includes('DEPLOY_RESULT=PASS')||!deploy.tail.includes('DEPLOY_STAGE=BACKUP_VERIFIED')||!deploy.tail.includes('DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED')) throw new Error('MISSION_DEPLOY_FAILED');
   missionContext.deploy={...deployEvidence,status:'PASS',backup:'PASS',sourceDrift:'PASS',failureCode:null};
+  await reportReleaseStage('RELEASE_FINALIZE');
   if(missionContext.registryAvailable!==true){const registry=await operatorRequest('verification-regressions',{changedPaths:missionContext.changedPaths??[]});if(!registry)throw new Error('MISSION_DURABLE_REGISTRY_UNAVAILABLE');missionContext.registryAvailable=true;console.log('MISSION_DURABLE_REGISTRY=READY_AFTER_CUTOVER');}
   const url=process.env.AWH_PUBLIC_RELEASE_URL||'https://kruart.online/release.json';
   const response=await fetch(url,{cache:'no-store'}); if(!response.ok)throw new Error('MISSION_PUBLIC_VERIFY_UNAVAILABLE');

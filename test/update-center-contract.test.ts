@@ -934,8 +934,10 @@ test('Update Center owner flow is per-target, queue-aware, exact-target pinned, 
   assert.match(operator,/PLATFORM_MAINTENANCE_FREEZE'\)continue/);
   assert.match(script,/ใช้สถานะล่าสุด · จะตรวจใหม่อัตโนมัติ/);
   assert.match(script,/const storageBlocked=Boolean\(telemetryReady\)/);
-  assert.match(script,/if\(progress<23\)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'/);
-  assert.match(script,/if\(progress<55\)return 'กำลังตรวจความพร้อม สำรองข้อมูล และเตรียมจุดย้อนกลับ'/);
+  assert.match(script,/function ownerStageElapsed\(event\)/);
+  assert.match(script,/ขั้นนี้ \$\{minutes\} นาที/);
+  assert.match(script,/if\(progress<23\)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'\+elapsed/);
+  assert.match(script,/if\(progress<55\)return 'กำลังตรวจความพร้อมและ QA ก่อนติดตั้ง'\+elapsed/);
   assert.match(script,/const thresholds=\[22,54,84,98,100\]/);
   assert.match(script,/ownerReleaseNoteText/);
   assert.match(script,/แก้สิทธิ์ระบบ Managed Hosting ให้จัดการบัญชีบริการได้อย่างเสถียร/);
