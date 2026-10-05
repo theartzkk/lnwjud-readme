@@ -63,7 +63,9 @@
     "review:triage": "node scripts/review/triage-aipass-findings.mjs",
     "review:compare": "node scripts/review/compare-visual-evidence.mjs",
     "review:retention": "node scripts/review/cleanup-visual-review-cache.mjs",
-    "review:verify": "node scripts/review/create-visual-verification-pack.mjs"
+    "review:verify": "node scripts/review/create-visual-verification-pack.mjs",
+    "design:contract": "node scripts/qa/experience-contract.mjs",
+    "design:gate": "npm run design:check && npm run design:contract"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

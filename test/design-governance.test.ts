@@ -43,7 +43,10 @@ test('KRUART design governance files and overlays are complete', async () => {
     'design/qa/accessibility-policy.md',
     'design/overlays/awh.md',
     'design/overlays/bay-excuse-x.md',
+    'design/overlays/bay-assessment.md',
+    'design/overlays/bay-cooperative.md',
     'design/overlays/bay-learnlab.md',
+    'design/overlays/bay-line.md',
     'design/overlays/school-website.md',
     'design/overlays/bay-hub.md',
   ];
@@ -84,6 +87,13 @@ test('visual acceptance matrix keeps the sealed responsive references', async ()
   assert.deepEqual(matrix.surfaces.awh.keyboardViewports, ['mobile-390','mobile-430']);
   assert.ok(matrix.universalAssertions.includes('horizontal-overflow-zero'));
   assert.ok(matrix.universalAssertions.includes('navigation-owner-correct'));
+  assert.equal(matrix.minimumDocumentWidth, 320);
+  for (const surface of ['awh','bay-excuse-x','bay-assessment','bay-cooperative','bay-learnlab','bay-line','school-website','bay-hub']) {
+    assert.ok(matrix.surfaces[surface], surface + ' must be governed by the visual matrix');
+  }
+  for (const assertion of ['primary-action-visible','touch-target-contract','focus-not-obscured','loading-error-recovery-deliberate','overlay-focus-owner-correct','long-thai-content-safe','role-presentation-correct']) {
+    assert.ok(matrix.universalAssertions.includes(assertion), assertion + ' must remain a universal experience gate');
+  }
   assert.equal(matrix.surfaces['bay-learnlab'].overlay, 'design/overlays/bay-learnlab.md');
 });
 
