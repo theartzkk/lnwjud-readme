@@ -37,7 +37,7 @@ function xml(value) {
 }
 
 try {
-  run('/usr/bin/test', ['-d', app]);
+  run('/bin/test', ['-d', app]);
   run('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
 
   const root = join(work, 'Root');
@@ -167,7 +167,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;li
   args.push(output);
   await rm(output, { force: true });
   run('/usr/bin/productbuild', args);
-  run('/usr/bin/test', ['-s', output]);
+  run('/bin/test', ['-s', output]);
   console.log(`AWH_MACOS_WIZARD_INSTALLER=PASS arch=${architecture} version=${version} signed=${signingIdentity ? 'yes' : 'no'} output=${output}`);
 } finally {
   await rm(work, { recursive: true, force: true });
