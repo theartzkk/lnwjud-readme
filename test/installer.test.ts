@@ -276,3 +276,67 @@ test('macOS wizard ships and displays the canonical AWH logo', async () => {
   assert.match(builder, /<img src="awh-logo\\.svg" alt="AWH"/);
   assert.match(builder, /KRUART Workspace Hub/);
 });
+
+
+test('macOS production signing cannot fall back to ad-hoc identity', async () => {
+  const signer = await readFile(new URL('../scripts/sign-macos-adhoc.mjs', import.meta.url), 'utf8');
+  assert.match(signer, /@electron\/osx-sign/);
+  assert.match(signer, /AWH_MAC_APP_SIGN_IDENTITY/);
+  assert.match(signer, /AWH_MAC_RELEASE_MODE/);
+  assert.match(signer, /Developer ID Application:/);
+  assert.match(signer, /hardenedRuntime:\s*true/);
+  assert.match(signer, /AWH_MAC_APP_SIGN_IDENTITY_REQUIRED/);
+});
+
+test('macOS production installer requires Developer ID Installer and notarization', async () => {
+  const [builder, notarizer, evidence, gate] = await Promise.all([
+    readFile(new URL('../scripts/package-macos-installer.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/release/notarize-macos-installer.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/release/create-macos-installer-evidence.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/qa/verify-macos-release-gate.mjs', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(builder, /AWH_MAC_INSTALLER_SIGN_IDENTITY_REQUIRED/);
+  assert.match(builder, /AWH_MACOS_DEVELOPER_ID_APP_SIGNATURE_REQUIRED/);
+  assert.match(builder, /Developer ID Installer:/);
+
+  assert.match(notarizer, /notarytool/);
+  assert.match(notarizer, /stapler.*staple/s);
+  assert.match(notarizer, /stapler.*validate/s);
+  assert.match(notarizer, /spctl/);
+  assert.match(notarizer, /AWH_MACOS_NOTARY_CREDENTIALS_REQUIRED/);
+
+  assert.match(evidence, /appSigningState/);
+  assert.match(evidence, /notarizationState/);
+  assert.match(evidence, /gatekeeperState/);
+  assert.match(evidence, /freshInstallReady/);
+  assert.match(evidence, /FRESH_INSTALL_BLOCKED/);
+  assert.match(evidence, /READY_FOR_FRESH_INSTALL/);
+
+  assert.match(gate, /--require-ready/);
+  assert.match(gate, /AWH_MACOS_FRESH_INSTALL_BLOCKED/);
+  assert.match(gate, /AWH_MACOS_RELEASE_GATE_FAIL_OPEN/);
+});
+
+test('macOS production workflow uses ephemeral certificate material and ready-only release gate', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/macos-release.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /AWH_MAC_RELEASE_MODE:\s*production/);
+  assert.match(workflow, /AWH_MAC_APP_CERT_P12_BASE64/);
+  assert.match(workflow, /AWH_MAC_INSTALLER_CERT_P12_BASE64/);
+  assert.match(workflow, /AWH_APPLE_APP_SPECIFIC_PASSWORD/);
+  assert.match(workflow, /desktop:notarize:mac:x64/);
+  assert.match(workflow, /desktop:notarize:mac:arm64/);
+  assert.match(workflow, /desktop:release-gate:mac:x64:ready/);
+  assert.match(workflow, /desktop:release-gate:mac:arm64:ready/);
+  assert.match(workflow, /security delete-keychain/);
+});
+
+test('ordinary CI marks macOS installer evidence through the non-publishing release gate', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /Verify macOS x64 fresh-install publication gate/);
+  assert.match(workflow, /desktop:release-gate:mac:x64/);
+  assert.match(workflow, /Verify macOS arm64 fresh-install publication gate/);
+  assert.match(workflow, /desktop:release-gate:mac:arm64/);
+  assert.doesNotMatch(workflow, /desktop:release-gate:mac:x64:ready/);
+  assert.doesNotMatch(workflow, /desktop:release-gate:mac:arm64:ready/);
+});

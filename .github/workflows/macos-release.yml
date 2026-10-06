@@ -1,0 +1,133 @@
+name: macOS Production Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type RELEASE to build fresh-install-ready macOS artifacts
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-production-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ inputs.confirm == 'RELEASE' }}
+    runs-on: macos-15-intel
+    env:
+      AWH_MAC_RELEASE_MODE: production
+      AWH_MAC_APP_SIGN_IDENTITY: ${{ secrets.AWH_MAC_APP_SIGN_IDENTITY }}
+      AWH_MAC_INSTALLER_SIGN_IDENTITY: ${{ secrets.AWH_MAC_INSTALLER_SIGN_IDENTITY }}
+      AWH_APPLE_ID: ${{ secrets.AWH_APPLE_ID }}
+      AWH_APPLE_TEAM_ID: ${{ secrets.AWH_APPLE_TEAM_ID }}
+      AWH_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.AWH_APPLE_APP_SPECIFIC_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install Electron runtime binary explicitly
+        run: node node_modules/electron/install.js
+
+      - name: Import Developer ID certificates into an ephemeral keychain
+        env:
+          APP_P12: ${{ secrets.AWH_MAC_APP_CERT_P12_BASE64 }}
+          APP_P12_PASSWORD: ${{ secrets.AWH_MAC_APP_CERT_PASSWORD }}
+          INSTALLER_P12: ${{ secrets.AWH_MAC_INSTALLER_CERT_P12_BASE64 }}
+          INSTALLER_P12_PASSWORD: ${{ secrets.AWH_MAC_INSTALLER_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$AWH_MAC_APP_SIGN_IDENTITY"
+          test -n "$AWH_MAC_INSTALLER_SIGN_IDENTITY"
+          test -n "$AWH_APPLE_ID"
+          test -n "$AWH_APPLE_TEAM_ID"
+          test -n "$AWH_APPLE_APP_SPECIFIC_PASSWORD"
+          test -n "$APP_P12"
+          test -n "$APP_P12_PASSWORD"
+          test -n "$INSTALLER_P12"
+          test -n "$INSTALLER_P12_PASSWORD"
+
+          KEYCHAIN="$RUNNER_TEMP/awh-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          /usr/bin/security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          /usr/bin/security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          /usr/bin/security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          python3 - <<'PY'
+          import base64, os, pathlib
+          pathlib.Path(os.environ["RUNNER_TEMP"], "awh-app.p12").write_bytes(base64.b64decode(os.environ["APP_P12"], validate=True))
+          pathlib.Path(os.environ["RUNNER_TEMP"], "awh-installer.p12").write_bytes(base64.b64decode(os.environ["INSTALLER_P12"], validate=True))
+          PY
+
+          /usr/bin/security import "$RUNNER_TEMP/awh-app.p12" -k "$KEYCHAIN" -P "$APP_P12_PASSWORD" -T /usr/bin/codesign
+          /usr/bin/security import "$RUNNER_TEMP/awh-installer.p12" -k "$KEYCHAIN" -P "$INSTALLER_P12_PASSWORD" -T /usr/bin/productbuild
+          /usr/bin/security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          /usr/bin/security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
+          /usr/bin/security find-identity -v -p codesigning "$KEYCHAIN"
+
+          echo "AWH_MAC_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "AWH_MAC_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize and gate Intel installer
+        run: |
+          set -euo pipefail
+          npm run desktop:package:mac:x64
+          node scripts/qa/verify-packaged-bundle.mjs darwin x64
+          npm run desktop:installer:mac:x64
+          npm run desktop:notarize:mac:x64
+          node scripts/release/create-macos-installer-evidence.mjs x64 "$GITHUB_SHA"
+          npm run desktop:release-gate:mac:x64:ready
+          cat AWH-macOS-x64-Installer.release.json
+
+      - name: Build, sign, notarize and gate Apple Silicon installer
+        run: |
+          set -euo pipefail
+          npm run desktop:package:mac:arm64
+          node scripts/qa/verify-packaged-bundle.mjs darwin arm64
+          npm run desktop:installer:mac:arm64
+          npm run desktop:notarize:mac:arm64
+          node scripts/release/create-macos-installer-evidence.mjs arm64 "$GITHUB_SHA"
+          npm run desktop:release-gate:mac:arm64:ready
+          cat AWH-macOS-arm64-Installer.release.json
+
+      - name: Upload fresh-install-ready Intel installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: AWH-macOS-x64-Installer-Production
+          path: |
+            AWH-macOS-x64-Installer.pkg
+            AWH-macOS-x64-Installer.release.json
+            AWH-macOS-x64-Installer.notary.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload fresh-install-ready Apple Silicon installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: AWH-macOS-arm64-Installer-Production
+          path: |
+            AWH-macOS-arm64-Installer.pkg
+            AWH-macOS-arm64-Installer.release.json
+            AWH-macOS-arm64-Installer.notary.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/awh-app.p12" "$RUNNER_TEMP/awh-installer.p12"
+          if [ -n "${AWH_MAC_KEYCHAIN:-}" ]; then
+            /usr/bin/security delete-keychain "$AWH_MAC_KEYCHAIN" || true
+          fi

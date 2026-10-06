@@ -308,6 +308,8 @@ jobs:
         run: |
           node scripts/release/create-macos-installer-evidence.mjs x64 "$GITHUB_SHA"
           cat AWH-macOS-x64-Installer.release.json
+      - name: Verify macOS x64 fresh-install publication gate
+        run: npm run desktop:release-gate:mac:x64
       - name: Package macOS arm64
         run: npm run desktop:package:mac:arm64
       - name: Verify packaged macOS arm64 bundle
@@ -320,6 +322,8 @@ jobs:
         run: |
           node scripts/release/create-macos-installer-evidence.mjs arm64 "$GITHUB_SHA"
           cat AWH-macOS-arm64-Installer.release.json
+      - name: Verify macOS arm64 fresh-install publication gate
+        run: npm run desktop:release-gate:mac:arm64
       - name: Create portable macOS archives
         run: |
           ditto -c -k --sequesterRsrc --keepParent 'out/AWH Agent-darwin-x64/AWH Agent.app' AWH-macOS-x64.zip

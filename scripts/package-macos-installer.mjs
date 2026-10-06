@@ -19,12 +19,20 @@ const identifier = 'online.kruart.awh.agent';
 const hostArch = architecture === 'x64' ? 'x86_64' : 'arm64';
 const archLabel = architecture === 'x64' ? 'Mac Intel' : 'Mac Apple Silicon';
 const signingIdentity = process.env.AWH_MAC_INSTALLER_SIGN_IDENTITY?.trim() || '';
+const keychain = process.env.AWH_MAC_KEYCHAIN?.trim() || '';
+const releaseMode = process.env.AWH_MAC_RELEASE_MODE?.trim() === 'production';
+if (releaseMode && !signingIdentity) throw new Error('AWH_MAC_INSTALLER_SIGN_IDENTITY_REQUIRED');
 const work = await mkdtemp(join(tmpdir(), 'awh-macos-installer-'));
 
 function run(executable, args, cwd = ROOT) {
   const result = spawnSync(executable, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (result.status !== 0) throw new Error(`${basename(executable)} failed (${result.status}): ${result.stderr || result.stdout}`);
   return result.stdout.trim();
+}
+
+function inspect(executable, args, cwd = ROOT) {
+  const result = spawnSync(executable, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  return { code: result.status ?? -1, text: `${result.stdout ?? ''}\n${result.stderr ?? ''}` };
 }
 
 function xml(value) {
@@ -39,6 +47,12 @@ function xml(value) {
 try {
   run('/bin/test', ['-d', app]);
   run('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
+  if (releaseMode) {
+    const appSignature = inspect('/usr/bin/codesign', ['-dv', '--verbose=4', app]);
+    if (appSignature.code !== 0 || !/Authority=Developer ID Application:/i.test(appSignature.text)) {
+      throw new Error('AWH_MACOS_DEVELOPER_ID_APP_SIGNATURE_REQUIRED');
+    }
+  }
 
   const root = join(work, 'Root');
   const scripts = join(work, 'Scripts');
@@ -169,12 +183,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;li
   await writeFile(distributionPath, distribution, 'utf8');
 
   const args = ['--distribution', distributionPath, '--resources', resources, '--package-path', work];
-  if (signingIdentity) args.push('--sign', signingIdentity);
+  if (signingIdentity) {
+    args.push('--sign', signingIdentity);
+    if (keychain) args.push('--keychain', keychain);
+  }
   args.push(output);
   await rm(output, { force: true });
   run('/usr/bin/productbuild', args);
   run('/bin/test', ['-s', output]);
-  console.log(`AWH_MACOS_WIZARD_INSTALLER=PASS arch=${architecture} version=${version} signed=${signingIdentity ? 'yes' : 'no'} output=${output}`);
+  const packageSignature = inspect('/usr/sbin/pkgutil', ['--check-signature', output]);
+  const developerInstallerSigned = packageSignature.code === 0 && /Developer ID Installer:/i.test(packageSignature.text);
+  if (releaseMode && !developerInstallerSigned) throw new Error('AWH_MACOS_DEVELOPER_ID_INSTALLER_SIGNATURE_REQUIRED');
+  console.log(`AWH_MACOS_WIZARD_INSTALLER=PASS arch=${architecture} version=${version} signed=${developerInstallerSigned ? 'developer-id' : signingIdentity ? 'other' : 'no'} output=${output}`);
 } finally {
   await rm(work, { recursive: true, force: true });
 }
