@@ -13,7 +13,6 @@ print(value)
 PYJSON
 }
 PLAYWRIGHT_VERSION=${AWH_PLAYWRIGHT_VERSION:-$(manifest_value browserQa.playwrightVersion)}
-AXE_CORE_VERSION=${AWH_AXE_CORE_VERSION:-$(manifest_value browserQa.axeCoreVersion)}
 NODE_VERSION=$(manifest_value linuxConnector.nodeRuntime.version)
 NODE_MINIMUM=$(manifest_value browserQa.minimumNodeVersion)
 ROOT=${AWH_BROWSER_QA_ROOT:-/opt/awh-tools/browser-qa}
@@ -37,7 +36,6 @@ MISSING=$(missing)
 if [ "$MODE" = --check ]; then
   [ -z "$MISSING" ] || { printf '%s\n' "$MISSING"; fail AWH_BROWSER_QA_SHARED_LIBS_MISSING; }
   [ -f "$ROOT/runtime/node_modules/playwright/package.json" ] || fail AWH_BROWSER_QA_PLAYWRIGHT_MISSING
-  [ -f "$ROOT/runtime/node_modules/axe-core/axe.min.js" ] || fail AWH_BROWSER_QA_AXE_MISSING
   printf '%s\n' AWH_BROWSER_QA_RUNTIME=READY; exit 0
 fi
 [ "$(id -u)" -eq 0 ] || fail AWH_BROWSER_QA_INSTALL_REQUIRES_ROOT
@@ -55,10 +53,10 @@ rm -rf "$ROOT/chrome"; mv "$ROOT/chrome-staged" "$ROOT/chrome"
 CHROME="$ROOT/chrome/$(basename "$CHROME")"
 [ -x "$CHROME" ] || fail AWH_BROWSER_QA_ADOPTED_CHROME_INVALID
 printf '%s\n' '{"name":"awh-browser-qa-runtime","private":true,"version":"1.0.0"}' > "$ROOT/runtime/package.json"
-(cd "$ROOT/runtime" && PATH="$NODE_ROOT/bin:$PATH" PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 "$NPM_BIN" install --ignore-scripts --no-audit --no-fund --save-exact "playwright@$PLAYWRIGHT_VERSION" "axe-core@$AXE_CORE_VERSION" >/dev/null)
+(cd "$ROOT/runtime" && PATH="$NODE_ROOT/bin:$PATH" PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 "$NPM_BIN" install --ignore-scripts --no-audit --no-fund --save-exact "playwright@$PLAYWRIGHT_VERSION" >/dev/null)
 ln -sfn "$CHROME" "$ROOT/chrome-current"
 install -d -o root -g root -m 0755 /etc/awh
-printf 'AWH_CHROME_PATH=%s\nAWH_PLAYWRIGHT_MODULE=%s\nAWH_AXE_CORE_PATH=%s\nAWH_BROWSER_QA_NODE_BIN=%s\n' "$ROOT/chrome-current" "$ROOT/runtime/node_modules/playwright/index.mjs" "$ROOT/runtime/node_modules/axe-core/axe.min.js" "$NODE_BIN" > /etc/awh/browser-qa.env
+printf 'AWH_CHROME_PATH=%s\nAWH_PLAYWRIGHT_MODULE=%s\nAWH_BROWSER_QA_NODE_BIN=%s\n' "$ROOT/chrome-current" "$ROOT/runtime/node_modules/playwright/index.mjs" "$NODE_BIN" > /etc/awh/browser-qa.env
 chmod 0644 /etc/awh/browser-qa.env
 MISSING=$(missing); [ -z "$MISSING" ] || { printf '%s\n' "$MISSING"; fail AWH_BROWSER_QA_SHARED_LIBS_STILL_MISSING; }
-printf '%s\n' "AWH_BROWSER_QA_INSTALL=PASS playwright=$PLAYWRIGHT_VERSION axe-core=$AXE_CORE_VERSION"
+printf '%s\n' "AWH_BROWSER_QA_INSTALL=PASS playwright=$PLAYWRIGHT_VERSION"
