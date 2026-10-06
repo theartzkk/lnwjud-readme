@@ -143,7 +143,7 @@ jobs:
   # It still runs for every PR, canonical branch merge, main, and manual release check.
   desktop-installer-windows:
     needs: changes
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/awh/api-independence' || github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && needs.changes.outputs.desktop == 'true') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/awh/api-independence' || github.ref == 'refs/heads/fix/agent-mac-independent-20261002' || github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && needs.changes.outputs.desktop == 'true') }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -283,7 +283,7 @@ jobs:
 
   desktop-package-macos:
     needs: changes
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/awh/api-independence' || github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && needs.changes.outputs.desktop == 'true') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/awh/api-independence' || github.ref == 'refs/heads/fix/agent-mac-independent-20261002' || github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && needs.changes.outputs.desktop == 'true') }}
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v7
