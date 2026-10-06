@@ -207,6 +207,12 @@ export function deviceExecutionCapabilities(tools: readonly string[]): string[] 
   ];
 }
 
+export function composeRuntimeHeartbeatCapabilities(baseCapabilities: string[], mode: ReturnType<typeof currentAgentMode>): string[] {
+  const execution = baseCapabilities.filter((value) => !value.startsWith('tool.'));
+  const inventory = baseCapabilities.filter((value) => value.startsWith('tool.'));
+  return composeWorkerHeartbeatCapabilities([modeCapability(mode), ...execution], inventory);
+}
+
 export async function workerCapabilities(dataDir: string, allowCodex = true, provisionableManaged: readonly string[] = []): Promise<string[]> {
   const local = await detectLocalCapabilities(dataDir).catch(() => ({ git: false, node: false, php: false, ffmpeg: false, remotion: false, browsers: [] }));
   const codex = allowCodex ? await codexStatus(dataDir).catch(() => ({ available: false, version: null })) : { available: false, version: null };
@@ -248,7 +254,10 @@ export class ControlPlaneWorkerRuntime {
     try {
       const managedCatalog = await this.client.toolFabricCatalog().catch(() => []);
       const mode=currentAgentMode(this.options.dataDir);
-      const capabilities = [...new Set([...(await workerCapabilities(this.options.dataDir, this.options.allowCodex, managedCatalog.map((item) => item.capability))),modeCapability(mode)])];
+      const capabilities = composeRuntimeHeartbeatCapabilities(
+        await workerCapabilities(this.options.dataDir, this.options.allowCodex, managedCatalog.map((item) => item.capability)),
+        mode,
+      );
       await this.client.heartbeat(capabilities, 'READY');
       const projects = await this.client.projects().catch((): WorkerProject[] => []);
       await this.reconcileProjectMemoryMetadata(projects).catch(() => undefined);

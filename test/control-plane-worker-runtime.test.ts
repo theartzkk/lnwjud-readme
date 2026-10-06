@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from '../src/control-plane-worker-client.js';
-import { buildCodexTaskInstruction, deviceExecutionCapabilities, deviceRuntimeWorkspacePath, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
+import { buildCodexTaskInstruction, composeRuntimeHeartbeatCapabilities, deviceExecutionCapabilities, deviceRuntimeWorkspacePath, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
 import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
 import { execCommand } from '../src/process.js';
 import { normalizedDeviceActionArguments, type DeviceAction } from '../src/lnwjud-device-client.js';
@@ -42,6 +42,18 @@ test('Office inventory becomes executable only for the matching Windows handler'
 
 test('device automation reuses the bootstrap runtime workspace so host mutation safety remains aligned', () => {
   assert.equal(deviceRuntimeWorkspacePath('/tmp/awh-data'), join('/tmp/awh-data', 'device-runtime-smoke'));
+});
+
+test('runtime mode stays inside the bounded 24-capability heartbeat envelope', () => {
+  const base = [
+    ...Array.from({ length: 20 }, (_, index) => `capability.${index}`),
+    ...Array.from({ length: 4 }, (_, index) => `tool.fixture.${index}`),
+  ];
+  const capabilities = composeRuntimeHeartbeatCapabilities(base, 'ON');
+  assert.equal(capabilities.length, 24);
+  assert.equal(capabilities[0], 'runtime.ai.on');
+  assert.equal(capabilities.includes('runtime.ai.off'), false);
+  assert.equal(capabilities.includes('tool.fixture.3'), false);
 });
 
 test('device process primitives inherit the active AWH workspace id without contaminating unrelated tool schemas', () => {
