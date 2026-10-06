@@ -101,7 +101,16 @@ async function main(){
    for(const candidate of candidates){
     lastExecutionId=typeof candidate?.executionId==="string"?candidate.executionId:lastExecutionId;
     try{await workflow.runNoWait(candidate);}
-    catch(error){if(error instanceof IdempotencyCollisionError||error?.name==="IdempotencyCollisionError")continue;throw error;}
+    catch(error){
+     if(error instanceof IdempotencyCollisionError||error?.name==="IdempotencyCollisionError"){
+      const existingRunExternalId=typeof error?.existingRunExternalId==="string"?error.existingRunExternalId.trim():"";
+      if(existingRunExternalId==="")throw error;
+      const status=String(await hatchet.runs.get_status(existingRunExternalId)||"").toUpperCase();
+      if(status==="FAILED"||status==="CANCELLED")await hatchet.runs.replay({ids:[existingRunExternalId]});
+      continue;
+     }
+     throw error;
+    }
    }
    heartbeat(candidates.length>0?"DISPATCHED":"IDLE");
   }catch(error){

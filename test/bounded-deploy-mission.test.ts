@@ -296,6 +296,10 @@ test('Hatchet execution is self-hosted, pinned, persistent and resource-scoped',
   const installer = await readFile('deploy/hatchet/install-readyidc-worker.sh', 'utf8');
   assert.match(worker, /HatchetEmbeddedClient/);
   assert.match(worker, /expression:"input\.resource"/);
+  assert.match(worker, /existingRunExternalId/);
+  assert.match(worker, /hatchet\.runs\.get_status\(existingRunExternalId\)/);
+  assert.match(worker, /status==="FAILED"\|\|status==="CANCELLED"/);
+  assert.match(worker, /hatchet\.runs\.replay\(\{ids:\[existingRunExternalId\]\}\)/);
   assert.match(worker, /productionMutationAuthority:false/);
   assert.match(worker, /delete process\.env\.HATCHET_CLIENT_TOKEN/);
   assert.match(unit, /AWH_HATCHET_EMBEDDED_VERSION=v0\.110\.5/);
