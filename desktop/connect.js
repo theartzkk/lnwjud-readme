@@ -22,14 +22,11 @@ function renderPermissions(permissions, enrolled) {
   $('permission-badge').className = `permission-badge ${ready ? 'ready' : 'required'}`;
   if (!enrolled) return;
   const runtime = permissions?.runtime;
-  const automationReady = permissions?.setupVersion === 1;
   const list = $('permission-list'); list.replaceChildren();
   if (permissions?.platform === 'darwin') {
     list.append(
       permissionEntry('Accessibility', runtime?.accessibility === true, 'คลิก พิมพ์ และควบคุมหน้าต่าง'),
       permissionEntry('Screen Recording', runtime?.screenCapture === 'granted', 'มองเห็นหน้าจอและตรวจงานภาพ'),
-      permissionEntry('Microphone', runtime?.microphone === 'granted', 'งานเสียงที่สั่งให้ AWH ทำ'),
-      permissionEntry('Automation', automationReady, 'ควบคุม System Events และแอปที่รองรับ'),
     );
   }
   list.append(permissionEntry('AWH Full Device Control', permissions?.internalReady === true, 'Write · Execute · Codex · Worker'));
@@ -49,7 +46,8 @@ function renderMode(worker) {
   for (const value of ['off','on','live']) $('mode-'+value).classList.toggle('active', mode === value.toUpperCase());
   const activity = worker?.activity || {activity:'IDLE',foreground:false};
   $('activity-status').textContent = mode === 'LIVE' && activity.foreground ? `LIVE · ${activityLabel(activity.activity)}` : activityLabel(activity.activity);
-  $('connection-status').textContent = worker?.connection === 'CONNECTED' ? 'Connected' : worker?.connection === 'OFFLINE' ? 'Offline' : 'กำลังตรวจ';
+  const remote = worker?.remoteRuntime;
+  $('connection-status').textContent = remote?.connected === true ? 'Connected' : remote ? 'Offline' : worker?.connection === 'CONNECTED' ? 'Connected' : worker?.connection === 'OFFLINE' ? 'Offline' : 'กำลังตรวจ';
 }
 
 function renderActivity(payload) {
@@ -82,7 +80,7 @@ function renderHealth(health) {
   $('install-update').textContent = health.update?.candidateVersion ? `ติดตั้ง ${health.update.candidateVersion}` : 'ติดตั้งอัปเดต';
 }
 
-function render(enrollment, worker, permissions) {
+function render(enrollment, worker, permissions, health) {
   const enrolled = enrollment?.ok === true && enrollment?.enrolled === true;
   const hubConfigured = enrollment?.hubConfigured === true;
   const permissionReady = permissions?.ready === true;
@@ -97,12 +95,10 @@ function render(enrollment, worker, permissions) {
   $('device-name').textContent = enrollment?.displayName || worker?.device?.displayName || 'เครื่องนี้';
   renderMode(worker);
   $('worker-status').textContent = !permissionReady ? 'รอสิทธิ์ระบบ' : worker?.enabled === true ? (worker?.running === true ? 'กำลังทำงาน' : 'พร้อมเมื่อมีคำสั่ง') : 'หยุดอยู่';
-  const remote = worker?.remoteDesktop;
-  $('remote-status').textContent = !permissionReady ? 'รอสิทธิ์ระบบ' : remote?.state === 'READY'
+  const runtime = health?.runtime;
+  $('remote-status').textContent = !permissionReady ? 'รอสิทธิ์ระบบ' : runtime?.state === 'READY'
     ? 'พร้อมใช้งาน'
-    : remote?.state === 'AUTHORIZATION_REQUIRED'
-      ? 'อนุมัติครั้งแรกใน Browser'
-      : remote?.state === 'STARTING' ? 'กำลังเชื่อมต่อ' : 'ยังไม่พร้อม';
+    : runtime?.state === 'FAILED' ? 'ต้องซ่อม Runtime' : 'กำลังตรวจ';
   $('open-awh').disabled = !hubConfigured || !permissionReady;
   $('login-form').hidden = enrolled || !hubConfigured;
   $('manage-device').disabled = !hubConfigured || !permissionReady;
@@ -127,7 +123,7 @@ async function refresh() {
     const permissions = permissionResult.status === 'fulfilled' ? permissionResult.value : { ready: false, platform: 'unknown', internalReady: false, runtime: null };
     const activity = activityResult.status === 'fulfilled' ? activityResult.value : { recent: [] };
     const health = healthResult.status === 'fulfilled' ? healthResult.value : null;
-    render(enrollment, worker, permissions);
+    render(enrollment, worker, permissions, health);
     renderActivity(activity);
     renderHealth(health);
   } finally { if (token === refreshToken) $('refresh-status').disabled = false; }
@@ -237,4 +233,6 @@ $('login-form').addEventListener('submit', async (event) => {
 
 $('refresh-status').addEventListener('click', () => { void refresh(); });
 window.addEventListener('focus', () => { void refresh(); });
+const statusRefreshTimer = setInterval(() => { if (!document.hidden) void refresh(); }, 5_000);
+window.addEventListener('beforeunload', () => clearInterval(statusRefreshTimer));
 void refresh();

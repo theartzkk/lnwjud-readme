@@ -65,3 +65,22 @@ test('desktop device runtime bootstrap is single-flight across concurrent caller
   assert.equal(source.match(/ensureDeviceRuntimeSingleFlight\(config\.dataDir\)/g)?.length, 4);
   assert.equal(source.match(/ensureAwhDeviceRuntime\(config\.dataDir\)/g), null);
 });
+
+
+test('desktop self-heal owns Secure MCP tunnel freshness without reopening optional macOS permissions', () => {
+  const desktop = readFileSync(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
+  const connect = readFileSync(new URL('../desktop/connect.js', import.meta.url), 'utf8');
+
+  assert.match(settings, /remoteTunnelEnabled\?: boolean/);
+  assert.match(desktop, /tunnelRuntimeStatus\(workspace, tunnelEnv\)/);
+  assert.match(desktop, /remoteTunnelEnabled: true/);
+  assert.match(desktop, /remoteTunnelEnabled: false/);
+  assert.match(desktop, /setupVersion = PERMISSION_SETUP_VERSION/);
+  assert.match(desktop, /healConnectedDeviceRuntime\(\)\.catch/);
+  assert.doesNotMatch(connect, /permissionEntry\('Microphone'/);
+  assert.doesNotMatch(connect, /permissionEntry\('Automation'/);
+  assert.doesNotMatch(connect, /worker\?\.remoteDesktop/);
+  assert.match(connect, /const runtime = health\?\.runtime/);
+  assert.match(connect, /statusRefreshTimer = setInterval/);
+});

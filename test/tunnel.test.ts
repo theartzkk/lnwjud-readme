@@ -61,6 +61,7 @@ function statusJson(alias: string, options: {
   healthy?: boolean;
   ready?: boolean;
   runtimeState?: string;
+  controlPlanePollHealth?: { state?: string; last_success?: string | number | null };
 } = {}): string {
   return JSON.stringify({
     alias,
@@ -68,6 +69,7 @@ function statusJson(alias: string, options: {
     healthy: options.healthy ?? true,
     ready: options.ready ?? true,
     runtime_state: options.runtimeState ?? 'ready',
+    ...(options.controlPlanePollHealth ? { control_plane_poll_health: options.controlPlanePollHealth } : {}),
   });
 }
 
@@ -287,6 +289,51 @@ test('connect exit zero is not reported connected until status is process-runnin
   assert.equal(result.processRunning, true);
   assert.equal(result.healthy, false);
   assert.equal(result.ready, false);
+});
+
+test('managed status rejects stale or unhealthy control-plane polling even when local health is green', async (t) => {
+  const fixture = await packagedFixture(t);
+  const alias = tunnelRuntimeAlias(fixture.workspace);
+  const env = readyEnv(fixture.appExecutable);
+
+  const unhealthy: TunnelCommandRunner = async () => ({
+    code: 0,
+    stdout: statusJson(alias, {
+      controlPlanePollHealth: { state: 'unhealthy', last_success: new Date().toISOString() },
+    }),
+    stderr: '',
+  });
+  const unhealthyStatus = await tunnelRuntimeStatus(fixture.workspace, env, TRUSTED_PROBE, unhealthy);
+  assert.equal(unhealthyStatus.processRunning, true);
+  assert.equal(unhealthyStatus.healthy, true);
+  assert.equal(unhealthyStatus.ready, true);
+  assert.equal(unhealthyStatus.controlPlanePollFresh, false);
+  assert.equal(unhealthyStatus.connected, false);
+  assert.equal(unhealthyStatus.state, 'starting');
+
+  const stale: TunnelCommandRunner = async () => ({
+    code: 0,
+    stdout: statusJson(alias, {
+      controlPlanePollHealth: { state: 'healthy', last_success: new Date(Date.now() - 5 * 60_000).toISOString() },
+    }),
+    stderr: '',
+  });
+  const staleStatus = await tunnelRuntimeStatus(fixture.workspace, env, TRUSTED_PROBE, stale);
+  assert.equal(staleStatus.controlPlanePollState, 'healthy');
+  assert.equal(staleStatus.controlPlanePollFresh, false);
+  assert.equal(staleStatus.connected, false);
+
+  const fresh: TunnelCommandRunner = async () => ({
+    code: 0,
+    stdout: statusJson(alias, {
+      controlPlanePollHealth: { state: 'healthy', last_success: new Date().toISOString() },
+    }),
+    stderr: '',
+  });
+  const freshStatus = await tunnelRuntimeStatus(fixture.workspace, env, TRUSTED_PROBE, fresh);
+  assert.equal(freshStatus.controlPlanePollFresh, true);
+  assert.equal(freshStatus.connected, true);
+  assert.equal(freshStatus.state, 'connected');
 });
 
 test('managed status fails closed on malformed JSON or alias mismatch', async (t) => {

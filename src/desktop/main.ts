@@ -63,6 +63,7 @@ import {
   connectTunnelRuntime,
   inspectTunnelReadiness,
   stopTunnelRuntime,
+  tunnelRuntimeStatus,
   type TunnelReadiness,
   type TunnelRuntimeStatus,
 } from '../tunnel.js';
@@ -181,6 +182,9 @@ function sanitizedTunnelRuntime(status: TunnelRuntimeStatus) {
     healthy: status.healthy,
     ready: status.ready,
     runtimeState: status.runtimeState,
+    controlPlanePollState: status.controlPlanePollState,
+    controlPlanePollLastSuccess: status.controlPlanePollLastSuccess,
+    controlPlanePollFresh: status.controlPlanePollFresh,
     verifiedAt: new Date().toISOString(),
   };
 }
@@ -246,7 +250,7 @@ async function workerState() {
   const identity = await readDeviceIdentity(config.dataDir).catch(() => null);
   const mode = currentAgentMode(config.dataDir);
   const activity = agentRuntimeStatus();
-  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning, connection: workerConnectionState, mode, activity, emergencyHotkeyReady, lastError:lastWorkerError };
+  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning, connection: workerConnectionState, remoteRuntime: lastRemoteRuntime, mode, activity, emergencyHotkeyReady, lastError:lastWorkerError };
 }
 
 async function checkDesktopCoreUpdate() {
@@ -610,8 +614,13 @@ async function startupPermissionState(): Promise<StartupPermissionState> {
   if (!internal.worker) missing.push('worker');
 
   const ready = osReady && internalReady;
+  let setupVersion = stored.permissionSetupVersion ?? null;
+  if (ready && setupVersion !== PERMISSION_SETUP_VERSION) {
+    await saveStoredSettings(config.dataDir, { ...stored, permissionSetupVersion: PERMISSION_SETUP_VERSION });
+    setupVersion = PERMISSION_SETUP_VERSION;
+  }
   startupPermissionsReady = ready;
-  return { ready, platform: process.platform, internalReady, osReady, setupVersion: stored.permissionSetupVersion ?? null, internal, runtime, missing: [...new Set(missing)] };
+  return { ready, platform: process.platform, internalReady, osReady, setupVersion, internal, runtime, missing: [...new Set(missing)] };
 }
 
 async function authorizeStartupPermissions(): Promise<StartupPermissionState & { requested: true }> {
@@ -673,6 +682,41 @@ async function healConnectedDeviceRuntime(): Promise<void> {
     const permissions = await startupPermissionState().catch(() => null);
     if (permissions?.ready !== true) return;
     await ensureConnectedDeviceRuntime();
+
+    const stored = loadStoredSettings(config.dataDir);
+    if (stored.remoteTunnelEnabled === false || remoteOperationInFlight || !hasExplicitWorkspace(config.dataDir)) return;
+
+    const workspace = await canonicalWorkspace(config.workspace);
+    const tunnelEnv = await resolveDesktopTunnelEnvironment(config.dataDir);
+    const readiness = await inspectTunnelReadiness(workspace, process.execPath, tunnelEnv);
+    if (!readiness.ready) return;
+
+    let status: TunnelRuntimeStatus | null = null;
+    try {
+      status = await tunnelRuntimeStatus(workspace, tunnelEnv);
+      lastRemoteRuntime = sanitizedTunnelRuntime(status);
+      if (status.connected) {
+        if (stored.remoteTunnelEnabled !== true) await saveStoredSettings(config.dataDir, { ...stored, remoteTunnelEnabled: true });
+        return;
+      }
+      // Older installs predate remoteTunnelEnabled. A live/stale managed process
+      // proves the owner had already connected this alias, so migrate that intent.
+      if (stored.remoteTunnelEnabled === undefined && !status.processRunning && status.runtimeState === 'stopped') return;
+    } catch {
+      if (stored.remoteTunnelEnabled !== true) return;
+    }
+
+    remoteOperationInFlight = true;
+    try {
+      if (status?.processRunning) await stopTunnelRuntime(workspace, tunnelEnv).catch(() => undefined);
+      const repaired = await connectTunnelRuntime(workspace, process.execPath, tunnelEnv);
+      lastRemoteRuntime = sanitizedTunnelRuntime(repaired);
+      if (repaired.connectAccepted && stored.remoteTunnelEnabled !== true) {
+        await saveStoredSettings(config.dataDir, { ...stored, remoteTunnelEnabled: true });
+      }
+    } finally {
+      remoteOperationInFlight = false;
+    }
   } finally {
     connectedRuntimeRepairInFlight = false;
   }
@@ -1033,7 +1077,10 @@ function startLiveReturnMonitor(): void {
 function reconnectAfterSystemResume(): void {
   workerConnectionState = 'CHECKING';
   refreshTray();
-  if (loadConfig().controlPlaneWorker && startupPermissionsReady) void runWorkerOnce();
+  if (loadConfig().controlPlaneWorker && startupPermissionsReady) {
+    void runWorkerOnce();
+    void healConnectedDeviceRuntime().catch(() => undefined);
+  }
 }
 
 function activityLabel(activity: ReturnType<typeof agentRuntimeStatus>['activity']): string {
@@ -1264,6 +1311,8 @@ function registerLegacyDesktopIpc(): void {
       try {
         const runtime = await connectTunnelRuntime(workspace, process.execPath, tunnelEnv);
         lastRemoteRuntime = sanitizedTunnelRuntime(runtime);
+        const stored = loadStoredSettings(config.dataDir);
+        await saveStoredSettings(config.dataDir, { ...stored, remoteTunnelEnabled: true });
         await audit.write({
           tool: 'remote_connect',
           outcome: runtime.connected ? 'allowed' : 'error',
@@ -1295,6 +1344,8 @@ function registerLegacyDesktopIpc(): void {
       const audit = new AuditLog(config.dataDir);
       const tunnelEnv = await resolveDesktopTunnelEnvironment(config.dataDir);
       if (!(await confirmRemoteAction('stop'))) return { ok: false, cancelled: true };
+      const stored = loadStoredSettings(config.dataDir);
+      await saveStoredSettings(config.dataDir, { ...stored, remoteTunnelEnabled: false });
 
       try {
         const runtime = await stopTunnelRuntime(workspace, tunnelEnv);

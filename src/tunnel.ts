@@ -11,6 +11,7 @@ const RUNTIME_KEY_REF = 'env:CONTROL_PLANE_API_KEY';
 const CONNECT_TIMEOUT_MS = 30_000;
 const STATUS_TIMEOUT_MS = 10_000;
 const STOP_TIMEOUT_MS = 15_000;
+const CONTROL_PLANE_POLL_STALE_MS = 120_000;
 
 const REMOTE_ENV_DENY = new Set([
   'OPENAI_API_KEY',
@@ -71,6 +72,9 @@ export interface TunnelRuntimeStatus {
   healthy: boolean;
   ready: boolean;
   runtimeState: string;
+  controlPlanePollState: string | null;
+  controlPlanePollLastSuccess: string | null;
+  controlPlanePollFresh: boolean;
 }
 
 export interface TunnelConnectResult extends TunnelRuntimeStatus {
@@ -92,6 +96,7 @@ interface RuntimeStatusPayload {
   healthy?: unknown;
   ready?: unknown;
   runtime_state?: unknown;
+  control_plane_poll_health?: unknown;
 }
 
 function trimmed(value: string | undefined): string | undefined {
@@ -301,15 +306,50 @@ function parseJsonObject(text: string, operation: string): Record<string, unknow
   return parsed as Record<string, unknown>;
 }
 
+function parseControlPlanePollHealth(value: unknown, now = Date.now()): { state: string | null; lastSuccess: string | null; fresh: boolean } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { state: null, lastSuccess: null, fresh: true };
+  const row = value as Record<string, unknown>;
+  const state = typeof row.state === 'string' && row.state.trim() ? row.state.trim().toLowerCase() : null;
+  let lastSuccess: string | null = null;
+  let lastSuccessMs: number | null = null;
+
+  if (typeof row.last_success === 'string' && row.last_success.trim()) {
+    lastSuccess = row.last_success.trim();
+    const parsed = Date.parse(lastSuccess);
+    if (Number.isFinite(parsed)) lastSuccessMs = parsed;
+  } else if (typeof row.last_success === 'number' && Number.isFinite(row.last_success) && row.last_success > 0) {
+    lastSuccessMs = row.last_success > 1_000_000_000_000 ? row.last_success : row.last_success * 1000;
+    lastSuccess = new Date(lastSuccessMs).toISOString();
+  }
+
+  if (state !== null && !['healthy', 'direct', 'unknown'].includes(state)) return { state, lastSuccess, fresh: false };
+  if (state === 'healthy' && lastSuccessMs !== null && now - lastSuccessMs > CONTROL_PLANE_POLL_STALE_MS) {
+    return { state, lastSuccess, fresh: false };
+  }
+  return { state, lastSuccess, fresh: true };
+}
+
 function parseRuntimeStatus(alias: string, payload: RuntimeStatusPayload): TunnelRuntimeStatus {
   if (payload.alias !== alias) throw new Error(`tunnel-client status alias did not match the requested ${PRODUCT.desktopName} runtime`);
   const processRunning = payload.process_running === true;
   const healthy = payload.healthy === true;
   const ready = payload.ready === true;
   const runtimeState = typeof payload.runtime_state === 'string' ? payload.runtime_state : 'unknown';
-  const connected = processRunning && healthy && ready && runtimeState === 'ready';
+  const poll = parseControlPlanePollHealth(payload.control_plane_poll_health);
+  const connected = processRunning && healthy && ready && runtimeState === 'ready' && poll.fresh;
   const state: TunnelRuntimeState = connected ? 'connected' : processRunning ? 'starting' : 'stopped';
-  return { alias, state, connected, processRunning, healthy, ready, runtimeState };
+  return {
+    alias,
+    state,
+    connected,
+    processRunning,
+    healthy,
+    ready,
+    runtimeState,
+    controlPlanePollState: poll.state,
+    controlPlanePollLastSuccess: poll.lastSuccess,
+    controlPlanePollFresh: poll.fresh,
+  };
 }
 
 async function runRuntimeStatus(

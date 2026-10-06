@@ -16,6 +16,8 @@ export interface StoredSettings {
    * remote work without removing the local capability policy.
    */
   controlPlaneWorker?: boolean;
+  /** Keep a previously approved Secure MCP tunnel supervised across restarts and stale polling. */
+  remoteTunnelEnabled?: boolean;
   /** Version of the completed local OS permission onboarding contract. */
   permissionSetupVersion?: number;
   /** Local interruption policy. OS permissions remain independent from this mode. */
@@ -41,6 +43,7 @@ export function loadStoredSettings(dataDir: string): StoredSettings {
     if (typeof parsed.allowExec === 'boolean') out.allowExec = parsed.allowExec;
     if (typeof parsed.allowCodex === 'boolean') out.allowCodex = parsed.allowCodex;
     if (typeof parsed.controlPlaneWorker === 'boolean') out.controlPlaneWorker = parsed.controlPlaneWorker;
+    if (typeof parsed.remoteTunnelEnabled === 'boolean') out.remoteTunnelEnabled = parsed.remoteTunnelEnabled;
     if (Number.isSafeInteger(parsed.permissionSetupVersion) && (parsed.permissionSetupVersion as number) >= 1 && (parsed.permissionSetupVersion as number) <= 100) out.permissionSetupVersion = parsed.permissionSetupVersion as number;
     if (parsed.runtimeMode === 'OFF' || parsed.runtimeMode === 'ON' || parsed.runtimeMode === 'LIVE') out.runtimeMode = parsed.runtimeMode;
     if (typeof parsed.runtimeModeUpdatedAt === 'string' && Number.isFinite(Date.parse(parsed.runtimeModeUpdatedAt))) out.runtimeModeUpdatedAt = parsed.runtimeModeUpdatedAt;
@@ -61,6 +64,7 @@ export async function saveStoredSettings(dataDir: string, settings: StoredSettin
   if (typeof settings.allowExec === 'boolean') normalized.allowExec = settings.allowExec;
   if (typeof settings.allowCodex === 'boolean') normalized.allowCodex = settings.allowCodex;
   if (typeof settings.controlPlaneWorker === 'boolean') normalized.controlPlaneWorker = settings.controlPlaneWorker;
+  if (typeof settings.remoteTunnelEnabled === 'boolean') normalized.remoteTunnelEnabled = settings.remoteTunnelEnabled;
   const permissionSetupVersion = settings.permissionSetupVersion;
   if (Number.isSafeInteger(permissionSetupVersion) && (permissionSetupVersion as number) >= 1 && (permissionSetupVersion as number) <= 100) normalized.permissionSetupVersion = permissionSetupVersion as number;
   if (settings.runtimeMode === 'OFF' || settings.runtimeMode === 'ON' || settings.runtimeMode === 'LIVE') normalized.runtimeMode = settings.runtimeMode;
