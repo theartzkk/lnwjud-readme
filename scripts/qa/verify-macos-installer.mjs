@@ -54,7 +54,8 @@ if (!(await exists(installer))) throw new Error(`installer missing: ${installer}
 const info = await stat(installer);
 if (info.size < 10 * 1024 * 1024) throw new Error(`installer unexpectedly small: ${info.size}`);
 
-const expanded = await mkdtemp(join(tmpdir(), 'awh-installer-verify-'));
+const verifyRoot = await mkdtemp(join(tmpdir(), 'awh-installer-verify-'));
+const expanded = join(verifyRoot, 'expanded');
 try {
   run('/usr/sbin/pkgutil', ['--expand-full', installer, expanded]);
   const distributionPath = join(expanded, 'Distribution');
@@ -92,5 +93,5 @@ try {
     preservesTcc: true,
   }));
 } finally {
-  await rm(expanded, { recursive: true, force: true });
+  await rm(verifyRoot, { recursive: true, force: true });
 }
