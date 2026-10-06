@@ -63,8 +63,9 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /engineAsset\('win32-x64'\)/);
   assert.doesNotMatch(bootstrap, /lnwjud-(?:Portable|Setup)-\d+\.\d+\.\d+/);
   assert.match(bootstrap, /AWH Device Runtime\.exe/);
-  assert.match(bootstrap, /CFBundleName'.*lnwjud/s);
-  assert.match(bootstrap, /internal implementation key unchanged/);
+  assert.match(bootstrap, /CFBundleName'.*AWH Device Runtime/s);
+  assert.match(bootstrap, /CFBundleExecutable'.*helperName/s);
+  assert.match(bootstrap, /legacyRoot.*lnwjud/s);
   assert.match(bootstrap, /CFBundleExecutable'.*MAC_RUNTIME_EXECUTABLE/s);
   assert.match(bootstrap, /CFBundleIdentifier'.*online\.kruart\.awh-device-runtime/s);
   assert.match(bootstrap, /AWH_RUNTIME_NAME_MARKER/);
@@ -81,7 +82,7 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /const ready = accessibility === true && screenCapture === "granted"/);
   assert.match(bootstrap, /NSAppleEventsUsageDescription/);
   assert.match(bootstrap, /deviceRuntimePermissionStatus/);
-  assert.match(bootstrap, /client\.callTool\('health'.*check_all/s);
+  assert.match(bootstrap, /requestPermissions \? '--awh-permission-setup' : '--awh-permission-status'/);
   assert.match(bootstrap, /getRawHeader/);
   assert.match(bootstrap, /ElectronAsarIntegrity/);
   assert.match(bootstrap, /logo-256x256\.png/);

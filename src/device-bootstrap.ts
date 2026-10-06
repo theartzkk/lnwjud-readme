@@ -311,10 +311,7 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   }
   const updates: Array<[string, string, string]> = [
     ['CFBundleDisplayName', '-string', 'AWH Device Runtime'],
-    // Electron resolves its helper-app bundle names from the original
-    // CFBundleName. Keep that internal implementation key unchanged while
-    // rebranding every user-visible identity and the top-level executable.
-    ['CFBundleName', '-string', 'lnwjud'],
+    ['CFBundleName', '-string', 'AWH Device Runtime'],
     ['CFBundleExecutable', '-string', MAC_RUNTIME_EXECUTABLE],
     ['CFBundleIdentifier', '-string', 'online.kruart.awh-device-runtime'],
   ];
@@ -344,18 +341,33 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   } finally {
     await rm(iconWork, { recursive: true, force: true }).catch(() => undefined);
   }
-  // Helper bundle directory/executable names stay upstream-compatible because
-  // Electron locates them internally, but their visible Finder/System UI names
-  // are branded as AWH Device Runtime.
+  // Electron derives helper identities from CFBundleName. Rename the helper
+  // bundles and executables together so macOS TCC/Keychain sees only AWH.
   const frameworks = join(appRoot, 'Contents', 'Frameworks');
   try {
     for (const entry of await readdir(frameworks, { withFileTypes: true })) {
-      if (!entry.isDirectory() || !/^lnwjud Helper(?: \(.+\))?\.app$/.test(entry.name)) continue;
-      const helperPlist = join(frameworks, entry.name, 'Contents', 'Info.plist');
-      const suffix = /^lnwjud Helper(.*)\.app$/.exec(entry.name)?.[1] ?? '';
+      const match = entry.isDirectory() ? /^lnwjud Helper(.*)\.app$/.exec(entry.name) : null;
+      if (!match) continue;
+      const suffix = match[1] ?? '';
+      const oldHelperName = `lnwjud Helper${suffix}`;
       const helperName = `AWH Device Runtime Helper${suffix}`;
-      const helperDisplay = await execFile('/usr/bin/plutil', ['-replace', 'CFBundleDisplayName', '-string', helperName, helperPlist], appRoot, 15_000);
-      if (helperDisplay.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_HELPER_FAILED');
+      const oldHelperRoot = join(frameworks, entry.name);
+      const helperRoot = join(frameworks, `${helperName}.app`);
+      const helperPlist = join(oldHelperRoot, 'Contents', 'Info.plist');
+      const oldHelperExecutable = join(oldHelperRoot, 'Contents', 'MacOS', oldHelperName);
+      const helperExecutable = join(oldHelperRoot, 'Contents', 'MacOS', helperName);
+      try {
+        if ((await lstat(oldHelperExecutable)).isFile()) await rename(oldHelperExecutable, helperExecutable);
+      } catch {}
+      for (const [key, value] of [
+        ['CFBundleDisplayName', helperName],
+        ['CFBundleName', helperName],
+        ['CFBundleExecutable', helperName],
+      ] as const) {
+        const result = await execFile('/usr/bin/plutil', ['-replace', key, '-string', value, helperPlist], appRoot, 15_000);
+        if (result.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_HELPER_FAILED');
+      }
+      if (oldHelperRoot !== helperRoot) await rename(oldHelperRoot, helperRoot);
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -369,7 +381,7 @@ function macBridge(): string {
   return `#!/bin/sh
 set -eu
 AWH_ROOT="$HOME/Library/Application Support/AWH"
-ENGINE_LINK="$AWH_ROOT/Engines/lnwjud/current"
+ENGINE_LINK="$AWH_ROOT/Engines/device-runtime/current"
 ENGINE="$(readlink "$ENGINE_LINK" 2>/dev/null || printf '%s' "$ENGINE_LINK")"
 DATA="$AWH_ROOT/DeviceRuntime/device-runtime"
 mkdir -p "$DATA"
@@ -397,15 +409,7 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
   if (process.platform !== 'darwin') {
     return { schemaVersion: 1, runtime: 'AWH Device Runtime', accessibility: true, screenCapture: 'granted', microphone: 'granted', automation: 'granted', ready: true, requested: requestPermissions };
   }
-  if (!requestPermissions) {
-    const client = await LnwjudDeviceClient.open(join(home, '.awh', 'device-runtime-smoke'));
-    try {
-      return deviceRuntimePermissionStatusFromHealth(await client.callTool('health', { operation: 'check_all' }, 20_000));
-    } finally {
-      client.close();
-    }
-  }
-  const root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud');
+  const root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'device-runtime');
   const current = join(root, 'current');
   let active = current;
   try {
@@ -417,7 +421,8 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
   await mkdir(dataPath, { recursive: true, mode: 0o700 });
   const env: NodeJS.ProcessEnv = { ...process.env, LNWJUD_DATA_PATH: dataPath };
   delete env.ELECTRON_RUN_AS_NODE;
-  const result = await execFile(executable, ['--awh-permission-setup'], active, 120_000, env);
+  const permissionCommand = requestPermissions ? '--awh-permission-setup' : '--awh-permission-status';
+  const result = await execFile(executable, [permissionCommand], active, 120_000, env);
   const line = result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
   if (!line) throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_MISSING');
   let value: unknown;
@@ -440,7 +445,17 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
 
 async function installMacEngine(home: string, arch: 'arm64' | 'x64'): Promise<boolean> {
   const asset = MAC_ASSETS[arch];
-  const root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud');
+  const engines = join(home, 'Library', 'Application Support', 'AWH', 'Engines');
+  const root = join(engines, 'device-runtime');
+  const legacyRoot = join(engines, 'lnwjud');
+  await mkdir(engines, { recursive: true, mode: 0o700 });
+  try {
+    await lstat(root);
+  } catch {
+    try {
+      if ((await lstat(legacyRoot)).isDirectory()) await rename(legacyRoot, root);
+    } catch {}
+  }
   await mkdir(root, { recursive: true, mode: 0o700 });
   const current = join(root, 'current');
   // Preserve an already-qualified AWH engine instead

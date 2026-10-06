@@ -78,8 +78,20 @@ test('desktop self-heal owns Secure MCP tunnel freshness without reopening optio
   assert.match(desktop, /remoteTunnelEnabled: false/);
   assert.match(desktop, /setupVersion = PERMISSION_SETUP_VERSION/);
   assert.match(desktop, /healConnectedDeviceRuntime\(\)\.catch/);
+  assert.doesNotMatch(desktop, /remoteTunnelEnabled === undefined && !status\.processRunning/);
+  assert.doesNotMatch(desktop, /stored\.remoteTunnelEnabled !== true\) return/);
   assert.doesNotMatch(connect, /permissionEntry\('Microphone'/);
   assert.doesNotMatch(connect, /permissionEntry\('Automation'/);
   assert.doesNotMatch(connect, /worker\?\.remoteDesktop/);
   assert.match(connect, /const runtime = health\?\.runtime/);
+});
+
+test('macOS runtime source converges on native AWH identity and permission truth', () => {
+  const bootstrap = readFileSync(new URL('../src/device-bootstrap.ts', import.meta.url), 'utf8');
+  const client = readFileSync(new URL('../src/lnwjud-device-client.ts', import.meta.url), 'utf8');
+  assert.match(bootstrap, /'AWH', 'Engines', 'device-runtime'/);
+  assert.match(bootstrap, /requestPermissions \? '--awh-permission-setup' : '--awh-permission-status'/);
+  assert.match(bootstrap, /CFBundleName'.*AWH Device Runtime/s);
+  assert.match(bootstrap, /CFBundleExecutable'.*helperName/s);
+  assert.match(client, /'AWH', 'Engines', 'device-runtime', 'current'/);
 });

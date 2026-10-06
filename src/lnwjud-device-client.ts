@@ -43,7 +43,7 @@ export async function discoverLnwjudLaunchSpec(platform: NodeJS.Platform = proce
     const candidates: LnwjudLaunchSpec[] = [
       { command: join(home, '.awh', 'bin', 'awh-mcp-stdio'), argsPrefix: [] },
       { command: join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'awh-mcp-stdio'), argsPrefix: [] },
-      { command: join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud', 'current', 'Contents', 'MacOS', 'AWH Device Runtime'), argsPrefix: ['--mcp-stdio'] },
+      { command: join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'device-runtime', 'current', 'Contents', 'MacOS', 'AWH Device Runtime'), argsPrefix: ['--mcp-stdio'] },
     ];
     for (const candidate of candidates) if (await exists(candidate.command)) return candidate;
     return null;

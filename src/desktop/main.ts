@@ -699,11 +699,12 @@ async function healConnectedDeviceRuntime(): Promise<void> {
         if (stored.remoteTunnelEnabled !== true) await saveStoredSettings(config.dataDir, { ...stored, remoteTunnelEnabled: true });
         return;
       }
-      // Older installs predate remoteTunnelEnabled. A live/stale managed process
-      // proves the owner had already connected this alias, so migrate that intent.
-      if (stored.remoteTunnelEnabled === undefined && !status.processRunning && status.runtimeState === 'stopped') return;
+      // A successful status lookup proves this managed alias already exists.
+      // Older installs predate remoteTunnelEnabled, so preserve its reconnect
+      // intent even when the recorded process is currently stopped.
     } catch {
-      if (stored.remoteTunnelEnabled !== true) return;
+      // Missing or stale runtime state is repairable on an enrolled device.
+      // Only an explicit remoteTunnelEnabled=false above suppresses self-heal.
     }
 
     remoteOperationInFlight = true;
