@@ -30,12 +30,6 @@
     "projectScopeAuthority": "PROJECT_REGISTRY+MISSION_EXECUTION_PROJECT",
     "completionAuthority": "HubCompletionAuthorityService",
     "completionNotificationRequiresVerifiedTerminal": true,
-    "progressIsTerminal": false,
-    "executeToBoundary": true,
-    "followNonTerminalTasks": true,
-    "resumeExistingExecution": true,
-    "duplicateExecutionAllowed": false,
-    "interruptedContinuationRecovery": true,
     "resumeAuthority": "EXECUTION_CHECKPOINT+HEARTBEAT",
     "terminalStateEvidence": "TASK+EXECUTION+ENVELOPE+APPROVAL+CONTINUATION",
     "hostGlobalTrack": "vps-platform"
