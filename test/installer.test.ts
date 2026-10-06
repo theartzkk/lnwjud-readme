@@ -267,3 +267,12 @@ test('macOS installer never requests Automation permission to quit AWH Agent', a
   assert.match(builder, /pkill -KILL/);
   assert.match(builder, /\/Applications\/AWH Agent\\\.app\/Contents/);
 });
+
+
+test('macOS wizard ships and displays the canonical AWH logo', async () => {
+  const builder = await readFile(new URL('../scripts/package-macos-installer.mjs', import.meta.url), 'utf8');
+  assert.match(builder, /assets\', \'awh-logo\\.svg/);
+  assert.match(builder, /resources, \'awh-logo\\.svg/);
+  assert.match(builder, /<img src="awh-logo\\.svg" alt="AWH"/);
+  assert.match(builder, /KRUART Workspace Hub/);
+});
