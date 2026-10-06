@@ -57,14 +57,16 @@ mkdir -p "$STATE_DIR"
 chmod 755 "$STATE_DIR"
 rm -rf "$BACKUP"
 if [ -d "$APP" ]; then /usr/bin/ditto "$APP" "$BACKUP"; fi
-CONSOLE_USER="$(/usr/bin/stat -f '%Su' /dev/console 2>/dev/null || true)"
-if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && [ "$CONSOLE_USER" != "loginwindow" ]; then
-  USER_UID="$(/usr/bin/id -u "$CONSOLE_USER" 2>/dev/null || true)"
-  if [ -n "$USER_UID" ]; then
-    /bin/launchctl asuser "$USER_UID" /usr/bin/osascript -e 'tell application "AWH Agent" to quit' >/dev/null 2>&1 || true
+# Stop only the currently installed AWH Agent bundle. Using a process
+# signal avoids macOS Automation permission prompts from Installer.app.
+# Fresh installs have no matching process, so this is a no-op.
+if /usr/bin/pgrep -f "^/Applications/AWH Agent\.app/Contents/" >/dev/null 2>&1; then
+  /usr/bin/pkill -TERM -f "^/Applications/AWH Agent\.app/Contents/" >/dev/null 2>&1 || true
+  /bin/sleep 2
+  if /usr/bin/pgrep -f "^/Applications/AWH Agent\.app/Contents/" >/dev/null 2>&1; then
+    /usr/bin/pkill -KILL -f "^/Applications/AWH Agent\.app/Contents/" >/dev/null 2>&1 || true
   fi
 fi
-/bin/sleep 1
 exit 0
 `;
 

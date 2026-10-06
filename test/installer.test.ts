@@ -258,3 +258,12 @@ test('macOS wizard remains legible in Light and Dark Mode', async () => {
   assert.match(builder, /\.card\{background:#2c2c2e;border-color:#48484a;color:#f5f5f7\}/);
   assert.match(builder, /\.next\{background:#2c2c2e;color:#f5f5f7\}/);
 });
+
+
+test('macOS installer never requests Automation permission to quit AWH Agent', async () => {
+  const builder = await readFile(new URL('../scripts/package-macos-installer.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(builder, /osascript|tell application/i);
+  assert.match(builder, /pkill -TERM/);
+  assert.match(builder, /pkill -KILL/);
+  assert.match(builder, /\/Applications\/AWH Agent\\\.app\/Contents/);
+});
