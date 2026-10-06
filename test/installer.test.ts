@@ -273,7 +273,7 @@ test('macOS wizard ships and displays the canonical AWH logo', async () => {
   const builder = await readFile(new URL('../scripts/package-macos-installer.mjs', import.meta.url), 'utf8');
   assert.ok(builder.includes("join(ROOT, 'assets', 'awh-logo.svg')"));
   assert.ok(builder.includes("join(resources, 'awh-logo.svg')"));
-  assert.match(builder, /<img src="awh-logo\\.svg" alt="AWH"/);
+  assert.ok(builder.includes('<img src="awh-logo.svg" alt="AWH"'));
   assert.match(builder, /KRUART Workspace Hub/);
 });
 
