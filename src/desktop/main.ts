@@ -378,7 +378,7 @@ async function reinstallRuntimeKeepingPairing() {
     const maintenance = await prepareCleanReinstall(config.dataDir, createDesktopCredentialStore(config.dataDir));
     lastDeviceRuntimeBootstrap = await ensureDeviceRuntimeSingleFlight(config.dataDir);
     const permissions = await startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState));
-    if (permissions.ready) { startWorkerLoop(); void ensureConnectedDeviceRuntime().catch(() => undefined); }
+    if (config.controlPlaneWorker) { startWorkerLoop(); void ensureConnectedDeviceRuntime().catch(() => undefined); }
     return { ok: lastDeviceRuntimeBootstrap.state === 'READY' && maintenance.pairingPreserved, maintenance, runtime: lastDeviceRuntimeBootstrap, permissionsReady: permissions.ready };
   } catch (error) {
     lastWorkerError = error instanceof Error ? error.message.replace(/[^A-Z0-9_.-]/gi, '_').slice(0,80) : 'REINSTALL_FAILED';
@@ -406,7 +406,7 @@ async function changeRuntimeMode(mode: AgentRuntimeMode): Promise<{ ok: true; mo
   await setAgentMode(config.dataDir, mode);
   await appendAgentActivity(config.dataDir,{source:'LOCAL',capability:'runtime.mode',provider:null,plane:'BACKGROUND',outcome:'SUCCESS',mode,activity:'IDLE'}).catch(()=>undefined);
   refreshTray();
-  if (config.controlPlaneWorker && startupPermissionsReady) void runWorkerOnce();
+  if (config.controlPlaneWorker) void runWorkerOnce();
   return { ok: true, mode };
 }
 
@@ -422,7 +422,9 @@ async function emergencyStop(): Promise<{ ok: true; mode: 'OFF' }> {
 
 async function runWorkerOnce() {
   const config = loadConfig();
-  if (!startupPermissionsReady) return { ok: false, error: 'PERMISSIONS_REQUIRED', message: 'AWH Agent กำลังรอสิทธิ์ของระบบให้ครบก่อนเริ่มทำงานบนเครื่องนี้' };
+  // Core heartbeat/worker connectivity is background infrastructure. It must
+  // not be blocked by Accessibility/Screen Recording probes; foreground
+  // providers enforce their own OS permission readiness when a task needs them.
   if (!config.controlPlaneWorker) return { ok: false, error: 'WORKER_DISABLED', message: 'Worker is disabled in this device policy' };
   if (workerRunning) return { ok: false, error: 'WORKER_BUSY', message: 'Worker is already running' };
   workerRunning = true;
@@ -545,7 +547,7 @@ function stopWorkerLoop(): void {
 
 function startWorkerLoop(): void {
   const config = loadConfig();
-  if (!startupPermissionsReady || !config.controlPlaneWorker || workerTimer) return;
+  if (!config.controlPlaneWorker || workerTimer) return;
   void runWorkerOnce();
   workerTimer = setInterval(() => { void runWorkerOnce(); }, 30_000);
   workerTimer.unref?.();
@@ -643,7 +645,7 @@ async function authorizeStartupPermissions(): Promise<StartupPermissionState & {
   });
   workerRuntime = null;
   const state = await startupPermissionState();
-  if (state.ready) {
+  if (config.controlPlaneWorker) {
     startWorkerLoop();
     void ensureConnectedDeviceRuntime().catch(() => undefined);
     void runWorkerOnce().catch(() => undefined);
@@ -679,8 +681,8 @@ async function healConnectedDeviceRuntime(): Promise<void> {
   try {
     const config = loadConfig();
     if (!config.controlPlaneWorker) return;
-    const permissions = await startupPermissionState().catch(() => null);
-    if (permissions?.ready !== true) return;
+    // Tunnel/self-heal is transport infrastructure and must recover even when
+    // a foreground macOS permission probe is stale or temporarily unavailable.
     await ensureConnectedDeviceRuntime();
 
     const stored = loadStoredSettings(config.dataDir);
@@ -739,11 +741,10 @@ async function loginDevice(username: unknown, password: unknown) {
     const state = await enrollmentClient(config).login(username, password);
     await activateConnectedDevicePolicy();
     const permissions = await startupPermissionState().catch(() => null);
-    if (permissions?.ready === true) {
-      startWorkerLoop();
-      void ensureConnectedDeviceRuntime().catch(() => undefined);
-      void runWorkerOnce().catch(() => undefined);
-    } else showLocalBridge();
+    if (permissions?.ready !== true) showLocalBridge();
+    startWorkerLoop();
+    void ensureConnectedDeviceRuntime().catch(() => undefined);
+    void runWorkerOnce().catch(() => undefined);
     return { ok: true, hubConfigured: true, permissionsRequired: permissions?.ready !== true, ...state };
   } catch (error) { return enrollmentError(error); }
 }
@@ -754,11 +755,10 @@ async function pairDevice(pairingCode: unknown) {
     const state = await enrollmentClient(loadConfig()).pair(pairingCode);
     await activateConnectedDevicePolicy();
     const permissions = await startupPermissionState().catch(() => null);
-    if (permissions?.ready === true) {
-      startWorkerLoop();
-      void ensureConnectedDeviceRuntime().catch(() => undefined);
-      void runWorkerOnce().catch(() => undefined);
-    } else showLocalBridge();
+    if (permissions?.ready !== true) showLocalBridge();
+    startWorkerLoop();
+    void ensureConnectedDeviceRuntime().catch(() => undefined);
+    void runWorkerOnce().catch(() => undefined);
     return { ok: true, hubConfigured: true, permissionsRequired: permissions?.ready !== true, ...state };
   } catch (error) { return enrollmentError(error); }
 }
@@ -1078,7 +1078,7 @@ function startLiveReturnMonitor(): void {
 function reconnectAfterSystemResume(): void {
   workerConnectionState = 'CHECKING';
   refreshTray();
-  if (loadConfig().controlPlaneWorker && startupPermissionsReady) {
+  if (loadConfig().controlPlaneWorker) {
     void runWorkerOnce();
     void healConnectedDeviceRuntime().catch(() => undefined);
   }
@@ -1504,10 +1504,7 @@ async function startAfterReady(): Promise<void> {
   void (async () => {
     lastDeviceRuntimeBootstrap = await ensureDeviceRuntimeSingleFlight(config.dataDir);
     const permissions = await startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState));
-    if (permissions.ready !== true) {
-      showLocalBridge();
-      return;
-    }
+    if (permissions.ready !== true) showLocalBridge();
     startWorkerLoop();
     await ensureConnectedDeviceRuntime().catch(() => undefined);
     if (loadConfig().controlPlaneWorker) void runWorkerOnce();

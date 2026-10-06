@@ -132,8 +132,10 @@ test('default desktop surface is a thin AWH Agent bridge and keeps advanced cont
   assert.doesNotMatch(preload, /logout:|enrollmentRevoke|remoteConnect|remoteStop|Autopilot|Project|openDataDir|restart|readFile|writeFile|spawn|process\.env/i);
   assert.match(main, /startupPermissionState/);
   assert.match(main, /authorizeStartupPermissions/);
-  assert.match(main, /PERMISSIONS_REQUIRED/);
-  assert.match(main, /if \(!startupPermissionsReady \|\| !config\.controlPlaneWorker \|\| workerTimer\) return/);
+  assert.doesNotMatch(main, /PERMISSIONS_REQUIRED/);
+  assert.match(main, /if \(!config\.controlPlaneWorker \|\| workerTimer\) return/);
+  assert.doesNotMatch(main, /if \(!startupPermissionsReady/);
+  assert.match(main, /Tunnel\/self-heal is transport infrastructure/);
   assert.match(renderer, /Promise\.allSettled/);
   assert.match(renderer, /window\.awhConnect\.getPermissionState/);
   assert.match(renderer, /window\.awhConnect\.authorizePermissions/);
