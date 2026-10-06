@@ -24,7 +24,10 @@ test('VPS-native core release reuses canonical approval and deploy authorities',
   assert.match(service, /CORE_RELEASE_TARGET_MOVED/);
   assert.match(service, /CORE_RELEASE_SUPERSEDED/);
   assert.match(service, /lease_owner IS NULL/);
-  assert.match(service, /CORE_RELEASE_DISPATCHER_UNAVAILABLE/);
+  assert.match(service, /dispatcherState/);
+  assert.match(service, /RECOVERING/);
+  assert.doesNotMatch(service, /CORE_RELEASE_DISPATCHER_UNAVAILABLE/);
+  assert.doesNotMatch(service, /dispatcher ไม่พร้อมเกินช่วงปลอดภัย ระบบปิดงานค้างอัตโนมัติ/);
   assert.doesNotMatch(service, /shell_exec|proc_open|popen\s*\(|passthru\s*\(|\/bin\/sh/);
 
   assert.match(trust, /'system\.core\.release'.*CRITICAL.*false.*false/);

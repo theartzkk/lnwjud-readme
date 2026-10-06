@@ -43,8 +43,15 @@ final class HubCoreReleaseService
             ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 20");
         $q->execute(['project'=>self::PROJECT_ID,'capability'=>$this->capability,'owner'=>$owner['user_id']]);
         $rows=[];
+        $observedAt=self::time(gmdate('c'));
+        $observedTs=strtotime($observedAt);
+        $dispatcherFresh=$this->coreDispatcherHeartbeatFresh($observedAt);
         foreach($q->fetchAll() as $row){
             $checkpoint=self::checkpoint((string)$row['checkpoint_json'],false);
+            $updatedTs=strtotime((string)$row['updated_at']);
+            $approvedQueued=($row['approval_status']??null)==='APPROVED'&&($row['task_state']??null)==='WAITING_FOR_WORKER'&&($row['execution_state']??null)==='QUEUED';
+            $dispatcherWaitSeconds=$approvedQueued&&$updatedTs!==false?max(0,$observedTs-$updatedTs):null;
+            $dispatcherState=$approvedQueued?($dispatcherFresh?'READY':(($dispatcherWaitSeconds??0)>=60?'RECOVERING':'AWAITING_HEARTBEAT')):null;
             $rows[]=[
                 'executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],
                 'releaseSha'=>$checkpoint['releaseSha']??null,'mode'=>$checkpoint['releaseMode']??null,
@@ -56,6 +63,7 @@ final class HubCoreReleaseService
                 'decidedAt'=>$row['decided_at']===null?null:(string)$row['decided_at'],
                 'failureCode'=>$row['failure_code']===null?($row['last_error_code']===null?null:(string)$row['last_error_code']):(string)$row['failure_code'],
                 'resultSummary'=>$row['result_summary']===null?null:(string)$row['result_summary'],
+                'dispatcherState'=>$dispatcherState,'dispatcherWaitSeconds'=>$dispatcherWaitSeconds,
                 'updatedAt'=>(string)$row['updated_at'],
             ];
         }
@@ -195,12 +203,12 @@ final class HubCoreReleaseService
         $q->execute(['capability'=>$this->capability]);$row=$q->fetch();
         if(!is_array($row))return;
         $code=null;$summary=null;$expireApproval=false;
-        $now=strtotime($at);$updated=strtotime((string)$row['updated_at']);
+        $now=strtotime($at);
         if(($row['approval_status']??null)==='PENDING'&&strtotime((string)($row['expires_at']??''))!==false&&strtotime((string)$row['expires_at'])<=$now){
             $code='CORE_RELEASE_APPROVAL_EXPIRED';$summary='คำขอปล่อยรุ่นหมดอายุและถูกปิดอัตโนมัติ';$expireApproval=true;
-        }elseif(($row['approval_status']??null)==='APPROVED'&&($row['task_state']??null)==='WAITING_FOR_WORKER'&&$updated!==false&&$now-$updated>=300&&!$this->coreDispatcherHeartbeatFresh($at)){
-            $code='CORE_RELEASE_DISPATCHER_UNAVAILABLE';$summary='Core Release dispatcher ไม่พร้อมเกินช่วงปลอดภัย ระบบปิดงานค้างอัตโนมัติ';
         }
+        // Approved work stays queued under the same execution id while the
+        // systemd timer retries a temporarily unavailable dispatcher.
         if($code===null||$summary===null)return;
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');

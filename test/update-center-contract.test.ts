@@ -871,6 +871,33 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.match(css,/update-group\[data-group="line-oa"\]/);
 });
 
+test('future registered projects enter Update Center generically without a new layout or authority', async()=>{
+  const [registry,contractText,service,script]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubUpdateTargetRegistry.php'),'utf8'),
+    readFile(join(ROOT,'config/ecosystem-release-contract.json'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+  ]);
+  const contract=JSON.parse(contractText);
+  assert.equal(contract.rules.registryDrivenUpdateCenter,true);
+  assert.equal(contract.rules.updateCenterLayoutMutationForNewTrackForbidden,true);
+  assert.match(service,/\(\$project\['projectClass'\] \?\? 'PRODUCTION'\) !== 'PRODUCTION'/);
+  assert.match(service,/'key'=>'project-'\.\$projectId[\s\S]*'adapter'=>'SOURCE_ONLY'/);
+  assert.match(service,/Source อยู่ใน AWH Vault แล้ว แต่โปรเจคนี้ยังไม่มี deploy adapter ที่ปลอดภัย/);
+  assert.match(script,/for\(const item of rows\)list\.append\(renderCard\(item\)\)/);
+  const adapters={
+    'vps-platform':'PLATFORM_RELEASE','awh':'CORE_RELEASE','awh-agent':'AGENT_MANAGED',
+    'awh-line-gateway':'MANAGED_HOSTING','bay-excuse-x':'BAY_UPDATE_CENTER','line-oa':'BAY_UPDATE_CENTER',
+    'bay-cooperative':'BAY_UPDATE_CENTER','bay-pp':'BAY_UPDATE_CENTER','bay-assessment':'ASSESSMENT_RELEASE',
+    'bay-learnlab':'LEARNLAB_RELEASE','bay-computer-lab':'SOURCE_ONLY','school-website':'MANAGED_HOSTING','bay-hub':'SOURCE_ONLY',
+  };
+  for(const [track,adapter] of Object.entries(adapters)){
+    assert.equal(contract.releaseTracks[track].deploymentAdapter,adapter);
+    const escaped=track.replace(/[.*+?^$()|[\]\\]/g,'\\$&');
+    assert.match(registry,new RegExp("'"+escaped+"'[\\s\\S]*?'deploymentAdapter'=>'"+adapter+"'"));
+  }
+});
+
 test('Update Center self-recovers from stale PWA module caches instead of showing an empty project list', async()=>{
   const [page,boot,script,worker,releaseFiles]=await Promise.all([
     readFile(join(ROOT,'web/updates.html'),'utf8'),
@@ -958,4 +985,9 @@ test('Update Center owner flow is per-target, queue-aware, exact-target pinned, 
   assert.doesNotMatch(script,/const thresholds=\[22,54,84,98,100\]/);
   assert.match(script,/ownerReleaseNoteText/);
   assert.match(script,/แก้สิทธิ์ระบบ Managed Hosting ให้จัดการบัญชีบริการได้อย่างเสถียร/);
+  assert.match(service,/'dispatcherState'=>is_array\(\$activePlatform\)/);
+  assert.match(service,/'dispatcherState'=>is_array\(\$activeCore\)/);
+  assert.match(service,/ตัวควบคุมการอัปเดตขาด heartbeat ชั่วคราว/);
+  assert.match(script,/item\?\.dispatcherState==='RECOVERING'/);
+  assert.match(script,/ทำต่องานเดิมอัตโนมัติ/);
 });
