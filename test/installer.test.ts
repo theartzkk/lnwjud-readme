@@ -239,3 +239,13 @@ test('macOS wizard installer preserves AWH state, verifies the payload, rolls ba
   assert.match(evidence, /rollbackOnVerificationFailure: true/);
   assert.match(evidence, /autoRelaunch: true/);
 });
+
+
+test('macOS wizard documents the fresh-machine bootstrap contract', async () => {
+  const builder = await readFile(new URL('../scripts/package-macos-installer.mjs', import.meta.url), 'utf8');
+  assert.match(builder, /Fresh install/);
+  assert.match(builder, /สร้าง Device ID/);
+  assert.match(builder, /Runtime\/bridge/);
+  assert.match(builder, /ไม่ต้องมี Project ก่อน/);
+  assert.match(builder, /device-owned workspace/);
+});

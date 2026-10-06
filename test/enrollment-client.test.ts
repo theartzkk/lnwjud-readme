@@ -189,3 +189,10 @@ test('enrollment requests fail with a bounded, secret-free timeout', async () =>
     await assert.rejects(() => client.login('theartzkk', 'correct-password'), (error: unknown) => error instanceof EnrollmentClientError && error.code === 'REQUEST_TIMEOUT' && error.message.includes('ใช้เวลานานเกินไป'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+
+test('password enrollment reports the exact Agent release version for fleet inventory', async () => {
+  const source = await readFile(new URL('../src/enrollment-client.ts', import.meta.url), 'utf8');
+  assert.match(source, /appVersion: RELEASE_VERSION/);
+  assert.doesNotMatch(source, /appVersion: 'desktop'/);
+});

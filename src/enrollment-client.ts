@@ -105,7 +105,7 @@ export class EnrollmentClient {
     const normalized = typeof username === 'string' ? username.trim().toLowerCase() : '';
     if (!/^[a-z][a-z0-9._-]{2,63}$/.test(normalized) || typeof password !== 'string' || password.length < 1 || password.length > 512) throw new EnrollmentClientError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง', 'AUTH_FAILED');
     const response = await this.post('/enrollment/password', {
-      schemaVersion: 1, username: normalized, password, deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, arch: identity.arch, appVersion: 'desktop',
+      schemaVersion: 1, username: normalized, password, deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, arch: identity.arch, appVersion: RELEASE_VERSION,
     });
     if (typeof response.accessToken !== 'string' || typeof response.expiresAt !== 'string') throw new EnrollmentClientError('AWH login response did not contain a session token', 'RESPONSE_INVALID');
     await persistDeviceToken(this.credentialStore, response.accessToken);

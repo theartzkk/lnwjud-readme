@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { isAbsolute, join } from 'node:path';
@@ -189,10 +189,42 @@ function sanitizedTunnelRuntime(status: TunnelRuntimeStatus) {
   };
 }
 
+const REMOTE_WORKSPACE_MARKER = 'remote-workspace.txt';
+
 async function canonicalRemoteWorkspace(): Promise<{ config: ReturnType<typeof loadConfig>; workspace: string }> {
   const config = loadConfig();
-  if (!hasExplicitWorkspace(config.dataDir)) throw new Error('Workspace is not configured');
-  return { config, workspace: await canonicalWorkspace(config.workspace) };
+  await mkdir(config.dataDir, { recursive: true, mode: 0o700 });
+  const marker = join(config.dataDir, REMOTE_WORKSPACE_MARKER);
+
+  try {
+    const recorded = (await readFile(marker, 'utf8')).trim();
+    if (!recorded || !isAbsolute(recorded)) throw new Error('REMOTE_WORKSPACE_MARKER_INVALID');
+    return { config, workspace: await canonicalWorkspace(recorded) };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  // Preserve the existing tunnel alias on upgrades. Fresh installs without a
+  // project get a device-owned workspace so Remote/heartbeat can come online
+  // before any project is selected.
+  let workspace: string;
+  if (hasExplicitWorkspace(config.dataDir)) {
+    workspace = await canonicalWorkspace(config.workspace);
+  } else {
+    const systemWorkspace = join(config.dataDir, 'RemoteControl');
+    await mkdir(systemWorkspace, { recursive: true, mode: 0o700 });
+    workspace = await canonicalWorkspace(systemWorkspace);
+  }
+
+  try {
+    await writeFile(marker, `${workspace}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    const raced = (await readFile(marker, 'utf8')).trim();
+    if (!raced || !isAbsolute(raced)) throw new Error('REMOTE_WORKSPACE_MARKER_INVALID');
+    workspace = await canonicalWorkspace(raced);
+  }
+  return { config, workspace };
 }
 
 async function confirmRemoteAction(action: 'connect' | 'stop'): Promise<boolean> {
@@ -686,9 +718,9 @@ async function healConnectedDeviceRuntime(): Promise<void> {
     await ensureConnectedDeviceRuntime();
 
     const stored = loadStoredSettings(config.dataDir);
-    if (stored.remoteTunnelEnabled === false || remoteOperationInFlight || !hasExplicitWorkspace(config.dataDir)) return;
+    if (stored.remoteTunnelEnabled === false || remoteOperationInFlight) return;
 
-    const workspace = await canonicalWorkspace(config.workspace);
+    const { workspace } = await canonicalRemoteWorkspace();
     const tunnelEnv = await resolveDesktopTunnelEnvironment(config.dataDir);
     const readiness = await inspectTunnelReadiness(workspace, process.execPath, tunnelEnv);
     if (!readiness.ready) return;
@@ -743,7 +775,7 @@ async function loginDevice(username: unknown, password: unknown) {
     const permissions = await startupPermissionState().catch(() => null);
     if (permissions?.ready !== true) showLocalBridge();
     startWorkerLoop();
-    void ensureConnectedDeviceRuntime().catch(() => undefined);
+    void ensureConnectedDeviceRuntime().then(() => healConnectedDeviceRuntime()).catch(() => undefined);
     void runWorkerOnce().catch(() => undefined);
     return { ok: true, hubConfigured: true, permissionsRequired: permissions?.ready !== true, ...state };
   } catch (error) { return enrollmentError(error); }
@@ -757,7 +789,7 @@ async function pairDevice(pairingCode: unknown) {
     const permissions = await startupPermissionState().catch(() => null);
     if (permissions?.ready !== true) showLocalBridge();
     startWorkerLoop();
-    void ensureConnectedDeviceRuntime().catch(() => undefined);
+    void ensureConnectedDeviceRuntime().then(() => healConnectedDeviceRuntime()).catch(() => undefined);
     void runWorkerOnce().catch(() => undefined);
     return { ok: true, hubConfigured: true, permissionsRequired: permissions?.ready !== true, ...state };
   } catch (error) { return enrollmentError(error); }
@@ -1507,6 +1539,7 @@ async function startAfterReady(): Promise<void> {
     if (permissions.ready !== true) showLocalBridge();
     startWorkerLoop();
     await ensureConnectedDeviceRuntime().catch(() => undefined);
+    void healConnectedDeviceRuntime().catch(() => undefined);
     if (loadConfig().controlPlaneWorker) void runWorkerOnce();
   })();
   app.on('activate', () => {

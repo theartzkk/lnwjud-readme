@@ -115,16 +115,17 @@ exit 0
 body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;line-height:1.5;color:#1f2937}
 h1{font-size:22px;margin-bottom:8px}.brand{color:#ea580c;font-weight:700}.card{background:#f7f7f8;border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin-top:14px}small{color:#6b7280}
 </style></head><body><h1><span class="brand">AWH Agent</span> สำหรับ ${xml(archLabel)}</h1>
-<p>ตัวช่วยติดตั้งนี้จะติดตั้งหรืออัปเกรด AWH Agent ใน <b>/Applications</b> โดยรักษา pairing, credentials, Runtime state และข้อมูล AWH เดิมไว้</p>
-<div class="card"><b>ไม่ล้างข้อมูลเดิม</b><br>ไม่ reset Keychain · ไม่ reset Accessibility/Screen Recording · ไม่ลบ ~/Library/Application Support/AWH · ไม่ลบ ~/.awh</div>
+<p>ตัวช่วยติดตั้งนี้ใช้ได้ทั้ง <b>เครื่องใหม่</b> และการอัปเกรด AWH Agent เดิมใน <b>/Applications</b></p>
+<div class="card"><b>Fresh install</b><br>เปิดแอปให้อัตโนมัติ → สร้าง Device ID → ติดตั้ง Runtime/bridge ที่ pin + verify SHA → Login/Enroll → ขอ Accessibility และ Screen Recording ครั้งแรก → เชื่อม tunnel/heartbeat โดยไม่ต้องมี Project ก่อน</div>
+<div class="card"><b>Upgrade-safe</b><br>รักษา pairing, credentials, Runtime state และสิทธิ์เดิม · ไม่ reset Keychain · ไม่ reset Accessibility/Screen Recording · ไม่ลบ ~/Library/Application Support/AWH · ไม่ลบ ~/.awh</div>
 <p><small>เวอร์ชัน ${xml(version)} · ${xml(architecture)}</small></p></body></html>`;
 
   const readme = `<!doctype html><html lang="th"><head><meta charset="utf-8"><style>
 body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;line-height:1.5;color:#1f2937}h2{font-size:20px}li{margin:7px 0}
 </style></head><body><h2>ขั้นตอนของ AWH Setup</h2><ul>
-<li>สำรอง AWH Agent เดิมชั่วคราว</li><li>ปิดเฉพาะตัวแอปก่อนอัปเดต</li><li>ติดตั้ง bundle ใหม่ลง /Applications</li>
-<li>ตรวจ Bundle ID, executable และ code signature</li><li>เปิด AWH Agent ใหม่อัตโนมัติ</li><li>rollback แอปเดิมถ้าการตรวจหลังติดตั้งไม่ผ่าน</li>
-</ul><p><b>ข้อมูลอุปกรณ์และสิทธิ์ระบบจะไม่ถูกล้างโดย Installer นี้</b></p></body></html>`;
+<li>ตรวจว่าเป็น Intel หรือ Apple Silicon จากแพ็กเกจที่เลือก</li><li>ถ้ามี AWH Agent เดิม จะสำรองชั่วคราวก่อนอัปเดต</li><li>ติดตั้ง bundle ใหม่ลง /Applications</li>
+<li>ตรวจ Bundle ID, executable และ code signature</li><li>เปิด AWH Agent ใหม่อัตโนมัติ</li><li>เครื่องใหม่จะสร้าง Device ID/Runtime/bridge จาก first-run ของ Agent และเชื่อม Hub หลัง Login</li><li>remote tunnel มี device-owned workspace จึงไม่ต้องเลือก Project ก่อน</li><li>rollback แอปเดิมถ้าการตรวจหลังติดตั้งไม่ผ่าน</li>
+</ul><p><b>ข้อมูลอุปกรณ์และสิทธิ์ระบบจะไม่ถูกล้างโดย Installer นี้ และเครื่องใหม่จะขอสิทธิ์ macOS เฉพาะครั้งแรกตามที่ระบบปฏิบัติการกำหนด</b></p></body></html>`;
 
   const conclusion = `<!doctype html><html lang="th"><head><meta charset="utf-8"><style>
 body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;line-height:1.5;color:#1f2937}h1{font-size:22px;color:#166534}.next{background:#f7f7f8;border-radius:12px;padding:12px 14px;margin-top:14px}

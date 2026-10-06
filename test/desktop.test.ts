@@ -348,3 +348,14 @@ test('desktop smoke harness isolates data, uses normal macOS LaunchServices, and
   assert.match(main, /window\.awhConnect/);
   assert.match(smoke, /result\.stderr/);
 });
+
+
+test('fresh mac install gets a stable device-owned remote workspace before any project is selected', async () => {
+  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  assert.match(main, /REMOTE_WORKSPACE_MARKER = 'remote-workspace\.txt'/);
+  assert.match(main, /join\(config\.dataDir, 'RemoteControl'\)/);
+  assert.match(main, /flag: 'wx'/);
+  assert.match(main, /const \{ workspace \} = await canonicalRemoteWorkspace\(\)/);
+  assert.doesNotMatch(main, /remoteOperationInFlight \|\| !hasExplicitWorkspace\(config\.dataDir\)/);
+  assert.match(main, /ensureConnectedDeviceRuntime\(\)\.then\(\(\) => healConnectedDeviceRuntime\(\)\)/);
+});
