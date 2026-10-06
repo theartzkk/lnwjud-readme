@@ -287,12 +287,15 @@ final class HubControlPlaneService
         $platformState = ($platformCandidate !== null && ($platformCurrent === null || !hash_equals($platformCandidate,$platformCurrent))) ? 'UPDATE_AVAILABLE' : 'CURRENT';
         if (is_array($activePlatform)) $platformState=(string)($activePlatform['approvalStatus']??'')==='PENDING'?'WAITING_FOR_APPROVAL':'UPDATING';
         if ($coreStorageBlocked && in_array($platformState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true)) $platformState='BLOCKED';
+        $platformRecovering=is_array($activePlatform)&&($activePlatform['dispatcherState']??null)==='RECOVERING';
         $platformReason = match($platformState) {
             'CURRENT' => 'VPS Platform track ตรงกับรุ่นฐานที่บันทึกไว้',
             'WAITING_FOR_APPROVAL' => 'พบคำขอ VPS Platform เดิมที่รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติด้วย task เดิม',
-            'UPDATING' => $platformTargetMoved
+            'UPDATING' => $platformRecovering
+                ? 'ตัวควบคุมการอัปเดตขาด heartbeat ชั่วคราว · ระบบจะทำต่องานเดิมอัตโนมัติเมื่อกลับมาพร้อม'
+                : ($platformTargetMoved
                 ? 'VPS Platform ใช้ exact SHA ที่ Owner อนุมัติไว้ · Source ใหม่จะไม่สลับรุ่นระหว่างรอคิวหรือกำลังติดตั้ง'
-                : 'VPS Platform controller กำลังอัปเดต shared runtime/infrastructure',
+                : 'VPS Platform controller กำลังอัปเดต shared runtime/infrastructure'),
             'BLOCKED' => 'Storage ยังไม่ถึง release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90%',
             default => 'มี VPS Platform ใหม่พร้อมเข้าสู่ typed release boundary',
         };
@@ -302,6 +305,8 @@ final class HubControlPlaneService
             'releaseDetailsRequired'=>true,'approvalRequired'=>true,'approvalId'=>is_array($activePlatform)&&is_string($activePlatform['approvalId']??null)?$activePlatform['approvalId']:null,
             'taskId'=>is_array($activePlatform)&&is_string($activePlatform['taskId']??null)?$activePlatform['taskId']:null,
             'taskState'=>is_array($activePlatform)?(string)($activePlatform['taskState']??''):null,
+            'dispatcherState'=>is_array($activePlatform)?($activePlatform['dispatcherState']??null):null,
+            'dispatcherWaitSeconds'=>is_array($activePlatform)?($activePlatform['dispatcherWaitSeconds']??null):null,
             'canCancel'=>is_array($activePlatform)&&in_array((string)($activePlatform['taskState']??''),['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_APPROVAL'],true),
             'actionable'=>in_array($platformState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),
             'reason'=>$platformReason,'preflight'=>['storage'=>$coreStorage,'releaseBlocked'=>$coreStorageBlocked],
@@ -329,15 +334,18 @@ final class HubControlPlaneService
         $awhState = ($candidate !== null && ($awhCurrent === null || !hash_equals($candidate, $awhCurrent))) || ($needsRuntimeRepair && $candidate !== null) ? 'UPDATE_AVAILABLE' : 'CURRENT';
         if (is_array($activeCore)) $awhState = (string) ($activeCore['approvalStatus'] ?? '') === 'PENDING' ? 'WAITING_FOR_APPROVAL' : 'UPDATING';
         if ($coreStorageBlocked && in_array($awhState, ['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'], true)) $awhState = 'BLOCKED';
+        $awhRecovering=is_array($activeCore)&&($activeCore['dispatcherState']??null)==='RECOVERING';
         $awhReason = $awhState === 'CURRENT'
             ? ($runtimeState === 'COHERENT' ? 'Production ตรงกับ Source Authority ล่าสุดและ Runtime สอดคล้องกัน' : 'Production ตรงกับ Source Authority ล่าสุด แต่ยังยืนยัน Runtime ได้ไม่ครบ')
             : ($awhState === 'WAITING_FOR_APPROVAL'
                 ? 'พบคำขอ AWH เดิมที่รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติด้วย task เดิม'
                 : ($awhState === 'BLOCKED'
                     ? 'Storage ยังไม่ถึง Core Release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90% ก่อนอัปเดต'
-                    : ($awhTargetMoved
+                    : ($awhRecovering
+                        ? 'ตัวควบคุมการอัปเดตขาด heartbeat ชั่วคราว · ระบบจะทำต่องานเดิมอัตโนมัติเมื่อกลับมาพร้อม'
+                        : ($awhTargetMoved
                         ? 'AWH ใช้ exact SHA ที่ Owner อนุมัติไว้ · Source ใหม่จะไม่สลับรุ่นระหว่างรอคิวหรือกำลังติดตั้ง'
-                        : 'มีรุ่นล่าสุดพร้อมเข้าสู่ Core Release')));
+                        : 'มีรุ่นล่าสุดพร้อมเข้าสู่ Core Release'))));
         if ($needsRuntimeRepair && $awhState === 'UPDATE_AVAILABLE') $awhReason = 'ตรวจพบ Control/Web/Enrollment อยู่คนละรุ่น ระบบจะ reconcile ให้ตรงกับ Source Authority ล่าสุดผ่าน Core Release เดียว';
         $items[] = [
             'key'=>'awh-core','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900','name'=>'Art’s Workspace Hub',
@@ -345,6 +353,8 @@ final class HubControlPlaneService
             'approvalRequired'=>true,'approvalId'=>is_array($activeCore) && is_string($activeCore['approvalId'] ?? null) ? $activeCore['approvalId'] : null,
             'taskId'=>is_array($activeCore)&&is_string($activeCore['taskId']??null)?$activeCore['taskId']:null,
             'taskState'=>is_array($activeCore)?(string)($activeCore['taskState']??''):null,
+            'dispatcherState'=>is_array($activeCore)?($activeCore['dispatcherState']??null):null,
+            'dispatcherWaitSeconds'=>is_array($activeCore)?($activeCore['dispatcherWaitSeconds']??null):null,
             'canCancel'=>is_array($activeCore)&&in_array((string)($activeCore['taskState']??''),['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_APPROVAL'],true),
             'actionable'=>in_array($awhState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),
             'reason'=>$awhReason,'preflight'=>['storage'=>$coreStorage,'releaseBlocked'=>$coreStorageBlocked],

@@ -685,6 +685,7 @@ function actionButton(text,handler,className='primary-button',targetKey=null,suc
 }
 function ownerFacingReason(item){
   if(!item)return 'ระบบที่เกี่ยวข้องยังไม่พร้อม';
+  if(item?.dispatcherState==='RECOVERING')return 'ตัวควบคุมการอัปเดตขาด heartbeat ชั่วคราว · ระบบกำลังกู้และจะทำต่องานเดิมอัตโนมัติ';
   const pinned=pinnedOperationFor(item?.key);
   if(pinned?.status==='QUEUED')return 'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ';
   if(pinned?.status==='OUTCOME_UNKNOWN')return 'ส่งคำสั่งแล้ว · กำลังยืนยันงานเดิมให้อัตโนมัติ';
@@ -709,6 +710,7 @@ function ownerStageElapsed(event){
 }
 function ownerProgressMessage(item,event,waiting){
   if(waiting)return 'รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติจากงานเดิม';
+  if(item?.dispatcherState==='RECOVERING')return 'ตัวควบคุมการอัปเดตขาด heartbeat ชั่วคราว · กำลังกู้และจะทำต่องานเดิมอัตโนมัติ';
   const state=String(event?.state||item?.taskState||'').toUpperCase();
   const raw=String(event?.message||'').trim();
   const elapsed=ownerStageElapsed(event);
@@ -730,7 +732,7 @@ function reconcileTargetFeedback(item){
   if(!item?.key||!targetFeedback.has(item.key))return;
   if(item.state==='UPDATE_AVAILABLE'&&item.actionable===true&&!item.taskId&&!item.approvalId){targetFeedback.delete(item.key);return;}
   if(item.state==='CURRENT')targetFeedback.set(item.key,{text:'อัปเดตสำเร็จ · เป็นรุ่นล่าสุด',tone:'good'});
-  else if(itemQueued(item))targetFeedback.set(item.key,{text:'รับคำสั่งแล้ว · รอคิวอัปเดต'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
+  else if(itemQueued(item))targetFeedback.set(item.key,{text:item?.dispatcherState==='RECOVERING'?ownerProgressMessage(item,item.progressEvent,false):('รับคำสั่งแล้ว · รอคิวอัปเดต'+(item.canCancel===true?' · ยกเลิกได้':'')),tone:item?.dispatcherState==='RECOVERING'?'warn':'info'});
   else if(item.state==='UPDATING')targetFeedback.set(item.key,{text:ownerProgressMessage(item,item.progressEvent,false)+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
   else if(item.state==='WAITING_FOR_APPROVAL')targetFeedback.set(item.key,{text:'รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติจากงานเดิม'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
 }

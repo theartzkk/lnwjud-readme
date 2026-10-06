@@ -131,6 +131,16 @@ try{
     cr_assert(!array_key_exists('command',$checkpoint)&&!array_key_exists('path',$checkpoint)&&!array_key_exists('script',$checkpoint),'browser checkpoint cannot inject command or path');
     cr_assert(is_array($approvalRow)&&$approvalRow['action']==='deployment.approve'&&$approvalRow['status']==='APPROVED'&&is_string($approvalRow['decided_at']),'canonical deployment approval is recorded automatically as Owner audit evidence');
 
+    // A stale dispatcher heartbeat is recoverable: preserve the exact approved
+    // queue item so the next healthy systemd timer tick can claim it.
+    $reconcile=new ReflectionMethod(HubCoreReleaseService::class,'reconcileOrphanedRelease');$reconcile->setAccessible(true);
+    $reconcile->invoke($service,'2026-09-23T01:10:00+00:00');
+    cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetchColumn()==='QUEUED'
+        &&$pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','dispatcher heartbeat loss preserves the approved execution for automatic resume');
+    $recoveringStatus=$service->status($session['sessionToken']);
+    $recoveringRow=null;foreach((array)($recoveringStatus['releases']??[]) as $candidateRow)if(($candidateRow['executionId']??null)===$execution){$recoveringRow=$candidateRow;break;}
+    cr_assert(is_array($recoveringRow)&&($recoveringRow['dispatcherState']??null)==='RECOVERING'&&(int)($recoveringRow['dispatcherWaitSeconds']??0)>0,'owner status exposes recoverable dispatcher loss without terminalizing the release');
+
     $pdo->prepare("UPDATE control_tasks SET state='WAITING_FOR_APPROVAL',updated_at=:at WHERE task_id=:task")->execute(['at'=>$now,'task'=>$task]);
     $pdo->prepare("UPDATE control_approvals SET status='PENDING',decided_at=NULL,expires_at=:expires WHERE approval_id=:approval")->execute(['expires'=>'2026-09-23T01:20:00+00:00','approval'=>$approval]);
     $duplicate=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$sha,'cleanupTopology'=>false],$now);

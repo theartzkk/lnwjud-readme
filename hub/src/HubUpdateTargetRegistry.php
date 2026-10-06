@@ -32,19 +32,19 @@ final class HubUpdateTargetRegistry
                 'name'=>'VPS Platform','kind'=>'PLATFORM','repository'=>'awh',
                 'sourceRef'=>'refs/heads/main','productionRef'=>'refs/heads/platform/production',
                 'capability'=>'system.platform.release','deployResource'=>'CANONICAL:DEPLOY:VPS_PLATFORM',
-                'versionPrefix'=>'Platform','ownerApprovalRequired'=>true,'hostGlobal'=>true,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'Platform','deploymentAdapter'=>'PLATFORM_RELEASE','ownerApprovalRequired'=>true,'hostGlobal'=>true,'visibility'=>'PRIMARY',
             ],
             'awh'=>[
                 'name'=>'AWH','kind'=>'CORE','repository'=>'awh',
                 'sourceRef'=>'refs/heads/main','productionRef'=>'refs/heads/production',
                 'capability'=>'system.core.release','deployResource'=>'CANONICAL:DEPLOY:AWH',
-                'versionPrefix'=>'AWH','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'AWH','deploymentAdapter'=>'CORE_RELEASE','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'awh-agent'=>[
                 'name'=>'AWH Agent','kind'=>'AGENT','repository'=>'awh-local-agent',
                 'sourceRef'=>'refs/heads/main','productionRef'=>'refs/heads/main',
                 'capability'=>'system.agent.release','deployResource'=>'CANONICAL:DEPLOY:AWH_AGENT',
-                'versionPrefix'=>'Agent','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'Agent','deploymentAdapter'=>'AGENT_MANAGED','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'awh-line-gateway'=>[
                 'name'=>'AWH LINE OA / KRUART LINE Gateway','kind'=>'INTEGRATION','repository'=>null,
@@ -52,7 +52,7 @@ final class HubUpdateTargetRegistry
                 'siteId'=>'ed911e13-ccfa-44d9-8214-6425cb252240','domain'=>'line.kruart.online',
                 'healthPath'=>'/healthz','webhookPath'=>'/webhook','secretScope'=>'KRUART_LINE_GATEWAY',
                 'productionRef'=>null,'capability'=>'hosting.site.deploy','deployResource'=>'RESOURCE:HOSTING',
-                'versionPrefix'=>'LINE Gateway','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'LINE Gateway','deploymentAdapter'=>'MANAGED_HOSTING','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'bay-excuse-x'=>[
                 'name'=>'BAY EXCUSE X','kind'=>'SYSTEM','repository'=>'bay-excuse-x',
@@ -83,31 +83,31 @@ final class HubUpdateTargetRegistry
                 'name'=>'BAY Assessment','kind'=>'PRODUCT','repository'=>'bay-assessment',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,
                 'capability'=>'system.assessment.release','deployResource'=>'CANONICAL:DEPLOY:BAY_ASSESSMENT',
-                'versionPrefix'=>'Assessment','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'Assessment','deploymentAdapter'=>'ASSESSMENT_RELEASE','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'bay-learnlab'=>[
                 'name'=>'BAY LearnLab','kind'=>'PRODUCT','repository'=>'bay-learnlab',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,
                 'capability'=>'system.learnlab.release','deployResource'=>'CANONICAL:DEPLOY:BAY_LEARNLAB',
-                'versionPrefix'=>'LearnLab','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'LearnLab','deploymentAdapter'=>'LEARNLAB_RELEASE','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'bay-computer-lab'=>[
                 'name'=>'BAY Computer Lab','kind'=>'SYSTEM','repository'=>'bay-computer-lab',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,
                 'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:PROJECT',
-                'versionPrefix'=>'Computer Lab','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'Computer Lab','deploymentAdapter'=>'SOURCE_ONLY','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'school-website'=>[
                 'name'=>'School Website','kind'=>'HOSTING','repository'=>'school-website',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,
                 'capability'=>'project.mutate.deploy','deployResource'=>'CANONICAL:DEPLOY:PROJECT',
-                'versionPrefix'=>'School','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'School','deploymentAdapter'=>'MANAGED_HOSTING','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'bay-hub'=>[
                 'name'=>'BAY Hub','kind'=>'HUB','repository'=>'bay-hub',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,
                 'capability'=>'project.mutate.deploy','deployResource'=>'CANONICAL:DEPLOY:PROJECT',
-                'versionPrefix'=>'Hub','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'ADVANCED',
+                'versionPrefix'=>'Hub','deploymentAdapter'=>'SOURCE_ONLY','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'ADVANCED',
             ],
         ];
     }
