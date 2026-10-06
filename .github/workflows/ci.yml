@@ -36,7 +36,7 @@ jobs:
           fi
           git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > "$RUNNER_TEMP/changed-files.txt"
           cat "$RUNNER_TEMP/changed-files.txt"
-          if grep -Eq '^(src/|desktop/|assets/|logo-256x256\.png$|forge\.config\.cjs$|package\.json$|package-lock\.json$|ART_AI_WORKING_PROTOCOL\.md$|\.github/scripts/verify-packaged-mcp\.ps1$|scripts/package-|scripts/qa/verify-packaged-bundle\.mjs$)' "$RUNNER_TEMP/changed-files.txt"; then
+          if grep -Eq '^(src/|desktop/|assets/|logo-256x256\.png$|forge\.config\.cjs$|package\.json$|package-lock\.json$|ART_AI_WORKING_PROTOCOL\.md$|\.github/scripts/verify-packaged-mcp\.ps1$|scripts/package-|scripts/qa/verify-packaged-bundle\.mjs$|scripts/qa/verify-macos-installer\.mjs$|scripts/release/create-macos-installer-evidence\.mjs$)' "$RUNNER_TEMP/changed-files.txt"; then
             echo "desktop=true" >> "$GITHUB_OUTPUT"
           else
             echo "desktop=false" >> "$GITHUB_OUTPUT"
@@ -306,12 +306,20 @@ jobs:
         run: npm run desktop:verify:installer:mac:x64
       - name: Create macOS x64 installer release evidence
         run: |
-          node scripts/release/create-desktop-release-evidence.mjs --platform darwin --architecture x64 --package AWH-macOS-x64-Installer.pkg --source-sha "$GITHUB_SHA" --output AWH-macOS-x64-Installer.release.json
+          node scripts/release/create-macos-installer-evidence.mjs x64 "$GITHUB_SHA"
           cat AWH-macOS-x64-Installer.release.json
       - name: Package macOS arm64
         run: npm run desktop:package:mac:arm64
       - name: Verify packaged macOS arm64 bundle
         run: node scripts/qa/verify-packaged-bundle.mjs darwin arm64
+      - name: Build macOS arm64 wizard installer
+        run: npm run desktop:installer:mac:arm64
+      - name: Verify macOS arm64 wizard installer
+        run: npm run desktop:verify:installer:mac:arm64
+      - name: Create macOS arm64 installer release evidence
+        run: |
+          node scripts/release/create-macos-installer-evidence.mjs arm64 "$GITHUB_SHA"
+          cat AWH-macOS-arm64-Installer.release.json
       - name: Create portable macOS archives
         run: |
           ditto -c -k --sequesterRsrc --keepParent 'out/AWH Agent-darwin-x64/AWH Agent.app' AWH-macOS-x64.zip
@@ -332,6 +340,15 @@ jobs:
           path: |
             AWH-macOS-x64-Installer.pkg
             AWH-macOS-x64-Installer.release.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload macOS arm64 wizard installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: AWH-macOS-arm64-Installer
+          path: |
+            AWH-macOS-arm64-Installer.pkg
+            AWH-macOS-arm64-Installer.release.json
           if-no-files-found: error
           retention-days: 14
       - name: Upload macOS x64 portable artifact

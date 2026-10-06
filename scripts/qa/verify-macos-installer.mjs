@@ -13,6 +13,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const architecture = process.argv[2] ?? 'x64';
 if (process.platform !== 'darwin') throw new Error('macOS installer verification must run on darwin');
 if (!['x64', 'arm64'].includes(architecture)) throw new Error('unsupported macOS architecture');
+
 const pkgMeta = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'));
 const expectedVersion = String(pkgMeta.version);
 const installer = join(ROOT, `AWH-macOS-${architecture}-Installer.pkg`);
@@ -56,41 +57,58 @@ if (info.size < 10 * 1024 * 1024) throw new Error(`installer unexpectedly small:
 
 const verifyRoot = await mkdtemp(join(tmpdir(), 'awh-installer-verify-'));
 const expanded = join(verifyRoot, 'expanded');
+
 try {
   run('/usr/sbin/pkgutil', ['--expand-full', installer, expanded]);
   const distributionPath = join(expanded, 'Distribution');
   if (!(await exists(distributionPath))) throw new Error('Distribution metadata missing');
   const distribution = await readFile(distributionPath, 'utf8');
-  if (!distribution.includes('AWH Agent')) throw new Error('wizard title missing');
-  if (!distribution.includes('welcome.html') || !distribution.includes('conclusion.html')) throw new Error('wizard resources missing');
+
+  for (const marker of ['AWH Agent', 'welcome.html', 'readme.html', 'conclusion.html', 'online.kruart.awh.agent']) {
+    if (!distribution.includes(marker)) throw new Error(`wizard contract missing: ${marker}`);
+  }
   if (!distribution.includes(`hostArchitectures="${expectedHostArch}"`)) throw new Error('installer architecture gate mismatch');
-  if (!distribution.includes('online.kruart.awh.agent')) throw new Error('installer package identifier mismatch');
 
   const packageInfo = await findNamed(expanded, 'PackageInfo');
   if (!packageInfo) throw new Error('component PackageInfo missing');
   const packageXml = await readFile(packageInfo, 'utf8');
   if (!packageXml.includes('identifier="online.kruart.awh.agent"')) throw new Error('component identifier mismatch');
   if (!packageXml.includes(`version="${expectedVersion}"`)) throw new Error('component version mismatch');
-  if (!packageXml.includes('install-location="/Applications"')) throw new Error('installer must target /Applications');
+  if (!packageXml.includes('install-location="/"')) throw new Error('installer root location contract changed');
 
   const app = await findNamed(expanded, 'AWH Agent.app');
   if (!app) throw new Error('AWH Agent.app missing from installer payload');
   run('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
 
-  const buildScript = await readFile(join(ROOT, 'scripts', 'package-macos-installer.mjs'), 'utf8');
-  if (/rm\s+-rf[^\n]*(?:Application Support\/AWH|\.awh)/i.test(buildScript)) throw new Error('installer must not delete AWH state');
-  if (/tccutil\s+reset/i.test(buildScript)) throw new Error('installer must not reset macOS privacy grants');
+  const preinstall = await findNamed(expanded, 'preinstall');
+  const postinstall = await findNamed(expanded, 'postinstall');
+  if (!preinstall || !postinstall) throw new Error('installer lifecycle scripts missing');
+  run('/bin/sh', ['-n', preinstall]);
+  run('/bin/sh', ['-n', postinstall]);
+
+  const pre = await readFile(preinstall, 'utf8');
+  const post = await readFile(postinstall, 'utf8');
+  const combined = `${pre}\n${post}`;
+  if (/tccutil\s+reset/i.test(combined)) throw new Error('installer must not reset macOS privacy grants');
+  if (/Keychain|security\s+delete|delete-generic-password/i.test(combined)) throw new Error('installer must not mutate Keychain credentials');
+  if (/Application Support\/AWH\/Engines|\.awh\//i.test(combined)) throw new Error('installer must not mutate runtime or pairing state');
+  if (!/AWH Agent\.previous\.app/.test(pre)) throw new Error('installer backup contract missing');
+  if (!/codesign --verify --deep --strict/.test(post)) throw new Error('postinstall signature verification missing');
+  if (!/rollback/.test(post)) throw new Error('postinstall rollback contract missing');
+  if (!/open -a/.test(post)) throw new Error('postinstall automatic relaunch missing');
 
   console.log(JSON.stringify({
     status: 'PASS',
     architecture,
     version: expectedVersion,
     identifier: 'online.kruart.awh.agent',
-    installLocation: '/Applications',
+    installLocation: '/Applications/AWH Agent.app',
     bytes: info.size,
     sha256: await sha256(installer),
     preservesAwhState: true,
     preservesTcc: true,
+    rollback: true,
+    relaunch: true,
   }));
 } finally {
   await rm(verifyRoot, { recursive: true, force: true });

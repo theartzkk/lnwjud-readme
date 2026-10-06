@@ -44,7 +44,9 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
   assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /sign-macos-adhoc/);
   assert.match(pkg.scripts?.['desktop:package:mac:arm64'] ?? '', /sign-macos-adhoc/);
   assert.match(pkg.scripts?.['desktop:installer:mac:x64'] ?? '', /package-macos-installer/);
+  assert.match(pkg.scripts?.['desktop:installer:mac:arm64'] ?? '', /package-macos-installer/);
   assert.match(pkg.scripts?.['desktop:verify:installer:mac:x64'] ?? '', /verify-macos-installer/);
+  assert.match(pkg.scripts?.['desktop:verify:installer:mac:arm64'] ?? '', /verify-macos-installer/);
   assert.match(forge, /@electron-forge\/maker-squirrel/);
   assert.match(forge, /packagerConfig:\s*\{[\s\S]*?name:\s*'AWH Agent'/);
   assert.match(forge, /config:\s*\{[\s\S]*?name:\s*'AWH'/);
@@ -199,21 +201,41 @@ test('macOS icon preparation converts the canonical AWH artwork without new bran
 });
 
 
-test('macOS wizard installer is state-preserving and uses the native Installer package flow', async () => {
-  const [builder, verifier] = await Promise.all([
+test('macOS wizard installer preserves AWH state, verifies the payload, rolls back, and relaunches', async () => {
+  const [builder, verifier, evidence] = await Promise.all([
     readFile(new URL('../scripts/package-macos-installer.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../scripts/qa/verify-macos-installer.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/release/create-macos-installer-evidence.mjs', import.meta.url), 'utf8'),
   ]);
   assert.match(builder, /pkgbuild/);
   assert.match(builder, /productbuild/);
-  assert.match(builder, /--install-location', '\/Applications'/);
+  assert.match(builder, /--install-location', '\/'/);
   assert.match(builder, /online\.kruart\.awh\.agent/);
   assert.match(builder, /welcome\.html/);
+  assert.match(builder, /readme\.html/);
   assert.match(builder, /conclusion\.html/);
   assert.match(builder, /AWH_MAC_INSTALLER_SIGN_IDENTITY/);
+  assert.match(builder, /AWH Agent\.previous\.app/);
+  assert.match(builder, /rollback/);
+  assert.match(builder, /codesign --verify --deep --strict/);
+  assert.match(builder, /open -a/);
+  assert.match(builder, /Mac Apple Silicon/);
+  assert.match(builder, /Mac Intel/);
   assert.doesNotMatch(builder, /tccutil\s+reset/i);
-  assert.doesNotMatch(builder, /rm\s+-rf[^\n]*(?:Application Support\/AWH|\.awh)/i);
+  assert.doesNotMatch(builder, /security\s+delete|delete-generic-password/i);
+  assert.doesNotMatch(builder, /Application Support\/AWH\/Engines|\.awh\//i);
+
   assert.match(verifier, /--expand-full/);
   assert.match(verifier, /preservesAwhState: true/);
   assert.match(verifier, /preservesTcc: true/);
+  assert.match(verifier, /rollback: true/);
+  assert.match(verifier, /relaunch: true/);
+  assert.match(verifier, /\/bin\/sh/);
+  assert.match(verifier, /codesign --verify --deep --strict/);
+
+  assert.match(evidence, /AWH_MACOS_INSTALLER_RELEASE_EVIDENCE/);
+  assert.match(evidence, /packageSha256/);
+  assert.match(evidence, /preservesTccState: true/);
+  assert.match(evidence, /rollbackOnVerificationFailure: true/);
+  assert.match(evidence, /autoRelaunch: true/);
 });
