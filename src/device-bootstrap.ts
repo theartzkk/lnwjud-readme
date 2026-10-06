@@ -311,7 +311,10 @@ async function macEngineBrandingCurrent(appRoot: string): Promise<boolean> {
     const plist = join(appRoot, 'Contents', 'Info.plist');
     const expected: Array<[string, string]> = [
       ['CFBundleDisplayName', 'AWH Device Runtime'],
-      ['CFBundleName', 'AWH Device Runtime'],
+      // Keep the upstream internal Electron bundle name stable. Electron uses
+      // CFBundleName to resolve helper bundle identities, and RC1 proved this
+      // layout stable on macOS TCC across restarts and upgrades.
+      ['CFBundleName', 'lnwjud'],
       ['CFBundleExecutable', MAC_RUNTIME_EXECUTABLE],
       ['CFBundleIdentifier', 'online.kruart.awh-device-runtime'],
     ];
@@ -322,7 +325,25 @@ async function macEngineBrandingCurrent(appRoot: string): Promise<boolean> {
 
     const frameworks = join(appRoot, 'Contents', 'Frameworks');
     for (const entry of await readdir(frameworks, { withFileTypes: true }).catch(() => [])) {
-      if (entry.isDirectory() && /^lnwjud Helper(?:.*)\.app$/.test(entry.name)) return false;
+      if (!entry.isDirectory()) continue;
+      const match = /^lnwjud Helper(.*)\.app$/.exec(entry.name);
+      if (!match) {
+        // RC2 briefly renamed helper bundle directories. Treat that layout as
+        // non-current so one repair restores the RC1-stable internal identity.
+        if (/^AWH Device Runtime Helper(?:.*)\.app$/.test(entry.name)) return false;
+        continue;
+      }
+      const suffix = match[1] ?? '';
+      const helperPlist = join(frameworks, entry.name, 'Contents', 'Info.plist');
+      const expectedDisplay = `AWH Device Runtime Helper${suffix}`;
+      const display = await execFile('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleDisplayName', helperPlist], appRoot, 15_000);
+      const name = await execFile('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleName', helperPlist], appRoot, 15_000);
+      const executableName = await execFile('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleExecutable', helperPlist], appRoot, 15_000);
+      if (
+        display.code !== 0 || display.stdout.trim() !== expectedDisplay ||
+        name.code !== 0 || name.stdout.trim() !== `lnwjud Helper${suffix}` ||
+        executableName.code !== 0 || executableName.stdout.trim() !== `lnwjud Helper${suffix}`
+      ) return false;
     }
     const verify = await execFile('/usr/bin/codesign', ['--verify', '--deep', '--strict', appRoot], appRoot, 120_000);
     return verify.code === 0;
@@ -354,7 +375,9 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   }
   const updates: Array<[string, string, string]> = [
     ['CFBundleDisplayName', '-string', 'AWH Device Runtime'],
-    ['CFBundleName', '-string', 'AWH Device Runtime'],
+    // Preserve the RC1-stable internal Electron identity. User-visible
+    // branding remains AWH through CFBundleDisplayName and the executable.
+    ['CFBundleName', '-string', 'lnwjud'],
     ['CFBundleExecutable', '-string', MAC_RUNTIME_EXECUTABLE],
     ['CFBundleIdentifier', '-string', 'online.kruart.awh-device-runtime'],
   ];
@@ -384,33 +407,37 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   } finally {
     await rm(iconWork, { recursive: true, force: true }).catch(() => undefined);
   }
-  // Electron derives helper identities from CFBundleName. Rename the helper
-  // bundles and executables together so macOS TCC/Keychain sees only AWH.
+  // Keep Electron helper bundle directories/executables on the upstream
+  // internal names used by RC1. Only the visible display name is branded AWH.
+  // This avoids changing the helper path/code identity on every Agent release.
   const frameworks = join(appRoot, 'Contents', 'Frameworks');
   try {
     for (const entry of await readdir(frameworks, { withFileTypes: true })) {
-      const match = entry.isDirectory() ? /^lnwjud Helper(.*)\.app$/.exec(entry.name) : null;
+      if (!entry.isDirectory()) continue;
+      const rc1Match = /^lnwjud Helper(.*)\.app$/.exec(entry.name);
+      const rc2Match = /^AWH Device Runtime Helper(.*)\.app$/.exec(entry.name);
+      const match = rc1Match ?? rc2Match;
       if (!match) continue;
       const suffix = match[1] ?? '';
-      const oldHelperName = `lnwjud Helper${suffix}`;
-      const helperName = `AWH Device Runtime Helper${suffix}`;
-      const oldHelperRoot = join(frameworks, entry.name);
-      const helperRoot = join(frameworks, `${helperName}.app`);
-      const helperPlist = join(oldHelperRoot, 'Contents', 'Info.plist');
-      const oldHelperExecutable = join(oldHelperRoot, 'Contents', 'MacOS', oldHelperName);
-      const helperExecutable = join(oldHelperRoot, 'Contents', 'MacOS', helperName);
+      const internalName = `lnwjud Helper${suffix}`;
+      const displayName = `AWH Device Runtime Helper${suffix}`;
+      const sourceRoot = join(frameworks, entry.name);
+      const stableRoot = join(frameworks, `${internalName}.app`);
+      const sourcePlist = join(sourceRoot, 'Contents', 'Info.plist');
+      const brandedExecutable = join(sourceRoot, 'Contents', 'MacOS', displayName);
+      const stableExecutable = join(sourceRoot, 'Contents', 'MacOS', internalName);
       try {
-        if ((await lstat(oldHelperExecutable)).isFile()) await rename(oldHelperExecutable, helperExecutable);
+        if ((await lstat(brandedExecutable)).isFile()) await rename(brandedExecutable, stableExecutable);
       } catch {}
       for (const [key, value] of [
-        ['CFBundleDisplayName', helperName],
-        ['CFBundleName', helperName],
-        ['CFBundleExecutable', helperName],
+        ['CFBundleDisplayName', displayName],
+        ['CFBundleName', internalName],
+        ['CFBundleExecutable', internalName],
       ] as const) {
-        const result = await execFile('/usr/bin/plutil', ['-replace', key, '-string', value, helperPlist], appRoot, 15_000);
+        const result = await execFile('/usr/bin/plutil', ['-replace', key, '-string', value, sourcePlist], appRoot, 15_000);
         if (result.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_HELPER_FAILED');
       }
-      if (oldHelperRoot !== helperRoot) await rename(oldHelperRoot, helperRoot);
+      if (sourceRoot !== stableRoot) await rename(sourceRoot, stableRoot);
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -424,7 +451,7 @@ function macBridge(): string {
   return `#!/bin/sh
 set -eu
 AWH_ROOT="$HOME/Library/Application Support/AWH"
-ENGINE_LINK="$AWH_ROOT/Engines/device-runtime/current"
+ENGINE_LINK="$AWH_ROOT/Engines/lnwjud/current"
 ENGINE="$(readlink "$ENGINE_LINK" 2>/dev/null || printf '%s' "$ENGINE_LINK")"
 DATA="$AWH_ROOT/DeviceRuntime/device-runtime"
 mkdir -p "$DATA"
@@ -452,7 +479,7 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
   if (process.platform !== 'darwin') {
     return { schemaVersion: 1, runtime: 'AWH Device Runtime', accessibility: true, screenCapture: 'granted', microphone: 'granted', automation: 'granted', ready: true, requested: requestPermissions };
   }
-  const root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'device-runtime');
+  const root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud');
   const current = join(root, 'current');
   let active = current;
   try {
@@ -489,14 +516,18 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
 async function installMacEngine(home: string, arch: 'arm64' | 'x64'): Promise<boolean> {
   const asset = MAC_ASSETS[arch];
   const engines = join(home, 'Library', 'Application Support', 'AWH', 'Engines');
-  const root = join(engines, 'device-runtime');
-  const legacyRoot = join(engines, 'lnwjud');
+  // RC1 used this internal path and proved stable on Intel. Preserve it as the
+  // canonical macOS runtime location even though the user-visible app is AWH.
+  const root = join(engines, 'lnwjud');
+  const transientRc2Root = join(engines, 'device-runtime');
   await mkdir(engines, { recursive: true, mode: 0o700 });
   try {
     await lstat(root);
   } catch {
+    // One-time compatibility repair for the short-lived RC2 path. Once moved
+    // back, subsequent launches are byte/path stable and do not churn TCC.
     try {
-      if ((await lstat(legacyRoot)).isDirectory()) await rename(legacyRoot, root);
+      if ((await lstat(transientRc2Root)).isDirectory()) await rename(transientRc2Root, root);
     } catch {}
   }
   await mkdir(root, { recursive: true, mode: 0o700 });

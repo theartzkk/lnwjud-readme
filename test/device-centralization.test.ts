@@ -63,9 +63,11 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /engineAsset\('win32-x64'\)/);
   assert.doesNotMatch(bootstrap, /lnwjud-(?:Portable|Setup)-\d+\.\d+\.\d+/);
   assert.match(bootstrap, /AWH Device Runtime\.exe/);
-  assert.match(bootstrap, /CFBundleName'.*AWH Device Runtime/s);
-  assert.match(bootstrap, /CFBundleExecutable'.*helperName/s);
-  assert.match(bootstrap, /legacyRoot.*lnwjud/s);
+  assert.match(bootstrap, /CFBundleDisplayName'.*AWH Device Runtime/s);
+  assert.match(bootstrap, /CFBundleName'.*lnwjud/s);
+  assert.match(bootstrap, /CFBundleExecutable'.*internalName/s);
+  assert.match(bootstrap, /transientRc2Root.*device-runtime/s);
+  assert.match(bootstrap, /const root = join\(engines, 'lnwjud'\)/);
   assert.match(bootstrap, /CFBundleExecutable'.*MAC_RUNTIME_EXECUTABLE/s);
   assert.match(bootstrap, /CFBundleIdentifier'.*online\.kruart\.awh-device-runtime/s);
   assert.match(bootstrap, /AWH_RUNTIME_NAME_MARKER/);
