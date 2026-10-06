@@ -112,8 +112,10 @@ exit 0
   run('/bin/sh', ['-n', join(scripts, 'postinstall')]);
 
   const welcome = `<!doctype html><html lang="th"><head><meta charset="utf-8"><style>
-body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;line-height:1.5;color:#1f2937}
-h1{font-size:22px;margin-bottom:8px}.brand{color:#ea580c;font-weight:700}.card{background:#f7f7f8;border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin-top:14px}small{color:#6b7280}
+:root{color-scheme:light dark}
+body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;line-height:1.5;color:#1f2937;background:transparent}
+h1{font-size:22px;margin-bottom:8px}.brand{color:#ea580c;font-weight:700}.card{background:#f7f7f8;border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin-top:14px;color:#1f2937}small{color:#6b7280}
+@media (prefers-color-scheme:dark){body{color:#f5f5f7}.card{background:#2c2c2e;border-color:#48484a;color:#f5f5f7}small{color:#c7c7cc}.brand{color:#ff9f0a}}
 </style></head><body><h1><span class="brand">AWH Agent</span> สำหรับ ${xml(archLabel)}</h1>
 <p>ตัวช่วยติดตั้งนี้ใช้ได้ทั้ง <b>เครื่องใหม่</b> และการอัปเกรด AWH Agent เดิมใน <b>/Applications</b></p>
 <div class="card"><b>Fresh install</b><br>เปิดแอปให้อัตโนมัติ → สร้าง Device ID → ติดตั้ง Runtime/bridge ที่ pin + verify SHA → Login/Enroll → ขอ Accessibility และ Screen Recording ครั้งแรก → เชื่อม tunnel/heartbeat โดยไม่ต้องมี Project ก่อน</div>
@@ -121,14 +123,14 @@ h1{font-size:22px;margin-bottom:8px}.brand{color:#ea580c;font-weight:700}.card{b
 <p><small>เวอร์ชัน ${xml(version)} · ${xml(architecture)}</small></p></body></html>`;
 
   const readme = `<!doctype html><html lang="th"><head><meta charset="utf-8"><style>
-body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;line-height:1.5;color:#1f2937}h2{font-size:20px}li{margin:7px 0}
+:root{color-scheme:light dark}body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;line-height:1.5;color:#1f2937;background:transparent}h2{font-size:20px}li{margin:7px 0}@media (prefers-color-scheme:dark){body{color:#f5f5f7}}
 </style></head><body><h2>ขั้นตอนของ AWH Setup</h2><ul>
 <li>ตรวจว่าเป็น Intel หรือ Apple Silicon จากแพ็กเกจที่เลือก</li><li>ถ้ามี AWH Agent เดิม จะสำรองชั่วคราวก่อนอัปเดต</li><li>ติดตั้ง bundle ใหม่ลง /Applications</li>
 <li>ตรวจ Bundle ID, executable และ code signature</li><li>เปิด AWH Agent ใหม่อัตโนมัติ</li><li>เครื่องใหม่จะสร้าง Device ID/Runtime/bridge จาก first-run ของ Agent และเชื่อม Hub หลัง Login</li><li>remote tunnel มี device-owned workspace จึงไม่ต้องเลือก Project ก่อน</li><li>rollback แอปเดิมถ้าการตรวจหลังติดตั้งไม่ผ่าน</li>
 </ul><p><b>ข้อมูลอุปกรณ์และสิทธิ์ระบบจะไม่ถูกล้างโดย Installer นี้ และเครื่องใหม่จะขอสิทธิ์ macOS เฉพาะครั้งแรกตามที่ระบบปฏิบัติการกำหนด</b></p></body></html>`;
 
   const conclusion = `<!doctype html><html lang="th"><head><meta charset="utf-8"><style>
-body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;line-height:1.5;color:#1f2937}h1{font-size:22px;color:#166534}.next{background:#f7f7f8;border-radius:12px;padding:12px 14px;margin-top:14px}
+:root{color-scheme:light dark}body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;line-height:1.5;color:#1f2937;background:transparent}h1{font-size:22px;color:#166534}.next{background:#f7f7f8;border-radius:12px;padding:12px 14px;margin-top:14px;color:#1f2937}@media (prefers-color-scheme:dark){body{color:#f5f5f7}h1{color:#63d471}.next{background:#2c2c2e;color:#f5f5f7}}
 </style></head><body><h1>ติดตั้ง AWH Agent เรียบร้อย</h1><p>AWH Agent ถูกเปิดให้อัตโนมัติแล้ว</p>
 <div class="next"><b>เกณฑ์พร้อมใช้</b><br>Connection ต้อง ONLINE · AWH Device Runtime ต้อง READY · tunnel/heartbeat ต้อง recover ได้โดยไม่ล้าง permission</div>
 </body></html>`;

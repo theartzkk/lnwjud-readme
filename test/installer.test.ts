@@ -249,3 +249,12 @@ test('macOS wizard documents the fresh-machine bootstrap contract', async () => 
   assert.match(builder, /ไม่ต้องมี Project ก่อน/);
   assert.match(builder, /device-owned workspace/);
 });
+
+
+test('macOS wizard remains legible in Light and Dark Mode', async () => {
+  const builder = await readFile(new URL('../scripts/package-macos-installer.mjs', import.meta.url), 'utf8');
+  assert.match(builder, /color-scheme:light dark/);
+  assert.match(builder, /@media \(prefers-color-scheme:dark\)/);
+  assert.match(builder, /\.card\{background:#2c2c2e;border-color:#48484a;color:#f5f5f7\}/);
+  assert.match(builder, /\.next\{background:#2c2c2e;color:#f5f5f7\}/);
+});
