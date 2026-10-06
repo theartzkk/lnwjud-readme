@@ -65,3 +65,11 @@ test('in-memory credential store supports replacement and deletion while unsuppo
   assert.equal(unsupported instanceof UnavailableCredentialStore, true);
   await assert.rejects(() => unsupported.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'token'), (error: unknown) => error instanceof CredentialStoreError && error.code === 'CREDENTIAL_STORE_UNAVAILABLE');
 });
+
+
+test('fresh device identity uses the machine hostname instead of a shared generic Mac name', async () => {
+  const source = await readFile(new URL('../src/device-identity.ts', import.meta.url), 'utf8');
+  assert.match(source, /hostname\(\)\.replace/);
+  assert.doesNotMatch(source, /return 'Art’s Mac'/);
+  assert.match(source, /return 'AWH Mac'/);
+});

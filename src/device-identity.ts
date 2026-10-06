@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { arch, platform } from 'node:os';
+import { arch, hostname, platform } from 'node:os';
 import { chmod, lstat, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -64,9 +64,11 @@ export async function readDeviceIdentity(dataDir: string): Promise<DeviceIdentit
 }
 
 function defaultDisplayName(currentPlatform: string): string {
-  if (currentPlatform === 'darwin') return 'Art’s Mac';
-  if (currentPlatform === 'win32') return 'Art’s Windows PC';
-  return 'Art’s Linux PC';
+  const host = hostname().replace(/\.local$/i, '').trim().slice(0, 64);
+  if (host) return host;
+  if (currentPlatform === 'darwin') return 'AWH Mac';
+  if (currentPlatform === 'win32') return 'AWH Windows PC';
+  return 'AWH Linux PC';
 }
 
 function currentPlatform(): DeviceIdentity['platform'] {
