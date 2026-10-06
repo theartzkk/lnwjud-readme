@@ -233,6 +233,4 @@ $('login-form').addEventListener('submit', async (event) => {
 
 $('refresh-status').addEventListener('click', () => { void refresh(); });
 window.addEventListener('focus', () => { void refresh(); });
-const statusRefreshTimer = setInterval(() => { if (!document.hidden) void refresh(); }, 5_000);
-window.addEventListener('beforeunload', () => clearInterval(statusRefreshTimer));
 void refresh();

@@ -82,5 +82,4 @@ test('desktop self-heal owns Secure MCP tunnel freshness without reopening optio
   assert.doesNotMatch(connect, /permissionEntry\('Automation'/);
   assert.doesNotMatch(connect, /worker\?\.remoteDesktop/);
   assert.match(connect, /const runtime = health\?\.runtime/);
-  assert.match(connect, /statusRefreshTimer = setInterval/);
 });
