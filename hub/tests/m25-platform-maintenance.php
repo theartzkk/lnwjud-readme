@@ -128,6 +128,14 @@ try{
     $normal=$maintenance->disable('Platform closure complete','test',gmdate('c',strtotime($now)+60));
     m25_assert(($normal['active']??true)===false,'freeze can return explicitly to NORMAL');
 
+    $pdo->prepare("UPDATE control_project_vaults SET sync_state='STALE' WHERE project_id=:project")->execute(['project'=>$product]);
+    $pendingCandidateMutation=$insert($product,'project.mutate.assisted');
+    $pendingCandidateAuthority=$registry->activateExecutionAuthority($pendingCandidateMutation,null,gmdate('c',strtotime($now)+61));
+    m25_assert(($pendingCandidateAuthority['granted']??false)===true&&($pendingCandidateAuthority['mutationResource']??null)==='CANDIDATE','candidate authority remains available while the canonical Vault baseline is active and pending candidates make sync state STALE');
+    $registry->updateEnvelopeState($pendingCandidateMutation,'RELEASED',null,gmdate('c',strtotime($now)+61));
+    $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED' WHERE execution_id=:execution")->execute(['execution'=>$pendingCandidateMutation]);
+    $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100 WHERE task_id=(SELECT task_id FROM control_task_executions WHERE execution_id=:execution)")->execute(['execution'=>$pendingCandidateMutation]);
+
     $sourceLessMutation=$insert($sourceless,'project.mutate.assisted');
     $sourceBlocked=false;
     try{$registry->activateExecutionAuthority($sourceLessMutation,null,gmdate('c',strtotime($now)+61));}
