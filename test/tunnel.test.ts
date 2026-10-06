@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import {
+  buildMacDeviceRuntimeMcpCommand,
   buildPackagedMcpCommand,
   connectTunnelRuntime,
   inspectTunnelReadiness,
@@ -86,6 +87,16 @@ test('packaged MCP command is fixed to the packaged entrypoint and remote profil
   assert.match(command, /dist.*index\.js/);
   assert.doesNotMatch(command, /(?:^|\s)(?:cmd|powershell|pwsh|sh|bash)(?:\.exe)?(?:\s|$)/i);
   assert.ok(command.startsWith('"') && command.endsWith('"'));
+});
+
+test('macOS Device Runtime tunnel command uses the AWH MCP bridge', async (t) => {
+  const fixture = await packagedFixture(t);
+  const home = join(fixture.root, 'home');
+  const result = buildMacDeviceRuntimeMcpCommand(fixture.workspace, home);
+  assert.equal(result.bridge, join(home, '.awh', 'bin', 'awh-mcp-stdio'));
+  assert.match(result.command, /awh-mcp-stdio/);
+  assert.match(result.command, /--workspace/);
+  assert.doesNotMatch(result.command, /--remote-tunnel|app\.asar|dist.*index\.js/);
 });
 
 test('tunnel readiness requires explicit trusted binary, restricted runtime key, tunnel id and packaged MCP layout', async (t) => {

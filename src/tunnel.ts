@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { stat, realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { execFile, resolveExecutable, type ExecResult } from './process.js';
 import { PRODUCT } from './product.js';
@@ -136,6 +137,18 @@ export function buildPackagedMcpCommand(appExecutable: string, workspace: string
   ].map(quoteTunnelCommandArg).join(' ');
 }
 
+function macBundleExecutable(appExecutable: string): boolean {
+  const executableDir = dirname(appExecutable);
+  return basename(executableDir) === 'MacOS' && basename(dirname(executableDir)) === 'Contents';
+}
+
+export function buildMacDeviceRuntimeMcpCommand(workspace: string, home: string = homedir()): { bridge: string; command: string } {
+  if (!isAbsolute(workspace)) throw new Error('Remote workspace path must be absolute');
+  if (!isAbsolute(home)) throw new Error('Mac home path must be absolute');
+  const bridge = join(home, '.awh', 'bin', 'awh-mcp-stdio');
+  return { bridge, command: [bridge, '--workspace', workspace].map(quoteTunnelCommandArg).join(' ') };
+}
+
 export function tunnelRuntimeAlias(workspace: string): string {
   if (!isAbsolute(workspace)) throw new Error('Tunnel runtime workspace must be an absolute canonical path');
   const digest = createHash('sha256').update(workspace, 'utf8').digest('hex').slice(0, 16);
@@ -254,18 +267,26 @@ export async function inspectTunnelReadiness(
   let appAsar: string | undefined;
   let mcpCommand: string | undefined;
   try {
-    const paths = packagedMcpPaths(appExecutable);
-    appAsar = paths.appAsar;
-    if (!(await fileExists(paths.appExecutable))) {
-      blockers.push('Packaged AWH executable was not found');
-    } else if (!(await fileExists(paths.entrypoint))) {
-      blockers.push('Packaged MCP entrypoint was not found');
+    if (process.platform === 'darwin' && macBundleExecutable(appExecutable)) {
+      const home = isAbsolute(env.HOME ?? '') ? env.HOME! : homedir();
+      const deviceMcp = buildMacDeviceRuntimeMcpCommand(workspace, home);
+      if (!(await fileExists(deviceMcp.bridge))) blockers.push('AWH Device Runtime MCP bridge was not found');
+      else {
+        packagedMcpReady = true;
+        mcpCommand = deviceMcp.command;
+      }
     } else {
-      packagedMcpReady = true;
-      mcpCommand = buildPackagedMcpCommand(paths.appExecutable, workspace);
+      const paths = packagedMcpPaths(appExecutable);
+      appAsar = paths.appAsar;
+      if (!(await fileExists(paths.appExecutable))) blockers.push('Packaged AWH executable was not found');
+      else if (!(await fileExists(paths.entrypoint))) blockers.push('Packaged MCP entrypoint was not found');
+      else {
+        packagedMcpReady = true;
+        mcpCommand = buildPackagedMcpCommand(paths.appExecutable, workspace);
+      }
     }
   } catch (error) {
-    blockers.push(`Packaged MCP layout is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    blockers.push(`MCP runtime layout is unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   return {
