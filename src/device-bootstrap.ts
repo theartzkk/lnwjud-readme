@@ -293,7 +293,50 @@ if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AW
   }
 }
 
+async function macEngineBrandingCurrent(appRoot: string): Promise<boolean> {
+  try {
+    const archive = join(appRoot, 'Contents', 'Resources', 'app.asar');
+    const executable = join(appRoot, 'Contents', 'MacOS', MAC_RUNTIME_EXECUTABLE);
+    if (!(await lstat(executable)).isFile()) return false;
+    const main = extractFile(archive, 'dist/main/main.js').toString('utf8');
+    if (
+      !main.includes(AWH_HEADLESS_PATCH_MARKER) ||
+      !main.includes(AWH_RUNTIME_NAME_MARKER) ||
+      !main.includes(AWH_RUNTIME_MCP_NAME_MARKER) ||
+      !main.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) ||
+      !main.includes(AWH_RUNTIME_READY_MARKER) ||
+      !main.includes(AWH_RUNTIME_PERMISSION_MARKER)
+    ) return false;
+
+    const plist = join(appRoot, 'Contents', 'Info.plist');
+    const expected: Array<[string, string]> = [
+      ['CFBundleDisplayName', 'AWH Device Runtime'],
+      ['CFBundleName', 'AWH Device Runtime'],
+      ['CFBundleExecutable', MAC_RUNTIME_EXECUTABLE],
+      ['CFBundleIdentifier', 'online.kruart.awh-device-runtime'],
+    ];
+    for (const [key, value] of expected) {
+      const result = await execFile('/usr/libexec/PlistBuddy', ['-c', `Print :${key}`, plist], appRoot, 15_000);
+      if (result.code !== 0 || result.stdout.trim() !== value) return false;
+    }
+
+    const frameworks = join(appRoot, 'Contents', 'Frameworks');
+    for (const entry of await readdir(frameworks, { withFileTypes: true }).catch(() => [])) {
+      if (entry.isDirectory() && /^lnwjud Helper(?:.*)\.app$/.test(entry.name)) return false;
+    }
+    const verify = await execFile('/usr/bin/codesign', ['--verify', '--deep', '--strict', appRoot], appRoot, 120_000);
+    return verify.code === 0;
+  } catch {
+    return false;
+  }
+}
+
 async function rebrandMacEngine(appRoot: string): Promise<void> {
+  // Preserve the exact already-authorized runtime identity. macOS TCC binds
+  // Accessibility/Screen Recording grants to code identity, so rewriting
+  // plist/icon resources and ad-hoc re-signing on every Agent launch would
+  // make an unchanged runtime look like a new app and invalidate permissions.
+  if (await macEngineBrandingCurrent(appRoot)) return;
   const archive = join(appRoot, 'Contents', 'Resources', 'app.asar');
   const backup = archive + '.awh-upstream';
   await patchMacHeadlessRuntime(appRoot);

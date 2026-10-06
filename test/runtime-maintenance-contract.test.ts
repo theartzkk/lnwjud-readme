@@ -37,6 +37,12 @@ test('runtime and dependency maintenance are declarative and do not require depl
   assert.match(bootstrap,/DEVICE_RUNTIME_RELEASE\.nodeRuntime\.version/);
   assert.match(bootstrap,/DEVICE_RUNTIME_RELEASE\.version/);
   assert.match(bootstrap,/DEVICE_RUNTIME_RELEASE\.npmIntegrity/);
+  assert.match(bootstrap,/async function macEngineBrandingCurrent\(appRoot: string\): Promise<boolean>/);
+  assert.match(bootstrap,/if \(await macEngineBrandingCurrent\(appRoot\)\) return;/);
+  const rebrandStart=bootstrap.indexOf('async function rebrandMacEngine');
+  const noOpGuard=bootstrap.indexOf('if (await macEngineBrandingCurrent(appRoot)) return;',rebrandStart);
+  const adHocSign=bootstrap.indexOf("['--force', '--deep', '--sign', '-', appRoot]",rebrandStart);
+  assert.equal(rebrandStart>=0&&noOpGuard>rebrandStart&&adHocSign>noOpGuard,true);
   assert.doesNotMatch(bootstrap,/const NODE_VERSION = ['"]\d+\.\d+\.\d+/);
   assert.doesNotMatch(bootstrap,/const SYSTEM_MCP_VERSION = ['"]\d+\.\d+\.\d+/);
 
