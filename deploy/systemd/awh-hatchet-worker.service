@@ -14,6 +14,7 @@ WorkingDirectory=/opt/awh-tools/hatchet-worker
 Environment=AWH_HATCHET_CREDENTIAL_FILE=/var/lib/awh-hub/provider-credentials/hatchet.key
 Environment=AWH_HATCHET_SLOTS=4
 Environment=AWH_HATCHET_DISPATCH_INTERVAL_MS=2000
+Environment=AWH_HATCHET_HEARTBEAT_FILE=/var/lib/awh-hub/hatchet-worker-heartbeat.json
 Environment=AWH_HATCHET_BRIDGE=/opt/awh-hub/control-plane-current/hub/bin/awh-hatchet-execution.php
 Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
 Environment=AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault
