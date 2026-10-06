@@ -1,7 +1,7 @@
 {
   "name": "art-agent",
   "productName": "Art’s Workspace Hub",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.2",
   "private": true,
   "author": "Art’s Workspace Hub",
   "description": "Art’s Workspace Hub — an anywhere-first cloud workspace for durable projects, memory and capability-routed automation.",
