@@ -67,7 +67,9 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /CFBundleName'.*lnwjud/s);
   assert.match(bootstrap, /CFBundleExecutable'.*internalName/s);
   assert.match(bootstrap, /transientRc2Root.*device-runtime/s);
-  assert.match(bootstrap, /const root = join\(engines, 'lnwjud'\)/);
+  assert.match(bootstrap, /const rc1Root = join\(engines, 'lnwjud'\)/);
+  assert.match(bootstrap, /requestPermissions \? 120_000 : 30_000/);
+  assert.match(bootstrap, /deviceRuntimePermissionStatusFromHealth\(health\)/);
   assert.match(bootstrap, /CFBundleExecutable'.*MAC_RUNTIME_EXECUTABLE/s);
   assert.match(bootstrap, /CFBundleIdentifier'.*online\.kruart\.awh-device-runtime/s);
   assert.match(bootstrap, /AWH_RUNTIME_NAME_MARKER/);
@@ -121,4 +123,11 @@ test('web device center owns revocation and surfaces AWH runtime plus Remote Des
   assert.match(app, /Device Runtime ✓/);
   assert.match(app, /Remote Desktop MCP ✓/);
   assert.match(app, /ยกเลิกการเชื่อมต่อ/);
+});
+
+
+test('mac device launcher preserves RC1 path and tolerates the transient RC2 path without migration', async () => {
+  const client = await source('src/lnwjud-device-client.ts');
+  assert.match(client, /Engines', 'lnwjud', 'current'.*AWH Device Runtime/s);
+  assert.match(client, /Engines', 'device-runtime', 'current'.*AWH Device Runtime/s);
 });

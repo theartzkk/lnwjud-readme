@@ -311,10 +311,6 @@ async function macEngineBrandingCurrent(appRoot: string): Promise<boolean> {
     const plist = join(appRoot, 'Contents', 'Info.plist');
     const expected: Array<[string, string]> = [
       ['CFBundleDisplayName', 'AWH Device Runtime'],
-      // Keep the upstream internal Electron bundle name stable. Electron uses
-      // CFBundleName to resolve helper bundle identities, and RC1 proved this
-      // layout stable on macOS TCC across restarts and upgrades.
-      ['CFBundleName', 'lnwjud'],
       ['CFBundleExecutable', MAC_RUNTIME_EXECUTABLE],
       ['CFBundleIdentifier', 'online.kruart.awh-device-runtime'],
     ];
@@ -322,27 +318,31 @@ async function macEngineBrandingCurrent(appRoot: string): Promise<boolean> {
       const result = await execFile('/usr/libexec/PlistBuddy', ['-c', `Print :${key}`, plist], appRoot, 15_000);
       if (result.code !== 0 || result.stdout.trim() !== value) return false;
     }
+    const bundleNameResult = await execFile('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleName', plist], appRoot, 15_000);
+    const bundleName = bundleNameResult.stdout.trim();
+    if (bundleNameResult.code !== 0 || (bundleName !== 'lnwjud' && bundleName !== 'AWH Device Runtime')) return false;
 
     const frameworks = join(appRoot, 'Contents', 'Frameworks');
     for (const entry of await readdir(frameworks, { withFileTypes: true }).catch(() => [])) {
       if (!entry.isDirectory()) continue;
-      const match = /^lnwjud Helper(.*)\.app$/.exec(entry.name);
+      const rc1Match = /^lnwjud Helper(.*)\.app$/.exec(entry.name);
+      const rc2Match = /^AWH Device Runtime Helper(.*)\.app$/.exec(entry.name);
+      const match = bundleName === 'lnwjud' ? rc1Match : rc2Match;
       if (!match) {
-        // RC2 briefly renamed helper bundle directories. Treat that layout as
-        // non-current so one repair restores the RC1-stable internal identity.
-        if (/^AWH Device Runtime Helper(?:.*)\.app$/.test(entry.name)) return false;
+        if (rc1Match || rc2Match) return false;
         continue;
       }
       const suffix = match[1] ?? '';
       const helperPlist = join(frameworks, entry.name, 'Contents', 'Info.plist');
       const expectedDisplay = `AWH Device Runtime Helper${suffix}`;
+      const expectedInternal = bundleName === 'lnwjud' ? `lnwjud Helper${suffix}` : expectedDisplay;
       const display = await execFile('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleDisplayName', helperPlist], appRoot, 15_000);
       const name = await execFile('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleName', helperPlist], appRoot, 15_000);
       const executableName = await execFile('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleExecutable', helperPlist], appRoot, 15_000);
       if (
         display.code !== 0 || display.stdout.trim() !== expectedDisplay ||
-        name.code !== 0 || name.stdout.trim() !== `lnwjud Helper${suffix}` ||
-        executableName.code !== 0 || executableName.stdout.trim() !== `lnwjud Helper${suffix}`
+        name.code !== 0 || name.stdout.trim() !== expectedInternal ||
+        executableName.code !== 0 || executableName.stdout.trim() !== expectedInternal
       ) return false;
     }
     const verify = await execFile('/usr/bin/codesign', ['--verify', '--deep', '--strict', appRoot], appRoot, 120_000);
@@ -452,6 +452,9 @@ function macBridge(): string {
 set -eu
 AWH_ROOT="$HOME/Library/Application Support/AWH"
 ENGINE_LINK="$AWH_ROOT/Engines/lnwjud/current"
+if [ ! -e "$ENGINE_LINK" ]; then
+  ENGINE_LINK="$AWH_ROOT/Engines/device-runtime/current"
+fi
 ENGINE="$(readlink "$ENGINE_LINK" 2>/dev/null || printf '%s' "$ENGINE_LINK")"
 DATA="$AWH_ROOT/DeviceRuntime/device-runtime"
 mkdir -p "$DATA"
@@ -479,7 +482,13 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
   if (process.platform !== 'darwin') {
     return { schemaVersion: 1, runtime: 'AWH Device Runtime', accessibility: true, screenCapture: 'granted', microphone: 'granted', automation: 'granted', ready: true, requested: requestPermissions };
   }
-  const root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud');
+  const rc1Root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud');
+  const transientRc2Root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'device-runtime');
+  let root = rc1Root;
+  try { await lstat(join(rc1Root, 'current')); }
+  catch {
+    try { await lstat(join(transientRc2Root, 'current')); root = transientRc2Root; } catch {}
+  }
   const current = join(root, 'current');
   let active = current;
   try {
@@ -492,7 +501,7 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
   const env: NodeJS.ProcessEnv = { ...process.env, LNWJUD_DATA_PATH: dataPath };
   delete env.ELECTRON_RUN_AS_NODE;
   const permissionCommand = requestPermissions ? '--awh-permission-setup' : '--awh-permission-status';
-  const result = await execFile(executable, [permissionCommand], active, 120_000, env);
+  const result = await execFile(executable, [permissionCommand], active, requestPermissions ? 120_000 : 30_000, env);
   const line = result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
   if (!line) throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_MISSING');
   let value: unknown;
@@ -500,7 +509,7 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_INVALID');
   const row = value as Record<string, unknown>;
   if (row.schemaVersion !== 1 || row.runtime !== 'AWH Device Runtime' || typeof row.accessibility !== 'boolean' || typeof row.screenCapture !== 'string' || typeof row.microphone !== 'string' || typeof row.automation !== 'string' || typeof row.ready !== 'boolean') throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_INVALID');
-  return {
+  const direct: DeviceRuntimePermissionStatus = {
     schemaVersion: 1,
     runtime: 'AWH Device Runtime',
     accessibility: row.accessibility,
@@ -511,24 +520,37 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
     requested: requestPermissions,
     ...(typeof row.error === 'string' ? { error: row.error } : {}),
   };
+  if (!requestPermissions && direct.ready !== true && home === homedir()) {
+    const healthWorkspace = join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'permission-health');
+    let liveClient: LnwjudDeviceClient | null = null;
+    try {
+      liveClient = await LnwjudDeviceClient.open(healthWorkspace);
+      const health = await liveClient.callTool('health', { operation: 'check_all' }, 20_000);
+      const reconciled = deviceRuntimePermissionStatusFromHealth(health);
+      if (reconciled.ready) return reconciled;
+    } catch {
+      // The direct permission helper remains authoritative when live health is
+      // unavailable; tunnel/heartbeat readiness is handled independently.
+    } finally {
+      liveClient?.close();
+    }
+  }
+  return direct;
 }
 
 async function installMacEngine(home: string, arch: 'arm64' | 'x64'): Promise<boolean> {
   const asset = MAC_ASSETS[arch];
   const engines = join(home, 'Library', 'Application Support', 'AWH', 'Engines');
-  // RC1 used this internal path and proved stable on Intel. Preserve it as the
-  // canonical macOS runtime location even though the user-visible app is AWH.
-  const root = join(engines, 'lnwjud');
+  // Fresh installs use the RC1-stable internal path. If a device already ran
+  // the short-lived RC2 path, preserve it in place so an upgrade never moves a
+  // TCC-authorized runtime merely to normalize an internal directory name.
+  const rc1Root = join(engines, 'lnwjud');
   const transientRc2Root = join(engines, 'device-runtime');
   await mkdir(engines, { recursive: true, mode: 0o700 });
-  try {
-    await lstat(root);
-  } catch {
-    // One-time compatibility repair for the short-lived RC2 path. Once moved
-    // back, subsequent launches are byte/path stable and do not churn TCC.
-    try {
-      if ((await lstat(transientRc2Root)).isDirectory()) await rename(transientRc2Root, root);
-    } catch {}
+  let root = rc1Root;
+  try { if ((await lstat(rc1Root)).isDirectory()) root = rc1Root; }
+  catch {
+    try { if ((await lstat(transientRc2Root)).isDirectory()) root = transientRc2Root; } catch {}
   }
   await mkdir(root, { recursive: true, mode: 0o700 });
   const current = join(root, 'current');
