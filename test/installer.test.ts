@@ -230,6 +230,11 @@ test('macOS wizard installer preserves AWH state, verifies the payload, rolls ba
   assert.match(verifier, /preservesTcc: true/);
   assert.match(verifier, /rollback: true/);
   assert.match(verifier, /relaunch: true/);
+  assert.match(verifier, /awh-logo\\.png/);
+  assert.match(verifier, /canonical AWH installer logo missing/);
+  assert.match(verifier, /installer logo does not match canonical AWH artwork/);
+  assert.match(verifier, /canonicalBrandAsset: true/);
+
   assert.match(verifier, /\/bin\/sh/);
   assert.match(verifier, /codesign --verify --deep --strict/);
 
