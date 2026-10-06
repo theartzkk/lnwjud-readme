@@ -43,6 +43,8 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
   assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /prepare:mac-icon/);
   assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /sign-macos-adhoc/);
   assert.match(pkg.scripts?.['desktop:package:mac:arm64'] ?? '', /sign-macos-adhoc/);
+  assert.match(pkg.scripts?.['desktop:installer:mac:x64'] ?? '', /package-macos-installer/);
+  assert.match(pkg.scripts?.['desktop:verify:installer:mac:x64'] ?? '', /verify-macos-installer/);
   assert.match(forge, /@electron-forge\/maker-squirrel/);
   assert.match(forge, /packagerConfig:\s*\{[\s\S]*?name:\s*'AWH Agent'/);
   assert.match(forge, /config:\s*\{[\s\S]*?name:\s*'AWH'/);
@@ -73,7 +75,7 @@ test('desktop packaging excludes generated cross-platform release artifacts from
   const forgeConfig = require('../forge.config.cjs') as { packagerConfig?: { ignore?: RegExp[] } };
   const ignore = forgeConfig.packagerConfig?.ignore ?? [];
   const isIgnored = (path: string) => ignore.some((pattern) => pattern.test(path));
-  for (const artifact of ['/AWH-macOS-x64.zip', '/AWH-macOS-arm64.zip', '/AWH-Windows-x64.zip', '/AWH-macOS-arm64.release.json', '/AWH-Windows-x64.release.json', '/SHA256SUMS.txt']) {
+  for (const artifact of ['/AWH-macOS-x64.zip', '/AWH-macOS-arm64.zip', '/AWH-macOS-x64-Installer.pkg', '/AWH-macOS-arm64-Installer.pkg', '/AWH-Windows-x64.zip', '/AWH-macOS-arm64.release.json', '/AWH-Windows-x64.release.json', '/SHA256SUMS.txt']) {
     assert.equal(isIgnored(artifact), true, `generated desktop release artifact must be excluded: ${artifact}`);
   }
   assert.equal(isIgnored('/ART_AI_WORKING_PROTOCOL.md'), false, 'required working context must remain packageable');
@@ -194,4 +196,24 @@ test('macOS icon preparation converts the canonical AWH artwork without new bran
     assert.equal(icns.subarray(0, 4).toString('ascii'), 'icns');
     assert.ok(icns.length > 1_000);
   } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+
+test('macOS wizard installer is state-preserving and uses the native Installer package flow', async () => {
+  const [builder, verifier] = await Promise.all([
+    readFile(new URL('../scripts/package-macos-installer.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/qa/verify-macos-installer.mjs', import.meta.url), 'utf8'),
+  ]);
+  assert.match(builder, /pkgbuild/);
+  assert.match(builder, /productbuild/);
+  assert.match(builder, /--install-location', '\/Applications'/);
+  assert.match(builder, /online\.kruart\.awh\.agent/);
+  assert.match(builder, /welcome\.html/);
+  assert.match(builder, /conclusion\.html/);
+  assert.match(builder, /AWH_MAC_INSTALLER_SIGN_IDENTITY/);
+  assert.doesNotMatch(builder, /tccutil\s+reset/i);
+  assert.doesNotMatch(builder, /rm\s+-rf[^\n]*(?:Application Support\/AWH|\.awh)/i);
+  assert.match(verifier, /--expand-full/);
+  assert.match(verifier, /preservesAwhState: true/);
+  assert.match(verifier, /preservesTcc: true/);
 });
