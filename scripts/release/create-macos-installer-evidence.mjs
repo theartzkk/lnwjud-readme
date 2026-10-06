@@ -49,7 +49,8 @@ const gatekeeper = run('/usr/sbin/spctl', ['--assess', '--type', 'install', '--v
 const gatekeeperAccepted = gatekeeper.code === 0;
 
 let appDeveloperId = false;
-const expanded = await mkdtemp(join(tmpdir(), `awh-installer-evidence-${architecture}-`));
+const evidenceRoot = await mkdtemp(join(tmpdir(), `awh-installer-evidence-${architecture}-`));
+const expanded = join(evidenceRoot, 'expanded');
 try {
   const expand = run('/usr/sbin/pkgutil', ['--expand-full', packagePath, expanded]);
   if (expand.code !== 0) fail('installer payload expansion failed');
@@ -61,7 +62,7 @@ try {
   const detailText = `${detail.stdout}\n${detail.stderr}`;
   appDeveloperId = detail.code === 0 && /Authority=Developer ID Application:/i.test(detailText);
 } finally {
-  await rm(expanded, { recursive: true, force: true });
+  await rm(evidenceRoot, { recursive: true, force: true });
 }
 
 const freshInstallReady = appDeveloperId && installerDeveloperId && stapled && gatekeeperAccepted;
