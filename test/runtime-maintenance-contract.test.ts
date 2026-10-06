@@ -39,7 +39,7 @@ test('runtime and dependency maintenance are declarative and do not require depl
   assert.match(bootstrap,/DEVICE_RUNTIME_RELEASE\.npmIntegrity/);
   assert.match(bootstrap,/async function macEngineBrandingCurrent\(appRoot: string\): Promise<boolean>/);
   assert.match(bootstrap,/if \(await macEngineBrandingCurrent\(appRoot\)\) return;/);
-  assert.match(bootstrap,/\['CFBundleName', 'lnwjud'\]/);
+  assert.match(bootstrap,/\['CFBundleName', '-string', 'lnwjud'\]/);
   assert.match(bootstrap,/const rc1Root = join\(engines, 'lnwjud'\)/);
   assert.match(bootstrap,/ENGINE_LINK="\$AWH_ROOT\/Engines\/lnwjud\/current"/);
   assert.match(bootstrap,/ENGINE_LINK="\$AWH_ROOT\/Engines\/device-runtime\/current"/);
