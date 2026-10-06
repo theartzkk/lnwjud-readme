@@ -290,6 +290,22 @@ test('Hatchet installer success chatter stays out of the strict typed deploy str
   assert.match(remote, /stage HATCHET_WORKER_PREPARED/);
 });
 
+test('Hatchet execution is self-hosted, pinned, persistent and resource-scoped', async () => {
+  const worker = await readFile('deploy/hatchet/worker/worker.cjs', 'utf8');
+  const unit = await readFile('deploy/systemd/awh-hatchet-worker.service', 'utf8');
+  const installer = await readFile('deploy/hatchet/install-readyidc-worker.sh', 'utf8');
+  assert.match(worker, /HatchetEmbeddedClient/);
+  assert.match(worker, /expression:"input\.resource"/);
+  assert.match(worker, /productionMutationAuthority:false/);
+  assert.match(worker, /delete process\.env\.HATCHET_CLIENT_TOKEN/);
+  assert.match(unit, /AWH_HATCHET_EMBEDDED_VERSION=v0\.110\.5/);
+  assert.match(unit, /AWH_HATCHET_EMBEDDED_CHECKSUM=18ddacae0005042bd982328bcb8d370cca6907352a1ab2a3c8406001d31e7dee/);
+  assert.match(unit, /AWH_HATCHET_EMBEDDED_DATA_DIR=\/var\/lib\/awh-hub\/hatchet-embedded\/postgres/);
+  assert.doesNotMatch(unit, /hatchet\.key/);
+  assert.doesNotMatch(installer, /HATCHET_CREDENTIAL_REQUIRED/);
+  assert.match(installer, /provider=embedded/);
+});
+
 test('control-plane dry-run terminates after cleanup instead of surviving SIGTERM', async () => {
   const source = await readFile('deploy/awh-control-plane/deploy-control-plane.sh', 'utf8');
   assert.match(source, /trap cleanup EXIT/);
