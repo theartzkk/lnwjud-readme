@@ -145,6 +145,8 @@ test('default desktop surface is a thin AWH Agent bridge and keeps advanced cont
   assert.match(html, /id="authorize-permissions"/);
   assert.match(html, /id="permission-eyebrow"/);
   assert.match(html, /เตรียมสิทธิ์การควบคุมเครื่อง/);
+  assert.match(html, /id="open-permission-settings"[^>]*hidden/);
+  assert.doesNotMatch(html, /macOS/);
   assert.match(renderer, /WINDOWS DEVICE CONTROL/);
   assert.match(renderer, /MACOS PERMISSIONS/);
   assert.doesNotMatch(renderer, /setInterval|remoteConnect|remoteStop|child_process|spawn\(|process\.env/i);
