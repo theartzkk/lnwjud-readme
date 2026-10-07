@@ -69,20 +69,16 @@ try {
   }
   if (!distribution.includes(`hostArchitectures="${expectedHostArch}"`)) throw new Error('installer architecture gate mismatch');
 
-  const brandAsset = await findNamed(expanded, 'awh-logo.png');
-  if (!brandAsset) throw new Error('canonical AWH installer logo missing');
   const canonicalBrandAsset = join(ROOT, 'logo-256x256.png');
-  if (await sha256(brandAsset) !== await sha256(canonicalBrandAsset)) {
-    throw new Error('installer logo does not match canonical AWH artwork');
-  }
+  const canonicalBrandDataUri = `data:image/png;base64,${(await readFile(canonicalBrandAsset)).toString('base64')}`;
   for (const pageName of ['welcome.html', 'readme.html', 'conclusion.html']) {
     const pagePath = await findNamed(expanded, pageName);
     if (!pagePath) throw new Error(`installer page missing: ${pageName}`);
     const page = await readFile(pagePath, 'utf8');
-    if (!page.includes('<img src="awh-logo.png" alt="AWH Agent"')) {
-      throw new Error(`installer page does not render canonical AWH logo: ${pageName}`);
+    if (!page.includes(`src="${canonicalBrandDataUri}"`)) {
+      throw new Error(`installer page does not embed canonical AWH logo: ${pageName}`);
     }
-    if (/awh-logo\.svg/i.test(page)) throw new Error(`legacy SVG installer logo reference remains: ${pageName}`);
+    if (/awh-logo\.(?:png|svg)/i.test(page)) throw new Error(`dangling external installer logo reference remains: ${pageName}`);
   }
 
   const packageInfo = await findNamed(expanded, 'PackageInfo');
@@ -125,7 +121,7 @@ try {
     preservesTcc: true,
     rollback: true,
     relaunch: true,
-    brandAsset: 'awh-logo.png',
+    brandAsset: 'embedded-data-uri',
     canonicalBrandAsset: true,
   }));
 } finally {
