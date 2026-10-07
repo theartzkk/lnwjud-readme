@@ -37,6 +37,10 @@ export function modeAllowsPlane(mode:AgentRuntimeMode,plane:AgentWorkPlane):bool
   return mode!=='OFF';
 }
 
+export function liveModeShouldYieldToHuman(previousIdleSeconds:number,currentIdleSeconds:number,sawIdle:boolean,recentAgentForegroundAction:boolean):boolean {
+  return sawIdle && previousIdleSeconds >= 3 && currentIdleSeconds <= 1 && !recentAgentForegroundAction;
+}
+
 export function modeLabel(mode:AgentRuntimeMode):string {
   return mode==='OFF'?'OFF · ไม่รบกวน':mode==='ON'?'ON · ใช้งานร่วมกัน':'LIVE · AWH ควบคุมได้เต็มที่';
 }
