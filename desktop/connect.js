@@ -1,37 +1,58 @@
 const $ = (id) => document.getElementById(id);
 let refreshToken = 0;
+let currentPermissionPlatform = 'unknown';
 
 function setMessage(id, text, kind = '') {
   const node = $(id); node.textContent = text || ''; node.className = `message ${kind}`.trim();
 }
 
-function permissionEntry(label, ok, detail) {
+function permissionEntry(label, ok, detail, missingLabel = 'ต้องอนุญาต') {
   const row = document.createElement('div'); row.className = 'permission-row';
   const copy = document.createElement('div');
   const title = document.createElement('strong'); title.textContent = label;
   const sub = document.createElement('span'); sub.textContent = detail;
-  const state = document.createElement('b'); state.className = ok ? 'permission-ok' : 'permission-missing'; state.textContent = ok ? 'พร้อม' : 'ต้องอนุญาต';
+  const state = document.createElement('b'); state.className = ok ? 'permission-ok' : 'permission-missing'; state.textContent = ok ? 'พร้อม' : missingLabel;
   copy.append(title, sub); row.append(copy, state); return row;
 }
 
 function renderPermissions(permissions, enrolled) {
   const card = $('permission-card');
   const ready = permissions?.ready === true;
+  const platform = permissions?.platform || 'unknown';
+  const isMac = platform === 'darwin';
+  const isWindows = platform === 'win32';
+  currentPermissionPlatform = platform;
   card.hidden = !enrolled || ready;
-  $('permission-badge').textContent = ready ? 'READY' : 'REQUIRED';
+  $('permission-badge').textContent = ready ? 'READY' : isWindows ? 'SETUP' : 'REQUIRED';
   $('permission-badge').className = `permission-badge ${ready ? 'ready' : 'required'}`;
+  $('permission-eyebrow').textContent = isMac ? 'MACOS PERMISSIONS' : isWindows ? 'WINDOWS DEVICE CONTROL' : 'DEVICE SETUP';
+  $('permission-title').textContent = isMac ? 'อนุญาตสิทธิ์ macOS ให้ครบ' : isWindows ? 'เปิดการควบคุมเครื่องให้พร้อม' : 'เตรียมสิทธิ์การควบคุมเครื่อง';
+  $('permission-copy').textContent = isMac
+    ? 'AWH จะยังไม่รับงานที่ต้องควบคุมหน้าจอจนกว่า Accessibility และ Screen Recording จะพร้อม ครั้งต่อไปจะไม่ถามซ้ำหาก macOS ยังอนุญาตอยู่'
+    : isWindows
+      ? 'Windows ไม่ต้องเปิด Accessibility หรือ Screen Recording แบบ macOS เพียงเปิด AWH Full Device Control เพื่อให้ Agent เขียนไฟล์ รันงาน ใช้ Codex และรับงาน Worker ได้'
+      : 'AWH จะยังไม่รับงานหรือควบคุมเครื่องจนกว่าสิทธิ์ที่จำเป็นจะพร้อมครบ';
+  $('authorize-permissions').textContent = isMac ? 'อนุญาตทั้งหมด' : isWindows ? 'เปิดการควบคุมเครื่อง' : 'เตรียมเครื่อง';
+  const settings = $('open-permission-settings');
+  settings.hidden = !isMac;
+  settings.disabled = ready || !isMac;
+  $('emergency-shortcut').textContent = `Emergency hotkey: ${isMac ? '⌘ + Shift + F12' : 'Ctrl + Shift + F12'}`;
   if (!enrolled) return;
   const runtime = permissions?.runtime;
   const list = $('permission-list'); list.replaceChildren();
-  if (permissions?.platform === 'darwin') {
+  if (isMac) {
     list.append(
       permissionEntry('Accessibility', runtime?.accessibility === true, 'คลิก พิมพ์ และควบคุมหน้าต่าง'),
       permissionEntry('Screen Recording', runtime?.screenCapture === 'granted', 'มองเห็นหน้าจอและตรวจงานภาพ'),
     );
   }
-  list.append(permissionEntry('AWH Full Device Control', permissions?.internalReady === true, 'Write · Execute · Codex · Worker'));
+  list.append(permissionEntry(
+    'AWH Full Device Control',
+    permissions?.internalReady === true,
+    'Write · Execute · Codex · Worker',
+    isWindows ? 'ต้องเปิดใช้' : 'ต้องอนุญาต',
+  ));
   $('authorize-permissions').disabled = ready;
-  $('open-permission-settings').disabled = ready || permissions?.platform !== 'darwin';
 }
 
 function activityLabel(value) {
@@ -66,18 +87,18 @@ function renderHealth(health) {
   const grid=$('health-grid');grid.replaceChildren();
   if(!health){const p=document.createElement('p');p.className='activity-empty';p.textContent='ยังตรวจสุขภาพไม่ได้';grid.append(p);return;}
   const rows=[
-    ['Agent',`${health.agent?.state||'UNKNOWN'} · ${health.agent?.version||'—'}`],
+    ['Agent',health.agent?.state||'UNKNOWN'],
     ['Connection',health.connection?.state||'UNKNOWN'],
-    ['Runtime',`${health.runtime?.state||'UNKNOWN'}${health.runtime?.version?' · '+health.runtime.version:''}`],
+    ['Runtime',health.runtime?.state||'UNKNOWN'],
     ['Permissions',health.permissions?.ready===true?'READY':`ขาด ${(health.permissions?.missing||[]).length} รายการ`],
     ['Tool Fabric',`${health.toolFabric?.state||'UNKNOWN'} · ${health.toolFabric?.stableCapabilityCount||0} capability`],
-    ['Update',`${health.update?.channel||'stable'} · ${health.update?.state||'UNKNOWN'}${health.update?.candidateVersion?' → '+health.update.candidateVersion:''}`],
+    ['Update',`${health.update?.channel||'stable'} · ${health.update?.state||'UNKNOWN'}`],
     ['Update result',health.update?.lastResult?.state ? `${health.update.lastResult.state}${health.update.lastResult.reason?' · '+health.update.lastResult.reason:''}` : '—'],
     ['Last error',health.lastError||health.update?.error||'ไม่มี'],
   ];
   for(const [label,value] of rows){const row=document.createElement('div');row.className='health-row';const l=document.createElement('span');l.textContent=label;const v=document.createElement('strong');v.textContent=value;row.append(l,v);grid.append(row);}
   $('install-update').disabled = health.update?.state !== 'AVAILABLE';
-  $('install-update').textContent = health.update?.candidateVersion ? `ติดตั้ง ${health.update.candidateVersion}` : 'ติดตั้งอัปเดต';
+  $('install-update').textContent = 'ติดตั้งอัปเดต';
 }
 
 function render(enrollment, worker, permissions, health) {
@@ -156,20 +177,20 @@ $('emergency-stop').addEventListener('click', async () => {
   $('emergency-stop').disabled = true;
   setMessage('mode-message', 'กำลังหยุด foreground control ทันที…');
   try { await window.awhConnect.emergencyStop(); setMessage('mode-message', 'หยุดงาน foreground แล้ว และเปลี่ยนเป็น OFF', 'success'); }
-  catch { setMessage('mode-message', 'ยังหยุดงานไม่ได้ กรุณาลอง hotkey ⌘/Ctrl + Shift + F12', 'error'); }
+  catch { setMessage('mode-message', `ยังหยุดงานไม่ได้ กรุณาลอง hotkey ${currentPermissionPlatform === 'darwin' ? '⌘ + Shift + F12' : 'Ctrl + Shift + F12'}`, 'error'); }
   finally { $('emergency-stop').disabled = false; await refresh(); }
 });
 $('refresh-activity').addEventListener('click', () => { void refresh(); });
 $('refresh-health').addEventListener('click', () => { void refresh(); });
 $('check-update').addEventListener('click', async () => {
   const button=$('check-update');button.disabled=true;setMessage('update-message','กำลังตรวจอัปเดต…');
-  try{const result=await window.awhConnect.checkUpdate();if(result?.ok&&result.state==='AVAILABLE')setMessage('update-message',`มีอัปเดต ${result.candidate?.version||''} พร้อมติดตั้ง`,'success');else if(result?.ok)setMessage('update-message','AWH Agent เป็นเวอร์ชันล่าสุดแล้ว','success');else setMessage('update-message','ยังตรวจอัปเดตไม่ได้','error');}
+  try{const result=await window.awhConnect.checkUpdate();if(result?.ok&&result.state==='AVAILABLE')setMessage('update-message','มีอัปเดตพร้อมติดตั้ง','success');else if(result?.ok)setMessage('update-message','AWH Agent เป็นเวอร์ชันล่าสุดแล้ว','success');else setMessage('update-message','ยังตรวจอัปเดตไม่ได้','error');}
   catch{setMessage('update-message','ยังตรวจอัปเดตไม่ได้','error');}
   finally{button.disabled=false;await refresh();}
 });
 $('install-update').addEventListener('click', async () => {
   const button=$('install-update');button.disabled=true;$('check-update').disabled=true;setMessage('update-message','กำลังดาวน์โหลด ตรวจสอบ และเตรียมอัปเดต…');
-  try{const result=await window.awhConnect.installUpdate();if(result?.ok)setMessage('update-message',`กำลังติดตั้ง ${result.version||'เวอร์ชันใหม่'} และจะเปิด AWH Agent ใหม่อัตโนมัติ`,'success');else setMessage('update-message',result?.message||'ยังติดตั้งอัปเดตไม่ได้','error');}
+  try{const result=await window.awhConnect.installUpdate();if(result?.ok)setMessage('update-message','กำลังติดตั้งอัปเดต และจะเปิด AWH Agent ใหม่อัตโนมัติ','success');else setMessage('update-message',result?.message||'ยังติดตั้งอัปเดตไม่ได้','error');}
   catch{setMessage('update-message','ยังติดตั้งอัปเดตไม่ได้ รุ่นปัจจุบันยังคงเดิม','error');}
   finally{if(document.body.isConnected){button.disabled=false;$('check-update').disabled=false;}}
 });
@@ -198,15 +219,31 @@ $('manage-device').addEventListener('click', () => { void openWeb('devices'); })
 $('authorize-permissions').addEventListener('click', async () => {
   const authorize = $('authorize-permissions');
   const settings = $('open-permission-settings');
+  const isMac = currentPermissionPlatform === 'darwin';
+  const isWindows = currentPermissionPlatform === 'win32';
   authorize.disabled = true;
   settings.disabled = true;
-  setMessage('permission-message', 'กำลังขอสิทธิ์จาก macOS ให้ครบ กรุณากดอนุญาตในหน้าต่างที่ปรากฏ…');
+  setMessage(
+    'permission-message',
+    isMac
+      ? 'กำลังขอสิทธิ์จาก macOS ให้ครบ กรุณากดอนุญาตในหน้าต่างที่ปรากฏ…'
+      : isWindows
+        ? 'กำลังเปิด AWH Full Device Control บนเครื่องนี้…'
+        : 'กำลังเตรียมสิทธิ์การควบคุมเครื่อง…',
+  );
   try {
     const result = await window.awhConnect.authorizePermissions();
-    if (result?.ready === true) setMessage('permission-message', 'สิทธิ์ครบแล้ว AWH Agent พร้อมใช้งาน', 'success');
-    else setMessage('permission-message', 'ยังมีสิทธิ์บางรายการที่ต้องเปิดใน System Settings แล้วกลับมากด “ตรวจสถานะอีกครั้ง”', 'error');
+    if (result?.ready === true) setMessage('permission-message', 'AWH Agent พร้อมควบคุมเครื่องแล้ว', 'success');
+    else if (isMac) setMessage('permission-message', 'ยังมีสิทธิ์ macOS ที่ต้องเปิดใน System Settings แล้วกลับมากด “ตรวจสถานะอีกครั้ง”', 'error');
+    else setMessage('permission-message', 'ยังเปิดการควบคุมเครื่องไม่ครบ กรุณากด “ตรวจสถานะอีกครั้ง”', 'error');
   } catch {
-    setMessage('permission-message', 'ยังขอสิทธิ์ไม่ครบ กรุณาเปิด System Settings แล้วอนุญาต AWH Device Runtime', 'error');
+    setMessage(
+      'permission-message',
+      isMac
+        ? 'ยังขอสิทธิ์ไม่ครบ กรุณาเปิด System Settings แล้วอนุญาต AWH Device Runtime'
+        : 'ยังเปิด AWH Full Device Control ไม่สำเร็จ กรุณาลองอีกครั้ง',
+      'error',
+    );
   } finally {
     await refresh();
   }
