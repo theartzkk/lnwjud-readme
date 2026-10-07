@@ -32,13 +32,13 @@
         <button id="mode-live" class="mode-button" type="button">LIVE<span>ปล่อยเครื่องให้ AWH ใช้เต็มที่</span></button>
       </div>
       <button id="emergency-stop" class="emergency-button" type="button">หยุดงานทันทีและเปลี่ยนเป็น OFF</button>
-      <p class="shortcut-hint">Emergency hotkey: ⌘/Ctrl + Shift + F12</p>
+      <p id="emergency-shortcut" class="shortcut-hint">Emergency hotkey: Ctrl/⌘ + Shift + F12</p>
       <p id="mode-message" class="message" role="status" aria-live="polite"></p>
     </section>
 
     <section id="permission-card" class="permission-card" aria-labelledby="permission-title" hidden>
-      <div class="permission-head"><div><p class="eyebrow">FIRST-RUN PERMISSIONS</p><h2 id="permission-title">อนุญาตสิทธิ์ให้ครบก่อนใช้งาน</h2></div><span id="permission-badge" class="permission-badge">CHECK</span></div>
-      <p class="muted permission-copy">AWH จะยังไม่รับงานหรือควบคุมเครื่องจนกว่าสิทธิ์ที่จำเป็นจะพร้อมครบ ครั้งต่อไปจะไม่ถามซ้ำหาก macOS ยังอนุญาตอยู่</p>
+      <div class="permission-head"><div><p id="permission-eyebrow" class="eyebrow">DEVICE SETUP</p><h2 id="permission-title">เตรียมสิทธิ์การควบคุมเครื่อง</h2></div><span id="permission-badge" class="permission-badge">CHECK</span></div>
+      <p id="permission-copy" class="muted permission-copy">AWH จะยังไม่รับงานหรือควบคุมเครื่องจนกว่าสิทธิ์ที่จำเป็นจะพร้อมครบ</p>
       <div id="permission-list" class="permission-list"></div>
       <div class="permission-actions"><button id="authorize-permissions" class="primary" type="button">อนุญาตทั้งหมด</button><button id="open-permission-settings" class="secondary" type="button">เปิดสิทธิ์ที่ยังขาด</button></div>
       <p id="permission-message" class="message" role="status" aria-live="polite"></p>
