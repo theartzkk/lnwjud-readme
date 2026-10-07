@@ -230,9 +230,10 @@ test('macOS wizard installer preserves AWH state, verifies the payload, rolls ba
   assert.match(verifier, /preservesTcc: true/);
   assert.match(verifier, /rollback: true/);
   assert.match(verifier, /relaunch: true/);
-  assert.match(verifier, /awh-logo\.png/);
-  assert.match(verifier, /canonical AWH installer logo missing/);
-  assert.match(verifier, /installer logo does not match canonical AWH artwork/);
+  assert.match(verifier, /canonicalBrandDataUri/);
+  assert.match(verifier, /installer page does not embed canonical AWH logo/);
+  assert.match(verifier, /dangling external installer logo reference remains/);
+  assert.match(verifier, /brandAsset: 'embedded-data-uri'/);
   assert.match(verifier, /canonicalBrandAsset: true/);
 
   assert.match(verifier, /\/bin\/sh/);
@@ -274,13 +275,44 @@ test('macOS installer never requests Automation permission to quit AWH Agent', a
 });
 
 
-test('macOS wizard ships and displays the canonical AWH logo', async () => {
+test('macOS wizard embeds the canonical AWH logo into every Installer page', async () => {
   const builder = await readFile(new URL('../scripts/package-macos-installer.mjs', import.meta.url), 'utf8');
   assert.ok(builder.includes("join(ROOT, 'logo-256x256.png')"));
-  assert.ok(builder.includes("join(resources, 'awh-logo.png')"));
-  assert.ok(builder.includes('<img src="awh-logo.png" alt="AWH Agent"'));
-  assert.doesNotMatch(builder, /awh-logo\.svg/);
+  assert.match(builder, /const logoDataUri = `data:image\/png;base64,/);
+  assert.ok(builder.includes('src="${logoDataUri}" alt="AWH Agent"'));
+  assert.doesNotMatch(builder, /src="awh-logo\.(?:png|svg)"/);
   assert.match(builder, /KRUART Workspace Hub/);
+});
+
+
+test('connected bridge is platform-aware, Windows-desktop sized, and keeps versions out of normal UI', async () => {
+  const [main, renderer, html, styles] = await Promise.all([
+    readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../desktop/connect.js', import.meta.url), 'utf8'),
+    readFile(new URL('../desktop/connect.html', import.meta.url), 'utf8'),
+    readFile(new URL('../desktop/connect.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(main, /width: process\.platform === 'win32' \? 760 : 420/);
+  assert.match(main, /height: process\.platform === 'win32' \? 720 : 590/);
+  assert.match(main, /let osReady = true/);
+  assert.match(main, /permissionSetupComplete = process\.platform !== 'darwin'/);
+  assert.match(main, /coreUpdateState === 'AVAILABLE' \? 'อัปเดต AWH Agent'/);
+  assert.doesNotMatch(main, /อัปเดต AWH Agent →/);
+
+  assert.match(renderer, /WINDOWS DEVICE CONTROL/);
+  assert.match(renderer, /Windows ไม่ต้องเปิด Accessibility หรือ Screen Recording แบบ macOS/);
+  assert.match(renderer, /settings\.hidden = !isMac/);
+  assert.match(renderer, /Ctrl \+ Shift \+ F12/);
+  assert.match(renderer, /AWH Full Device Control/);
+  assert.doesNotMatch(renderer, /health\.agent\?\.version|health\.runtime\?\.version|candidateVersion|result\.candidate\?\.version|result\.version/);
+
+  assert.match(html, /id="permission-eyebrow"/);
+  assert.match(html, /id="permission-copy"/);
+  assert.match(html, /id="emergency-shortcut"/);
+  assert.doesNotMatch(html, /หาก macOS ยังอนุญาตอยู่/);
+  assert.match(styles, /@media\(min-width:620px\)/);
+  assert.match(styles, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 });
 
 
