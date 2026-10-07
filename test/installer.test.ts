@@ -293,8 +293,8 @@ test('connected bridge is platform-aware, Windows-desktop sized, and keeps versi
     readFile(new URL('../desktop/connect.css', import.meta.url), 'utf8'),
   ]);
 
-  assert.match(main, /width: process\.platform === 'win32' \? 760 : 420/);
-  assert.match(main, /height: process\.platform === 'win32' \? 720 : 590/);
+  assert.match(main, /width: process\.platform === 'win32' \? 920 : 420/);
+  assert.match(main, /height: process\.platform === 'win32' \? 760 : 590/);
   assert.match(main, /let osReady = true/);
   assert.match(main, /permissionSetupComplete = process\.platform !== 'darwin'/);
   assert.match(main, /coreUpdateState === 'AVAILABLE' \? 'อัปเดต AWH Agent'/);
@@ -312,7 +312,13 @@ test('connected bridge is platform-aware, Windows-desktop sized, and keeps versi
   assert.match(html, /id="emergency-shortcut"/);
   assert.doesNotMatch(html, /หาก macOS ยังอนุญาตอยู่/);
   assert.match(styles, /@media\(min-width:620px\)/);
-  assert.match(styles, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(styles, /overflow-x:hidden/);
+  assert.match(styles, /grid-template-columns:minmax\(0,1\.08fr\) minmax\(0,\.92fr\)/);
+  assert.match(styles, /grid-template-areas:/);
+  assert.match(styles, /body\.setup-required \.activity-card,body\.setup-required \.health-card\{display:none\}/);
+  assert.match(html, /OFF<span>เบื้องหลังเท่านั้น · ไม่คลิกหรือพิมพ์<\/span>/);
+  assert.match(html, /ON<span>ใช้เครื่องร่วมกัน · ควบคุมเมื่อจำเป็น<\/span>/);
+  assert.match(html, /LIVE<span>ให้ AWH ใช้เต็มที่ · คนกลับมาแล้วลดเป็น ON<\/span>/);
 });
 
 
