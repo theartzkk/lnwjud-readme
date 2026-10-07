@@ -1040,10 +1040,10 @@ async function createWindow(showOnReady = true): Promise<BrowserWindow> {
   // AWH Agent is intentionally a thin local bridge. All management surfaces
   // live on AWH Web; the desktop package never exposes a second Control Panel.
   const win = new BrowserWindow({
-    width: 420,
-    height: 590,
-    minWidth: 380,
-    minHeight: 520,
+    width: process.platform === 'win32' ? 760 : 420,
+    height: process.platform === 'win32' ? 720 : 590,
+    minWidth: process.platform === 'win32' ? 640 : 380,
+    minHeight: process.platform === 'win32' ? 600 : 520,
     show: false,
     title: `AWH Agent — ${PRODUCT.productName}`,
     backgroundColor: '#f7f6f2',
@@ -1138,7 +1138,7 @@ function refreshTray(): void {
     { label: 'LIVE · ให้ AWH ใช้เครื่องเต็มที่', type: 'radio', checked: mode === 'LIVE', click: () => { void changeRuntimeMode('LIVE'); } },
     { type: 'separator' },
     { label: 'หยุดงานทันที', accelerator: 'CommandOrControl+Shift+F12', click: () => { void emergencyStop(); } },
-    { label: coreUpdateState === 'AVAILABLE' ? `อัปเดต AWH Agent → ${coreUpdateCandidate?.version ?? 'เวอร์ชันใหม่'}` : `AWH Agent ${VERSION} · ${coreUpdateState === 'ERROR' ? 'ตรวจอัปเดตไม่ได้' : 'ล่าสุด'}`, enabled: coreUpdateState === 'AVAILABLE', click: showLocalBridge },
+    { label: coreUpdateState === 'AVAILABLE' ? 'อัปเดต AWH Agent' : `AWH Agent · ${coreUpdateState === 'ERROR' ? 'ตรวจอัปเดตไม่ได้' : 'ล่าสุด'}`, enabled: coreUpdateState === 'AVAILABLE', click: showLocalBridge },
     { label: 'เปิด AWH', click: () => { void openAwhWeb('home'); } },
     { label: 'จัดการอุปกรณ์บนเว็บ', click: () => { void openAwhWeb('devices'); } },
     { label: 'ตั้งค่าและตรวจสุขภาพเครื่องนี้', click: showLocalBridge },
