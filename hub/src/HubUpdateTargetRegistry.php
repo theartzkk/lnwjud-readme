@@ -348,6 +348,7 @@ final class HubUpdateTargetRegistry
             'hub/src/HubCoreReleaseService.php',
             'hub/src/HubDeployExecutionAuthorityService.php',
             'hub/src/HubExecutionLifecycleService.php',
+            'hub/src/HubInfrastructureService.php',
             'hub/src/HubOperatorBridgeService.php',
             'hub/src/HubVerificationIntelligence.php',
             'hub/src/HubTrustPolicy.php',
@@ -386,6 +387,7 @@ final class HubUpdateTargetRegistry
             'test/repository-governance-contract.test.ts',
             'test/source-drift-systemd.test.ts',
             'test/system-coherence-health.test.ts',
+            'web/panel.js',
             'test/test-singleflight.test.mjs',
             'test/vps-native-core-release.test.ts',
         ];

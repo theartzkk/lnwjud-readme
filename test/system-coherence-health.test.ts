@@ -20,3 +20,20 @@ test('new control releases share desktop artifact objects instead of duplicating
  assert.match(remote,/deduplicate_desktop_artifacts[\s;]+deduplicate_control_release_desktop_artifacts/);
  assert.match(remote,/stat -c %d/); assert.match(remote,/stat -c %i/);
 });
+
+test('intentional platform and web release split is projected as coherent',async()=>{
+ const [infra,panel,registry]=await Promise.all([
+  read('hub/src/HubInfrastructureService.php'),
+  read('web/panel.js'),
+  read('hub/src/HubUpdateTargetRegistry.php'),
+ ]);
+ assert.match(infra,/TRACK_COHERENT/);
+ assert.match(infra,/trackSplitCoherent/);
+ assert.match(infra,/runtime\/production/);
+ assert.match(infra,/platform\/production/);
+ assert.match(panel,/sourceCoherent/);
+ assert.match(panel,/TRACK_COHERENT/);
+ assert.match(panel,/แยก release track ถูกต้อง/);
+ assert.match(registry,/'hub\/src\/HubInfrastructureService\.php'/);
+ assert.match(registry,/'web\/panel\.js'/);
+});
