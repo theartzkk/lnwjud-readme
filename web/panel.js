@@ -6,6 +6,7 @@ const percent=(value)=>Number.isFinite(Number(value))?Number(value).toFixed(Numb
 const date=(value)=>{const t=Date.parse(value||'');return Number.isFinite(t)?new Date(t).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):'—';};
 const good=(state)=>['ACTIVE','READY','HEALTHY','VERIFIED','AVAILABLE','PASS','PRODUCTION','ONLINE'].includes(String(state||'').toUpperCase());
 const bad=(state)=>['FAILED','CRITICAL','INVALID','UNAVAILABLE','DOWN','ERROR'].includes(String(state||'').toUpperCase());
+const sourceCoherent=(state)=>['MATCHED','TRACK_COHERENT'].includes(String(state||'').toUpperCase());
 
 function row(title,detail,label,state=''){
   const item=document.createElement('div');item.className='cp-row';
@@ -36,7 +37,7 @@ function attention(title,detail,state='WARNING',action=null){
 }
 function healthTone(state){
   const value=String(state||'UNKNOWN').toUpperCase();
-  if(['READY','ACTIVE','HEALTHY','VERIFIED','PASS','MATCHED','ONLINE','NORMAL'].includes(value))return 'good';
+  if(['READY','ACTIVE','HEALTHY','VERIFIED','PASS','MATCHED','TRACK_COHERENT','ONLINE','NORMAL'].includes(value))return 'good';
   if(['FAILED','CRITICAL','DOWN','ERROR','INVALID'].includes(value))return 'bad';
   return 'warn';
 }
@@ -63,7 +64,7 @@ function renderHealthMatrix(data){
   const workerReady=workers.filter(item=>['READY','WORKING'].includes(String(item?.state||''))).length;
   const domains=Array.isArray(server?.domains)?server.domains:[];
   const domainReady=domains.length>0&&domains.every(item=>item?.tls===true);
-  const runtimeState=deployment.sourceState==='MATCHED'?'MATCHED':deployment.sourceState||'UNKNOWN';
+  const runtimeState=sourceCoherent(deployment.sourceState)?deployment.sourceState:deployment.sourceState||'UNKNOWN';
   const storageState=storage.state||((Number(storage.usedPercent)>=90)?'CRITICAL':Number(storage.usedPercent)>=80?'WARNING':'NORMAL');
   const dbState=db.state||'UNKNOWN';
   const backupState=backup.state||'UNKNOWN';
@@ -92,7 +93,7 @@ function renderCommandCenter(data){
   const trackedTasks=Number(queue.activeTaskCount||0);
   const note=$('cp-command-note');
   if(note){
-    const source=deployment.sourceState==='MATCHED'?'รุ่นระบบตรงกัน':'กำลังตรวจรุ่นระบบ';
+    const source=deployment.sourceState==='TRACK_COHERENT'?'Control/Web แยก release track ถูกต้อง':sourceCoherent(deployment.sourceState)?'รุ่นระบบตรงกัน':'กำลังตรวจรุ่นระบบ';
     const disk=Number(storage.freeBytes)>0?'พื้นที่ว่าง '+bytes(storage.freeBytes):'กำลังตรวจพื้นที่';
     note.textContent=source+' · '+trackedTasks+' งานที่ระบบกำลังติดตาม · '+disk;
   }
@@ -171,9 +172,14 @@ function renderServer(data){
   $('cp-backup-card').textContent=latest?(backup.state||'—')+' · '+date(latest.verifiedAt):(backup.state||'ยังไม่มีข้อมูล');
   $('cp-db').textContent='Schema '+(db.schemaVersion??'—')+' · '+(db.state||'UNKNOWN');
   const deployment=data?.deployment||{};
-  $('cp-release').textContent='Control '+(deployment.controlReleaseId||'—')+' · Web '+(deployment.webReleaseId||'—')+' · '+(deployment.sourceState==='MATCHED'?'Control/Web SHA '+shortSha(deployment.controlSourceSha)+' ตรงกัน':'ยังยืนยัน Control/Web source ไม่ได้');
+  const releaseCoherence=deployment.sourceState==='MATCHED'
+    ?'Control/Web SHA '+shortSha(deployment.controlSourceSha)+' ตรงกัน'
+    :deployment.sourceState==='TRACK_COHERENT'
+      ?'Control '+shortSha(deployment.controlSourceSha)+' · Web '+shortSha(deployment.webSourceSha)+' แยก release track ถูกต้อง'
+      :'ยังยืนยัน Control/Web source ไม่ได้';
+  $('cp-release').textContent='Control '+(deployment.controlReleaseId||'—')+' · Web '+(deployment.webReleaseId||'—')+' · '+releaseCoherence;
   const overall=$('cp-overall'),warnings=[];
-  if(deployment.sourceState!=='MATCHED')warnings.push('Source');
+  if(!sourceCoherent(deployment.sourceState))warnings.push('Source');
   if(!server||!db.state||!backup.state)warnings.push('ข้อมูลไม่ครบ');
   if(db.state&&db.state!=='HEALTHY')warnings.push('Database');
   if(backup.state&&backup.state!=='VERIFIED')warnings.push('Backup');
