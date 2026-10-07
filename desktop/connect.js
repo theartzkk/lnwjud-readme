@@ -73,7 +73,7 @@ function renderMode(worker) {
 
 function renderActivity(payload) {
   const list = $('activity-list'); list.replaceChildren();
-  const rows = Array.isArray(payload?.recent) ? payload.recent.slice(-8).reverse() : [];
+  const rows = Array.isArray(payload?.recent) ? payload.recent.slice(-4).reverse() : [];
   if (!rows.length) { const p=document.createElement('p');p.className='activity-empty';p.textContent='ยังไม่มีกิจกรรม';list.append(p);return; }
   for (const row of rows) {
     const item=document.createElement('div');item.className='activity-item';
@@ -106,6 +106,8 @@ function render(enrollment, worker, permissions, health) {
   const hubConfigured = enrollment?.hubConfigured === true;
   const permissionReady = permissions?.ready === true;
   const ready = enrolled && hubConfigured && permissionReady;
+  document.body.classList.toggle('setup-required', enrolled && !permissionReady);
+  document.body.classList.toggle('device-ready', ready);
   $('agent-dot').className = `status-dot ${ready ? 'ready' : hubConfigured ? 'attention' : 'checking'}`;
   $('agent-title').textContent = ready ? 'เครื่องนี้พร้อมทำงานกับ AWH' : enrolled && !permissionReady ? 'อนุญาตสิทธิ์ให้ครบก่อนใช้งาน' : hubConfigured ? 'เชื่อมต่อเครื่องนี้กับ AWH' : 'AWH Agent รอการตั้งค่าระบบ';
   $('agent-summary').textContent = ready
