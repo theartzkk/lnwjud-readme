@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
-import type { WorkerPeer, WorkerProject, WorkerConversation } from './control-plane-worker-client.js';
+import type { WorkerPeer, WorkerProject, WorkerConversation, WorkerTask } from './control-plane-worker-client.js';
 
 export interface GatewayControlClient {
   devices(): Promise<WorkerPeer[]>;
@@ -64,6 +64,32 @@ export async function queueExactDeviceAction(
   return { ok: true as const, queued: true, target: { deviceId: device.deviceId, displayName: device.displayName }, task, idempotencyKey: key };
 }
 
+/** Read-status must stay pinned to the same device as the original action. */
+export function exactDeviceTaskStatus(
+  task: WorkerTask | undefined,
+  input: { projectId: string; taskId: string; targetDeviceId: string },
+) {
+  const targetDeviceId = input.targetDeviceId.toLowerCase();
+  if (!task) return { ok: false as const, error: 'TASK_NOT_FOUND', taskId: input.taskId };
+  const pinnedMarker = `[deviceId:${targetDeviceId}] เท่านั้น:`;
+  if (task.projectId.toLowerCase() !== input.projectId.toLowerCase()
+    || !task.goal.toLowerCase().includes(pinnedMarker.toLowerCase())
+    || (task.assignedDevice !== null && task.assignedDevice.toLowerCase() !== targetDeviceId)) {
+    return { ok: false as const, error: 'DEVICE_TASK_TARGET_MISMATCH', taskId: input.taskId, targetDeviceId };
+  }
+  if (task.execution?.executorKind !== 'DEVICE') {
+    return { ok: false as const, error: 'DEVICE_EXECUTION_NOT_CONFIRMED', taskId: input.taskId, targetDeviceId };
+  }
+  if (['FAILED', 'CANCELLED'].includes(task.state)) {
+    return { ok: false as const, error: 'DEVICE_TASK_REJECTED', taskId: input.taskId, targetDeviceId, state: task.state };
+  }
+  const targetVerified = task.assignedDevice !== null && task.assignedDevice.toLowerCase() === targetDeviceId;
+  if (!targetVerified && ['RUNNING', 'COMPLETED'].includes(task.state)) {
+    return { ok: false as const, error: 'DEVICE_TASK_TARGET_UNCONFIRMED', taskId: input.taskId, targetDeviceId, state: task.state };
+  }
+  return { ok: true as const, targetDeviceId, targetVerified, task };
+}
+
 export function createGatewayServer(client: GatewayControlClient): McpServer {
   const server = new McpServer({ name: 'AWH Agent', version: '1.0.0' });
 
@@ -121,14 +147,18 @@ export function createGatewayServer(client: GatewayControlClient): McpServer {
   });
 
   server.registerTool('device_task_status', {
-    description: 'Read current status of one AWH task in one project without starting new work.',
-    inputSchema: z.object({ projectId: z.string().uuid(), taskId: z.string().uuid() }),
-  }, async ({ projectId, taskId }) => {
+    description: 'Read one task for an exact AWH deviceId and project; rejects mismatched devices and unverified completed execution.',
+    inputSchema: z.object({
+      projectId: z.string().uuid(),
+      taskId: z.string().uuid(),
+      targetDeviceId: z.string().uuid(),
+    }),
+  }, async ({ projectId, taskId, targetDeviceId }) => {
     try {
       const conversation = await client.readConversation(projectId);
       const task = conversation.tasks.find((candidate) => candidate.taskId.toLowerCase() === taskId.toLowerCase());
-      if (!task) return text({ ok: false, error: 'TASK_NOT_FOUND', taskId }, true);
-      return text({ ok: true, task });
+      const status = exactDeviceTaskStatus(task, { projectId, taskId, targetDeviceId });
+      return text(status, !status.ok);
     } catch (error) { return safeError(error); }
   });
 

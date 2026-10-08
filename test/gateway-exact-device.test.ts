@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { queueExactDeviceAction, type GatewayControlClient } from '../src/gateway-server.js';
+import { exactDeviceTaskStatus, queueExactDeviceAction, type GatewayControlClient } from '../src/gateway-server.js';
 import type { WorkerConversation, WorkerPeer, WorkerTask } from '../src/control-plane-worker-client.js';
 
 const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
@@ -112,4 +112,40 @@ test('a server-rejected task is never reported as accepted', async () => {
   const result = await queueExactDeviceAction(client, { targetDeviceId: m5Id, projectId, instruction: 'เปิดเว็บ' });
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error, 'DEVICE_TASK_REJECTED');
+});
+
+test('status lookup remains scoped to exact device and project even after task creation', () => {
+  const goal = `บนเครื่องจริง Art’s Mac [deviceId:${m5Id}] เท่านั้น: เปิด Chrome`;
+  const base = reply(goal).tasks[0]!;
+  const wrongDevice = exactDeviceTaskStatus({ ...base, assignedDevice: intelId }, { projectId, taskId, targetDeviceId: m5Id });
+  assert.equal(wrongDevice.ok, false);
+  if (!wrongDevice.ok) assert.equal(wrongDevice.error, 'DEVICE_TASK_TARGET_MISMATCH');
+  const wrongGoal = exactDeviceTaskStatus({ ...base, goal: 'บนเครื่อง Intel เท่านั้น: เปิด Chrome' }, { projectId, taskId, targetDeviceId: m5Id });
+  assert.equal(wrongGoal.ok, false);
+  if (!wrongGoal.ok) assert.equal(wrongGoal.error, 'DEVICE_TASK_TARGET_MISMATCH');
+  const wrongProject = exactDeviceTaskStatus(base, { projectId: intelId, taskId, targetDeviceId: m5Id });
+  assert.equal(wrongProject.ok, false);
+  if (!wrongProject.ok) assert.equal(wrongProject.error, 'DEVICE_TASK_TARGET_MISMATCH');
+});
+
+test('status lookup does not claim an unassigned task completed on the requested device', () => {
+  const goal = `บนเครื่องจริง Art’s Mac [deviceId:${m5Id}] เท่านั้น: เปิด Chrome`;
+  const base = reply(goal).tasks[0]!;
+  const waiting = exactDeviceTaskStatus(base, { projectId, taskId, targetDeviceId: m5Id });
+  assert.equal(waiting.ok, true);
+  if (waiting.ok) assert.equal(waiting.targetVerified, false);
+  const completedWithoutDevice = exactDeviceTaskStatus({ ...base, state: 'COMPLETED' }, { projectId, taskId, targetDeviceId: m5Id });
+  assert.equal(completedWithoutDevice.ok, false);
+  if (!completedWithoutDevice.ok) assert.equal(completedWithoutDevice.error, 'DEVICE_TASK_TARGET_UNCONFIRMED');
+  const completedOnTarget = exactDeviceTaskStatus({ ...base, state: 'COMPLETED', assignedDevice: m5Id }, { projectId, taskId, targetDeviceId: m5Id });
+  assert.equal(completedOnTarget.ok, true);
+  if (completedOnTarget.ok) assert.equal(completedOnTarget.targetVerified, true);
+});
+
+test('status lookup refuses a VPS execution even with a matching device marker', () => {
+  const goal = `บนเครื่องจริง Art’s Mac [deviceId:${m5Id}] เท่านั้น: เปิด Chrome`;
+  const base = reply(goal).tasks[0]!;
+  const result = exactDeviceTaskStatus({ ...base, assignedDevice: m5Id, execution: { ...base.execution!, executorKind: 'VPS' } }, { projectId, taskId, targetDeviceId: m5Id });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error, 'DEVICE_EXECUTION_NOT_CONFIRMED');
 });
