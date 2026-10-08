@@ -19,8 +19,19 @@ function safeError(error: unknown) {
   return text({ ok: false, error: typeof value?.code === 'string' ? value.code : 'AWH_GATEWAY_FAILED', message: typeof value?.message === 'string' ? value.message : 'AWH Gateway request failed' }, true);
 }
 
+const MAX_DEVICE_HEARTBEAT_AGE_MS = 5 * 60_000;
+const MAX_DEVICE_CLOCK_SKEW_MS = 60_000;
+
+function heartbeatFresh(lastSeenAt: string, nowMs = Date.now()): boolean {
+  const seenAtMs = Date.parse(lastSeenAt);
+  if (!Number.isFinite(seenAtMs)) return false;
+  const ageMs = nowMs - seenAtMs;
+  return ageMs >= -MAX_DEVICE_CLOCK_SKEW_MS && ageMs <= MAX_DEVICE_HEARTBEAT_AGE_MS;
+}
+
 function runnable(device: WorkerPeer): boolean {
-  return device.routingEnabled && ['ONLINE', 'BUSY'].includes(device.activity) && ['READY', 'WORKING'].includes(device.state);
+  return device.routingEnabled && ['ONLINE', 'BUSY'].includes(device.activity)
+    && ['READY', 'WORKING'].includes(device.state) && heartbeatFresh(device.lastSeenAt);
 }
 
 /**
@@ -37,7 +48,12 @@ export async function queueExactDeviceAction(
   const device = devices.find((item) => item.deviceId.toLowerCase() === targetDeviceId.toLowerCase());
   if (!device) return { ok: false as const, error: 'DEVICE_NOT_FOUND' };
   if (!device.routingEnabled) return { ok: false as const, error: 'DEVICE_ROUTING_DISABLED', deviceId: device.deviceId };
-  if (!runnable(device)) return { ok: false as const, error: 'DEVICE_NOT_ONLINE', deviceId: device.deviceId, state: device.state, activity: device.activity, lastSeenAt: device.lastSeenAt };
+  if (!['ONLINE', 'BUSY'].includes(device.activity) || !['READY', 'WORKING'].includes(device.state)) {
+    return { ok: false as const, error: 'DEVICE_NOT_ONLINE', deviceId: device.deviceId, state: device.state, activity: device.activity, lastSeenAt: device.lastSeenAt };
+  }
+  if (!heartbeatFresh(device.lastSeenAt)) {
+    return { ok: false as const, error: 'DEVICE_HEARTBEAT_STALE', deviceId: device.deviceId, lastSeenAt: device.lastSeenAt };
+  }
   if (!projects.some((item) => item.projectId.toLowerCase() === projectId.toLowerCase())) return { ok: false as const, error: 'PROJECT_NOT_AVAILABLE', projectId };
 
   // The ID, not the (potentially duplicated) display name, is the routing identity.

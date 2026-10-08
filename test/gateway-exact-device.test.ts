@@ -11,7 +11,7 @@ const taskId = 'c5e185c7-1b52-4852-9776-ca3012f3a6a6';
 function worker(deviceId: string, changes: Partial<WorkerPeer> = {}): WorkerPeer {
   return {
     deviceId, displayName: 'Art’s Mac', platform: 'darwin', arch: deviceId === m5Id ? 'arm64' : 'x64',
-    appVersion: '1.0.0', state: 'READY', lastSeenAt: '2026-10-08T03:30:00Z',
+    appVersion: '1.0.0', state: 'READY', lastSeenAt: new Date().toISOString(),
     capabilities: ['device.gui.operate', 'tool.awh-device-runtime'], detectedTools: ['AWH Device Runtime'],
     activity: 'ONLINE', role: 'OWNER', routingEnabled: true, requiresOwnerApproval: false,
     workloads: ['BROWSER'], purpose: 'Enrolled device', ...changes,
@@ -64,6 +64,21 @@ test('offline or stale M5 cannot silently fall back to online Intel', async () =
     const { client, submits } = fixture([worker(intelId), worker(m5Id, { state, activity: state })]);
     const result = await queueExactDeviceAction(client, { targetDeviceId: m5Id, projectId, instruction: 'ตรวจหน้าเว็บ' });
     assert.deepEqual({ ok: result.ok, error: result.ok ? null : result.error }, { ok: false, error: 'DEVICE_NOT_ONLINE' });
+    assert.equal(submits.length, 0);
+  }
+});
+
+test('old or invalid heartbeat cannot make a READY Mac routable or fall back to Intel', async () => {
+  const stale = new Date(Date.now() - 10 * 60_000).toISOString();
+  const future = new Date(Date.now() + 2 * 60_000).toISOString();
+  for (const lastSeenAt of [stale, future, 'not-a-timestamp']) {
+    const { client, submits } = fixture([worker(intelId), worker(m5Id, { lastSeenAt })]);
+    const result = await queueExactDeviceAction(client, { targetDeviceId: m5Id, projectId, instruction: 'เปิด Chrome' });
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.error, 'DEVICE_HEARTBEAT_STALE');
+      assert.equal(result.deviceId, m5Id);
+    }
     assert.equal(submits.length, 0);
   }
 });
