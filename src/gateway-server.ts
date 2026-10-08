@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
-import type { ControlPlaneWorkerClient, WorkerPeer, WorkerProject, WorkerConversation } from './control-plane-worker-client.js';
+import type { WorkerPeer, WorkerProject, WorkerConversation } from './control-plane-worker-client.js';
 
 export interface GatewayControlClient {
   devices(): Promise<WorkerPeer[]>;
@@ -20,7 +20,48 @@ function safeError(error: unknown) {
 }
 
 function runnable(device: WorkerPeer): boolean {
-  return device.routingEnabled && ['ONLINE', 'BUSY'].includes(device.activity) && !['OFFLINE', 'STALE'].includes(device.state);
+  return device.routingEnabled && ['ONLINE', 'BUSY'].includes(device.activity) && ['READY', 'WORKING'].includes(device.state);
+}
+
+/**
+ * The Hub owns both the device registry and the pinned execution lease.
+ * Never substitute a different device or infer success from a conversation
+ * response that does not acknowledge the exact DEVICE execution.
+ */
+export async function queueExactDeviceAction(
+  client: GatewayControlClient,
+  input: { targetDeviceId: string; projectId: string; instruction: string; idempotencyKey?: string | undefined },
+) {
+  const { targetDeviceId, projectId, instruction, idempotencyKey } = input;
+  const [devices, projects] = await Promise.all([client.devices(), client.projects()]);
+  const device = devices.find((item) => item.deviceId.toLowerCase() === targetDeviceId.toLowerCase());
+  if (!device) return { ok: false as const, error: 'DEVICE_NOT_FOUND' };
+  if (!device.routingEnabled) return { ok: false as const, error: 'DEVICE_ROUTING_DISABLED', deviceId: device.deviceId };
+  if (!runnable(device)) return { ok: false as const, error: 'DEVICE_NOT_ONLINE', deviceId: device.deviceId, state: device.state, activity: device.activity, lastSeenAt: device.lastSeenAt };
+  if (!projects.some((item) => item.projectId.toLowerCase() === projectId.toLowerCase())) return { ok: false as const, error: 'PROJECT_NOT_AVAILABLE', projectId };
+
+  // The ID, not the (potentially duplicated) display name, is the routing identity.
+  // Include it in the idempotent goal to distinguish devices sharing a name.
+  const goal = `บนเครื่องจริง ${device.displayName} [deviceId:${device.deviceId}] เท่านั้น: ${instruction.trim()}`;
+  const key = idempotencyKey ?? `gateway-${randomUUID()}`;
+  const conversation = await client.submitConversation(projectId, goal, key, device.deviceId);
+  const lastTaskId = conversation.conversation?.lastTaskId;
+  const task = lastTaskId
+    ? conversation.tasks.find((item) => item.taskId === lastTaskId)
+    : undefined;
+  if (!task || task.projectId.toLowerCase() !== projectId.toLowerCase() || task.goal !== goal) {
+    return { ok: false as const, error: 'DEVICE_TASK_NOT_ACKNOWLEDGED', targetDeviceId: device.deviceId, idempotencyKey: key };
+  }
+  if (task.assignedDevice !== null && task.assignedDevice.toLowerCase() !== device.deviceId.toLowerCase()) {
+    return { ok: false as const, error: 'DEVICE_TASK_TARGET_MISMATCH', targetDeviceId: device.deviceId, taskId: task.taskId };
+  }
+  if (task.execution?.executorKind !== 'DEVICE') {
+    return { ok: false as const, error: 'DEVICE_EXECUTION_NOT_CONFIRMED', targetDeviceId: device.deviceId, taskId: task.taskId };
+  }
+  if (['FAILED', 'CANCELLED'].includes(task.state)) {
+    return { ok: false as const, error: 'DEVICE_TASK_REJECTED', targetDeviceId: device.deviceId, taskId: task.taskId, state: task.state };
+  }
+  return { ok: true as const, queued: true, target: { deviceId: device.deviceId, displayName: device.displayName }, task, idempotencyKey: key };
 }
 
 export function createGatewayServer(client: GatewayControlClient): McpServer {
@@ -74,19 +115,8 @@ export function createGatewayServer(client: GatewayControlClient): McpServer {
     }),
   }, async ({ targetDeviceId, projectId, instruction, idempotencyKey }) => {
     try {
-      const [devices, projects] = await Promise.all([client.devices(), client.projects()]);
-      const device = devices.find((d) => d.deviceId.toLowerCase() === targetDeviceId.toLowerCase());
-      if (!device) return text({ ok: false, error: 'DEVICE_NOT_FOUND' }, true);
-      if (!device.routingEnabled) return text({ ok: false, error: 'DEVICE_ROUTING_DISABLED', deviceId: device.deviceId }, true);
-      if (!runnable(device)) return text({ ok: false, error: 'DEVICE_NOT_ONLINE', deviceId: device.deviceId, state: device.state, activity: device.activity, lastSeenAt: device.lastSeenAt }, true);
-      if (!projects.some((p) => p.projectId.toLowerCase() === projectId.toLowerCase())) return text({ ok: false, error: 'PROJECT_NOT_AVAILABLE', projectId }, true);
-      const goal = `บนเครื่องจริง ${device.displayName} เท่านั้น: ${instruction.trim()}`;
-      const key = idempotencyKey ?? `gateway-${randomUUID()}`;
-      const conversation = await client.submitConversation(projectId, goal, key, device.deviceId);
-      const task = conversation.tasks.find((candidate) => candidate.projectId.toLowerCase() === projectId.toLowerCase() && candidate.goal === goal)
-        ?? conversation.tasks.at(-1)
-        ?? null;
-      return text({ ok: true, target: { deviceId: device.deviceId, displayName: device.displayName }, task, idempotencyKey: key });
+      const result = await queueExactDeviceAction(client, { targetDeviceId, projectId, instruction, idempotencyKey });
+      return text(result, !result.ok);
     } catch (error) { return safeError(error); }
   });
 

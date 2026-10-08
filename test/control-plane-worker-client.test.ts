@@ -3,6 +3,8 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+// This file is part of the pinned desktop/native suite: run Gateway routing regressions with it.
+import './gateway-exact-device.test.js';
 import { ControlPlaneWorkerClient } from '../src/control-plane-worker-client.js';
 import { DEVICE_TOKEN_CREDENTIAL_KEY, type CredentialStore } from '../src/credential-store.js';
 
