@@ -29,9 +29,20 @@ function heartbeatFresh(lastSeenAt: string, nowMs = Date.now()): boolean {
   return ageMs >= -MAX_DEVICE_CLOCK_SKEW_MS && ageMs <= MAX_DEVICE_HEARTBEAT_AGE_MS;
 }
 
+/** Report effective routing readiness independently of the Hub's display-only READY label. */
+export function deviceRoutingReadiness(device: WorkerPeer, nowMs = Date.now()) {
+  const blocker = !device.routingEnabled
+    ? 'DEVICE_ROUTING_DISABLED'
+    : !['ONLINE', 'BUSY'].includes(device.activity) || !['READY', 'WORKING'].includes(device.state)
+      ? 'DEVICE_NOT_ONLINE'
+      : !heartbeatFresh(device.lastSeenAt, nowMs)
+        ? 'DEVICE_HEARTBEAT_STALE'
+        : null;
+  return { runnable: blocker === null, blocker };
+}
+
 function runnable(device: WorkerPeer): boolean {
-  return device.routingEnabled && ['ONLINE', 'BUSY'].includes(device.activity)
-    && ['READY', 'WORKING'].includes(device.state) && heartbeatFresh(device.lastSeenAt);
+  return deviceRoutingReadiness(device).runnable;
 }
 
 /**
@@ -47,11 +58,14 @@ export async function queueExactDeviceAction(
   const [devices, projects] = await Promise.all([client.devices(), client.projects()]);
   const device = devices.find((item) => item.deviceId.toLowerCase() === targetDeviceId.toLowerCase());
   if (!device) return { ok: false as const, error: 'DEVICE_NOT_FOUND' };
-  if (!device.routingEnabled) return { ok: false as const, error: 'DEVICE_ROUTING_DISABLED', deviceId: device.deviceId };
-  if (!['ONLINE', 'BUSY'].includes(device.activity) || !['READY', 'WORKING'].includes(device.state)) {
+  const readiness = deviceRoutingReadiness(device);
+  if (readiness.blocker === 'DEVICE_ROUTING_DISABLED') {
+    return { ok: false as const, error: 'DEVICE_ROUTING_DISABLED', deviceId: device.deviceId };
+  }
+  if (readiness.blocker === 'DEVICE_NOT_ONLINE') {
     return { ok: false as const, error: 'DEVICE_NOT_ONLINE', deviceId: device.deviceId, state: device.state, activity: device.activity, lastSeenAt: device.lastSeenAt };
   }
-  if (!heartbeatFresh(device.lastSeenAt)) {
+  if (readiness.blocker === 'DEVICE_HEARTBEAT_STALE') {
     return { ok: false as const, error: 'DEVICE_HEARTBEAT_STALE', deviceId: device.deviceId, lastSeenAt: device.lastSeenAt };
   }
   if (!projects.some((item) => item.projectId.toLowerCase() === projectId.toLowerCase())) return { ok: false as const, error: 'PROJECT_NOT_AVAILABLE', projectId };
@@ -130,9 +144,12 @@ export function createGatewayServer(client: GatewayControlClient): McpServer {
   }, async () => {
     try {
       const devices = await client.devices();
-      return text({ devices: devices.map((d) => ({
+      const observedAtMs = Date.now();
+      const observedAt = new Date(observedAtMs).toISOString();
+      return text({ observedAt, devices: devices.map((d) => ({
         deviceId: d.deviceId, displayName: d.displayName, platform: d.platform, arch: d.arch,
         state: d.state, activity: d.activity, routingEnabled: d.routingEnabled, role: d.role,
+        ...deviceRoutingReadiness(d, observedAtMs),
         capabilities: d.capabilities, detectedTools: d.detectedTools, workloads: d.workloads,
         purpose: d.purpose, lastSeenAt: d.lastSeenAt,
       })) });

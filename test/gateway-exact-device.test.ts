@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { exactDeviceTaskStatus, queueExactDeviceAction, type GatewayControlClient } from '../src/gateway-server.js';
+import { deviceRoutingReadiness, exactDeviceTaskStatus, queueExactDeviceAction, type GatewayControlClient } from '../src/gateway-server.js';
 import type { WorkerConversation, WorkerPeer, WorkerTask } from '../src/control-plane-worker-client.js';
 
 const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
@@ -81,6 +81,18 @@ test('old or invalid heartbeat cannot make a READY Mac routable or fall back to 
     }
     assert.equal(submits.length, 0);
   }
+});
+
+test('device_list readiness distinguishes Hub display state from fresh command routability', () => {
+  const now = Date.now();
+  const fresh = worker(m5Id, { lastSeenAt: new Date(now - 10_000).toISOString() });
+  const stale = worker(m5Id, { lastSeenAt: new Date(now - 10 * 60_000).toISOString() });
+  assert.deepEqual(deviceRoutingReadiness(fresh, now), { runnable: true, blocker: null });
+  assert.deepEqual(deviceRoutingReadiness(stale, now), { runnable: false, blocker: 'DEVICE_HEARTBEAT_STALE' });
+  assert.deepEqual(deviceRoutingReadiness(worker(m5Id, { lastSeenAt: 'bad' }), now), { runnable: false, blocker: 'DEVICE_HEARTBEAT_STALE' });
+  assert.deepEqual(deviceRoutingReadiness(worker(m5Id, { routingEnabled: false }), now), { runnable: false, blocker: 'DEVICE_ROUTING_DISABLED' });
+  assert.deepEqual(deviceRoutingReadiness(worker(m5Id, { activity: 'OFFLINE' }), now), { runnable: false, blocker: 'DEVICE_NOT_ONLINE' });
+  assert.deepEqual(deviceRoutingReadiness(worker(m5Id, { state: 'STALE' }), now), { runnable: false, blocker: 'DEVICE_NOT_ONLINE' });
 });
 
 test('enrolled device without routing permission is rejected before sending', async () => {
