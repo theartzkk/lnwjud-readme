@@ -21,6 +21,9 @@ async function openOwnerPanel(page) {
 }
 
 test('Control Panel: responsive layout, mobile navigation and visual evidence', async ({ page }, testInfo) => {
+  // Full-page screenshots of the complete Owner dashboard can be several thousand
+  // pixels tall. Allow Chromium enough time without omitting any visual checks.
+  test.setTimeout(150_000);
   const csp = [];
   const exceptions = [];
   await page.addInitScript(() => {
@@ -67,7 +70,7 @@ test('Control Panel: responsive layout, mobile navigation and visual evidence', 
       && document.querySelector('#cp-provider-list')?.textContent?.includes('ผู้ให้บริการจำลองสำหรับทดสอบ') === true,
     csp: window.__awhCspViolations || [],
   }));
-  const image = await page.screenshot({ fullPage: true, animations:'disabled' });
+  const image = await page.screenshot({ fullPage: true, animations:'disabled', timeout: 90_000 });
   await testInfo.attach('owner-panel-render.png', { body:image, contentType:'image/png' });
   await testInfo.attach('owner-panel-metrics.json', { body:Buffer.from(JSON.stringify({viewport:testInfo.project.name,metrics,exceptions,csp},null,2)), contentType:'application/json' });
   expect(metrics.documentWidth, 'horizontal overflow').toBeLessThanOrEqual(metrics.clientWidth + 1);
