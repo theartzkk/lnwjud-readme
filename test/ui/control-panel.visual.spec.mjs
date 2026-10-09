@@ -63,6 +63,10 @@ test('Control Panel: responsive layout, mobile navigation and visual evidence', 
     innerWidth,
     documentWidth:document.documentElement.scrollWidth,
     clientWidth:document.documentElement.clientWidth,
+    overflowCandidates:Array.from(document.querySelectorAll('body *')).map(el => {
+      const rect=el.getBoundingClientRect();
+      return {tag:el.tagName,id:el.id,classes:String(el.className||'').slice(0,90),left:Math.round(rect.left*100)/100,right:Math.round(rect.right*100)/100};
+    }).filter(item=>item.right>document.documentElement.clientWidth+0.25).slice(0,25),
     mainWidth:document.querySelector('.cp-main')?.getBoundingClientRect().width,
     ownerDataReady: document.querySelector('#cp-updated')?.textContent?.includes('ตรวจข้อมูลแล้ว') === true
       && document.querySelector('#cp-people-summary')?.textContent?.includes('1 บัญชี') === true
@@ -70,7 +74,8 @@ test('Control Panel: responsive layout, mobile navigation and visual evidence', 
       && document.querySelector('#cp-provider-list')?.textContent?.includes('ผู้ให้บริการจำลองสำหรับทดสอบ') === true,
     csp: window.__awhCspViolations || [],
   }));
-  const image = await page.screenshot({ fullPage: true, animations:'disabled', timeout: 90_000 });
+  if (metrics.documentWidth > metrics.clientWidth) console.log('AWH_UI_OVERFLOW_DIAG '+JSON.stringify({viewport:testInfo.project.name,metrics}));
+  const image = await page.screenshot({ fullPage: true, animations:'disabled', scale:'css', timeout: 90_000 });
   await testInfo.attach('owner-panel-render.png', { body:image, contentType:'image/png' });
   await testInfo.attach('owner-panel-metrics.json', { body:Buffer.from(JSON.stringify({viewport:testInfo.project.name,metrics,exceptions,csp},null,2)), contentType:'application/json' });
   expect(metrics.documentWidth, 'horizontal overflow').toBeLessThanOrEqual(metrics.clientWidth + 1);

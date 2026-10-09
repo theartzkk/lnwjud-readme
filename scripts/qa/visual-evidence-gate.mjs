@@ -52,7 +52,8 @@ export async function verifyReport(report, revision, { artifactsDir, expectedVie
       insist(bytes.length > 0, project + ': empty ' + name);
       if (name.endsWith('.png')) {
         insist(bytes.length > 1024 && bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex')) && bytes.toString('ascii',12,16) === 'IHDR', project + ': PNG signature/header invalid');
-        insist(bytes.readUInt32BE(16) === Number(project.split('-')[1]), project + ': screenshot width does not match viewport');
+        const actualWidth=bytes.readUInt32BE(16), expectedWidth=Number(project.split('-')[1]);
+        insist(actualWidth === expectedWidth, project + ': screenshot width ' + actualWidth + ' does not match viewport ' + expectedWidth);
       }
       if (name === 'owner-panel-metrics.json') {
         const evidence = JSON.parse(bytes.toString('utf8'));

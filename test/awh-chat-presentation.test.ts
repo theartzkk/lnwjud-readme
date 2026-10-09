@@ -62,7 +62,11 @@ test("Provider setup is discoverable, truthful, and high-risk confirmation happe
   assert.match(ownerStepUp, /export async function withOwnerStepUp/);
   assert.match(ownerStepUp, /await stepUp\(password\)/);
   assert.match(ownerStepUp, /ระบบจะทำรายการเดิมต่อให้อัตโนมัติ/);
-  assert.match(ownerStepUp, /visualViewport/);
+  assert.doesNotMatch(ownerStepUp, /\.style\.setProperty\(/, 'Owner confirmation must respect strict CSP');
+  assert.match(ownerStepUp, /event\.key === 'Escape'/, 'Owner confirmation must support keyboard dismissal');
+  const ownerCss = await read('web/kruart-system.css');
+  assert.match(ownerCss, /\.awh-owner-dialog-overlay\s*\{[\s\S]*?100dvh/, 'Owner confirmation must use dynamic viewport CSS');
+  assert.match(ownerCss, /\.awh-owner-dialog-card\s*\{[\s\S]*?overflow:auto/, 'Owner confirmation must remain scrollable on mobile');
   assert.match(app, /withOwnerStepUp\(\(\) => updateProviderHubCredential\(item\.providerId, 'SET', secret\)/);
   assert.match(adapter, /PROVIDER_AUTH_FAILED: 'AI Provider ปฏิเสธ API key นี้/);
   assert.match(adapter, /PROVIDER_RATE_LIMITED: 'AI Provider จำกัดการเรียกใช้ชั่วคราว/);
