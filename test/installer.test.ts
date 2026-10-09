@@ -12,6 +12,21 @@ import { ART_AGENT_VERSION } from '../src/version.js';
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const require = createRequire(import.meta.url);
 
+test('Windows OTA swap does not use reserved PowerShell PID variable', async () => {
+  const source = await readFile(new URL('../src/desktop-core-update.ts', import.meta.url), 'utf8');
+  const helper = source.slice(source.indexOf('const WINDOWS_HELPER=['), source.indexOf("].join('\\r\\n')", source.indexOf('const WINDOWS_HELPER=[')));
+  assert.ok(helper.length > 300, 'Windows swap helper exists');
+  assert.match(helper, /param\(\[int\]\$TargetProcessId/);
+  assert.doesNotMatch(helper, /\$Pid\b/i, 'PowerShell PID is an automatic read-only variable');
+  assert.match(source, /'-TargetProcessId',String\(process\.pid\)/);
+  if (process.platform === 'win32') {
+    const probe = spawnSync('powershell.exe', ['-NoProfile','-NonInteractive','-Command',
+      '& { param([int]$TargetProcessId) Write-Output $TargetProcessId } 123'], { encoding:'utf8', timeout:10000 });
+    assert.equal(probe.status, 0, probe.stderr || 'PowerShell update parameter binding failed');
+    assert.match(probe.stdout, /123/);
+  }
+});
+
 test('AWH packaging configuration keeps Squirrel per-user behavior and public artifact names', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
     version?: string;
