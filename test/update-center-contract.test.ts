@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 
 const ROOT=process.cwd();
@@ -706,6 +707,28 @@ test('Update Center accessibility contract keeps live regions bounded and contro
   assert.match(css,/\.update-search input::placeholder\{color:#68778d!important/);
   assert.match(css,/button\.primary-button\[data-operation-state=\"active\"\]/);
   assert.match(css,/background:linear-gradient\(135deg,#eaf3ff,#f7fbff\)!important/);
+});
+
+test('Update Center shows only verified backend milestone percentages, with safe fallback', async()=>{
+  const script=await readFile(join(ROOT,'web/updates.js'),'utf8');
+  const start=script.indexOf('function serverMilestoneProgress(');
+  const end=script.indexOf('\n}\n',start)+2;
+  assert.ok(start>=0&&end>start,'expected testable canonical backend progress selector');
+  const milestone=runInNewContext('('+script.slice(start,end)+')') as
+    (item:Record<string,unknown>|null,event:Record<string,unknown>|null,waiting:boolean,queued:boolean)=>number|null;
+  const active={state:'UPDATING',progress:28};
+  assert.equal(milestone(active,{progress:24},false,false),28);
+  assert.equal(milestone({state:'UPDATING',progress:null},{progress:55},false,false),55);
+  assert.equal(milestone({state:'UPDATING',progress:0},null,false,false),0);
+  assert.equal(milestone(active,null,false,true),null,'queued release must not claim progress');
+  assert.equal(milestone(active,null,true,false),null,'approval wait must not claim progress');
+  assert.equal(milestone({state:'UPDATE_AVAILABLE',progress:70},null,false,false),null);
+  for(const invalid of [null,undefined,'',NaN,-1,101,100,12.6])
+    assert.equal(milestone({state:'UPDATING',progress:invalid},null,false,false),null);
+  assert.equal(milestone({state:'UPDATING'},null,false,false),null,'unknown status must not display a fake 0%');
+  assert.match(script,/meter\.setAttribute\('aria-valuenow',String\(percent\)\)/);
+  assert.match(script,/percent===null\?'0%':percent\+'%'/);
+  assert.match(script,/ความคืบหน้าตามขั้นตอน/);
 });
 
 test('Update Center streams canonical release progress in real time with bounded fallback', async()=>{

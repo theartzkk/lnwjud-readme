@@ -1149,6 +1149,17 @@ function syncLiveStream(){
   else{stopLiveStream();stopLiveWatchdog();}
 }
 
+// Only display persisted, server-reported milestones. Do not turn local
+// optimistic values, an absent/null progress, queued work or an unconfirmed
+// terminal 100 into a percentage. Backend progress is not elapsed time.
+function serverMilestoneProgress(item,event,waiting,queuedOnly){
+  if(!item||item.state!=='UPDATING'||waiting||queuedOnly)return null;
+  const raw=item.progress??event?.progress;
+  if(typeof raw!=='number'&&(typeof raw!=='string'||raw.trim()===''))return null;
+  const progress=Number(raw);
+  return Number.isInteger(progress)&&progress>=0&&progress<100?progress:null;
+}
+
 function renderProgress(){
   const active=(center?.items||[]).filter((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
   const queuedPins=queuedPinnedOperations();
@@ -1181,11 +1192,16 @@ function renderProgress(){
     RECOVERING:'กำลังกู้ต่อ'
   }[truthState]||'กำลังทำ';
   $('operation-progress-title').textContent=waiting?'รออนุมัติก่อนติดตั้ง':queuedOnly?('รอคิวอัปเดต '+operationName):('กำลังอัปเดต '+operationName);
-  $('operation-progress-percent').textContent=truthLabel;
-  $('operation-progress-bar').style.width='0';
+  const percent=serverMilestoneProgress(item,event,waiting,queuedOnly);
+  $('operation-progress-percent').textContent=percent===null?truthLabel:percent+'%';
+  $('operation-progress-percent').title=percent===null?'สถานะที่ระบบยืนยัน':'ความคืบหน้าตามขั้นตอน Release Engine ไม่ใช่เวลาคงเหลือ';
+  $('operation-progress-bar').style.width=percent===null?'0%':percent+'%';
   const meter=$('operation-progress-meter');
-  meter.removeAttribute('aria-valuenow');
-  meter.setAttribute('aria-valuetext',queuedOnly?'รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':truthLabel);
+  if(percent===null)meter.removeAttribute('aria-valuenow');
+  else meter.setAttribute('aria-valuenow',String(percent));
+  meter.setAttribute('aria-valuetext',percent===null
+    ?(queuedOnly?'รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':truthLabel)
+    :'ความคืบหน้าตามขั้นตอน '+percent+'% · '+truthLabel);
   const signalFresh=liveSignalFresh();
   const eventFresh=signalFresh&&progressEventFresh(event);
   $('operation-progress-message').textContent=queuedOnly?'รับคำสั่งแล้ว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':ownerProgressMessage(item,event,waiting);
