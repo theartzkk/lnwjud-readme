@@ -174,10 +174,10 @@ const MAC_HELPER=[
 ].join('\n')+'\n';
 
 const WINDOWS_HELPER=[
-  'param([int]$Pid,[string]$Current,[string]$Next,[string]$Previous,[string]$ExeRelative,[string]$Health,[string]$Result)',
+  'param([int]$TargetProcessId,[string]$Current,[string]$Next,[string]$Previous,[string]$ExeRelative,[string]$Health,[string]$Result)',
   '$ErrorActionPreference="Stop"',
-  'for($i=0;$i -lt 240;$i++){if(-not (Get-Process -Id $Pid -ErrorAction SilentlyContinue)){break};Start-Sleep -Milliseconds 250}',
-  'if(Get-Process -Id $Pid -ErrorAction SilentlyContinue){exit 30}',
+  'for($i=0;$i -lt 240;$i++){if(-not (Get-Process -Id $TargetProcessId -ErrorAction SilentlyContinue)){break};Start-Sleep -Milliseconds 250}',
+  'if(Get-Process -Id $TargetProcessId -ErrorAction SilentlyContinue){exit 30}',
   'if(Test-Path -LiteralPath $Previous){Remove-Item -LiteralPath $Previous -Recurse -Force}',
   'try{Rename-Item -LiteralPath $Current -NewName ([IO.Path]::GetFileName($Previous)) -ErrorAction Stop}catch{Set-Content -LiteralPath $Result -Value \'{"state":"SWAP_FAILED"}\';exit 31}',
   'try{Rename-Item -LiteralPath $Next -NewName ([IO.Path]::GetFileName($Current)) -ErrorAction Stop}catch{Rename-Item -LiteralPath $Previous -NewName ([IO.Path]::GetFileName($Current));Set-Content -LiteralPath $Result -Value \'{"state":"ROLLBACK","reason":"SWAP_FAILED"}\';exit 32}',
@@ -206,7 +206,7 @@ export async function prepareDesktopCoreUpdateSwap(staged:StagedDesktopCoreUpdat
   }
   if(platform==='win32'){
     const helper=join(root,'apply-update.ps1');await writeFile(helper,WINDOWS_HELPER,{encoding:'utf8'});
-    return {helper,args:['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',helper,'-Pid',String(process.pid),'-Current',currentRoot,'-Next',nextRoot,'-Previous',previousRoot,'-ExeRelative',exeRel,'-Health',healthMarker,'-Result',resultMarker],currentRoot,nextRoot,previousRoot,healthMarker,resultMarker};
+    return {helper,args:['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',helper,'-TargetProcessId',String(process.pid),'-Current',currentRoot,'-Next',nextRoot,'-Previous',previousRoot,'-ExeRelative',exeRel,'-Health',healthMarker,'-Result',resultMarker],currentRoot,nextRoot,previousRoot,healthMarker,resultMarker};
   }
   throw new Error('CORE_UPDATE_PLATFORM_UNSUPPORTED');
 }
