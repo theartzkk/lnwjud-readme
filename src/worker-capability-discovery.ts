@@ -1,5 +1,5 @@
 import { access } from 'node:fs/promises';
-import { join, win32 as pathWin32 } from 'node:path';
+import { posix as pathPosix, win32 as pathWin32 } from 'node:path';
 import { createRequire } from 'node:module';
 import { resolveExecutable } from './process.js';
 
@@ -94,18 +94,18 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
   if (platform === 'darwin') {
     const home = typeof env.HOME === 'string' && env.HOME ? env.HOME : null;
     const systemCandidates = home ? [
-      join(home, '.awh', 'bin', 'awh-system-mcp'),
-      join(home, 'Library', 'Application Support', 'AWH', 'RemoteWorker', 'runtime', 'node_modules', '.bin', 'desktop-commander'),
-      join(home, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander'),
+      pathPosix.join(home, '.awh', 'bin', 'awh-system-mcp'),
+      pathPosix.join(home, 'Library', 'Application Support', 'AWH', 'RemoteWorker', 'runtime', 'node_modules', '.bin', 'desktop-commander'),
+      pathPosix.join(home, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander'),
     ] : [];
-    const guiCandidates = home ? [join(home, '.kruart', 'ai-control', 'kui')] : [];
+    const guiCandidates = home ? [pathPosix.join(home, '.kruart', 'ai-control', 'kui')] : [];
     const runtimeCandidates = home ? [
-      join(home, '.awh', 'bin', 'awh-mcp-stdio'),
-      join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'awh-mcp-stdio'),
+      pathPosix.join(home, '.awh', 'bin', 'awh-mcp-stdio'),
+      pathPosix.join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'awh-mcp-stdio'),
     ] : [];
     const runtimeReady = await anyPath(runtimeCandidates, pathAvailable);
     const systemReady = await anyPath(systemCandidates, pathAvailable);
-    const remoteSessionReady = home ? await pathAvailable(join(home, '.desktop-commander-device', 'device.json')) : false;
+    const remoteSessionReady = home ? await pathAvailable(pathPosix.join(home, '.desktop-commander-device', 'device.json')) : false;
     const guiReady = runtimeReady || await anyPath(guiCandidates, pathAvailable);
     if (runtimeReady) tools.push('tool.awh-device-runtime');
     if (systemReady && remoteSessionReady) tools.push('tool.remote-desktop-mcp');

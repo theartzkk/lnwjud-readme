@@ -42,7 +42,7 @@ test('Tool Fabric pins one exact audited package per capability and never uses f
   const premiere = toolPackForCapability('creative.premiere');
   assert.ok(premiere);
   const exactRoot = toolPackRoot(premiere, 'darwin', '/tmp/awh-tool-pack-root', process.env);
-  assert.match(exactRoot, /ToolPacks\/creative\.premiere\/releases\/1\.18\.2-[a-f0-9]{16}$/);
+  assert.match(exactRoot.replace(/\\/g, '/'), /ToolPacks\/creative\.premiere\/releases\/1\.18\.2-[a-f0-9]{16}$/);
   const driftedRoot = toolPackRoot({ ...premiere, integrity: 'sha512-different-provenance' }, 'darwin', '/tmp/awh-tool-pack-root', process.env);
   assert.notEqual(driftedRoot, exactRoot, 'integrity drift must select a different immutable release root');
 });
