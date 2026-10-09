@@ -33,3 +33,59 @@
 .maintenance-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.maintenance-actions .secondary,.danger-button{width:100%;min-height:42px}.danger-button{border:1px solid #e6b4ae;border-radius:14px;background:#fff4f2;color:#a03f38;font-weight:800;cursor:pointer}.maintenance-note{margin:7px 1px 0;color:#8592a2;font-size:9px;line-height:1.5}@media(max-width:400px){.maintenance-actions{grid-template-columns:1fr}}
 
 .update-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.update-actions .primary,.update-actions .secondary{width:100%;min-height:42px}@media(max-width:400px){.update-actions{grid-template-columns:1fr}}
+
+
+@media(min-width:620px){
+  html,body{width:100%;max-width:100%;overflow-x:hidden}
+  body{min-height:100vh}
+  .agent-shell{
+    width:100%;max-width:920px;min-width:0;margin:0 auto;padding:14px 16px;
+    display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);
+    grid-template-areas:
+      "brand brand"
+      "hero hero"
+      "control status"
+      "permission permission"
+      "activity health"
+      "login login"
+      "footer footer";
+    gap:12px;align-content:start
+  }
+  .agent-shell>*{min-width:0;max-width:100%}
+  .agent-brand{grid-area:brand}
+  .hero{grid-area:hero;padding:14px 16px;border-radius:18px}
+  .hero h1{font-size:21px}
+  .hero .muted{margin:5px 0 10px;line-height:1.45}
+  .hero-actions{grid-template-columns:1fr 1fr}
+  .control-card{grid-area:control}
+  .status-card{grid-area:status}
+  .permission-card{grid-area:permission}
+  .activity-card{grid-area:activity}
+  .health-card{grid-area:health}
+  .login-card{grid-area:login}
+  footer{grid-area:footer;margin-top:0}
+  .control-card,.activity-card,.health-card,.permission-card{padding:14px;border-radius:18px}
+  .control-copy,.activity-copy{margin:5px 0 9px;line-height:1.4}
+  .mode-grid{gap:6px}
+  .mode-button{min-height:56px;padding:7px 8px}
+  .emergency-button{min-height:36px;margin-top:8px}
+  .shortcut-hint{margin-top:4px}
+  .status-card{padding:3px 13px;border-radius:18px}
+  .status-row{padding:8px 0;gap:8px}
+  .status-row span,.status-row strong{min-width:0;overflow-wrap:anywhere}
+  .activity-list{gap:5px}
+  .activity-item{padding:7px 9px}
+  .health-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin-top:8px}
+  .health-row{min-width:0;padding:7px 9px;gap:6px}
+  .update-actions,.maintenance-actions{gap:6px;margin-top:7px}
+  .update-actions .primary,.update-actions .secondary,.maintenance-actions .secondary,.danger-button,.diagnostics-button{min-height:36px}
+  .diagnostics-button{margin-top:7px}
+  .maintenance-note{margin-top:5px}
+  .permission-actions{grid-template-columns:1fr 1fr}
+  body.setup-required .activity-card,body.setup-required .health-card{display:none}
+  body.setup-required .agent-shell{grid-template-areas:"brand brand" "hero hero" "control status" "permission permission" "login login" "footer footer"}
+}
+@media(max-width:619px){
+  html,body{max-width:100%;overflow-x:hidden}
+  .agent-shell>*{min-width:0;max-width:100%}
+}

@@ -8,6 +8,8 @@ import { buildCodexTaskInstruction, composeRuntimeHeartbeatCapabilities, deviceE
 import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
 import { execCommand } from '../src/process.js';
 import { normalizedDeviceActionArguments, type DeviceAction } from '../src/lnwjud-device-client.js';
+import { currentAgentMode, setAgentMode, modeAllowsPlane, capabilityPlane, liveModeShouldYieldToHuman } from '../src/agent-runtime-policy.js';
+import { foregroundEpoch, registerForegroundStop, emergencyStopForeground, assertForegroundEpoch } from '../src/agent-runtime-control.js';
 import type { CredentialStore } from '../src/credential-store.js';
 
 class MemoryCredentials implements CredentialStore {
@@ -42,6 +44,58 @@ test('Office inventory becomes executable only for the matching Windows handler'
 
 test('device automation reuses the bootstrap runtime workspace so host mutation safety remains aligned', () => {
   assert.equal(deviceRuntimeWorkspacePath('/tmp/awh-data'), join('/tmp/awh-data', 'device-runtime-smoke'));
+});
+
+test('OFF ON LIVE enforce distinct foreground policy and persist locally', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'awh-runtime-mode-'));
+  try {
+    assert.equal(modeAllowsPlane('OFF', 'BACKGROUND'), true);
+    assert.equal(modeAllowsPlane('OFF', 'FOREGROUND'), false);
+    assert.equal(modeAllowsPlane('ON', 'FOREGROUND'), true);
+    assert.equal(modeAllowsPlane('LIVE', 'FOREGROUND'), true);
+    assert.equal(capabilityPlane('device.gui.operate'), 'FOREGROUND');
+    assert.equal(capabilityPlane('creative.photoshop'), 'FOREGROUND');
+    assert.equal(capabilityPlane('workspace.files'), 'BACKGROUND');
+
+    assert.equal(currentAgentMode(dataDir), 'OFF');
+    await setAgentMode(dataDir, 'ON');
+    assert.equal(currentAgentMode(dataDir), 'ON');
+    await setAgentMode(dataDir, 'LIVE');
+    assert.equal(currentAgentMode(dataDir), 'LIVE');
+    await setAgentMode(dataDir, 'OFF', true);
+    assert.equal(currentAgentMode(dataDir), 'OFF');
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('LIVE yields to a returning human but ignores the Agent own recent foreground action', () => {
+  assert.equal(liveModeShouldYieldToHuman(4, 0, true, false), true);
+  assert.equal(liveModeShouldYieldToHuman(2, 0, true, false), false);
+  assert.equal(liveModeShouldYieldToHuman(4, 2, true, false), false);
+  assert.equal(liveModeShouldYieldToHuman(4, 0, false, false), false);
+  assert.equal(liveModeShouldYieldToHuman(4, 0, true, true), false);
+});
+
+test('emergency stop closes registered foreground work and invalidates the in-flight epoch', () => {
+  const before = foregroundEpoch();
+  let stopped = 0;
+  const unregister = registerForegroundStop(() => { stopped += 1; });
+  const after = emergencyStopForeground();
+  unregister();
+  assert.equal(after, before + 1);
+  assert.equal(stopped, 1);
+  assert.throws(() => assertForegroundEpoch(before), /AWH_EMERGENCY_STOPPED/);
+  assert.doesNotThrow(() => assertForegroundEpoch(after));
+});
+
+test('device execution runtime enforces mode before and during foreground actions', async () => {
+  const source = await readFile(new URL('../src/control-plane-worker-runtime.ts', import.meta.url), 'utf8');
+  assert.match(source, /if\(!modeAllowsPlane\(startMode,plane\)\)/);
+  assert.match(source, /deferCentralExecution\(execution\.executionId,'DEVICE_MODE_OFF'\)/);
+  assert.ok((source.match(/modeAllowsPlane\(currentAgentMode\(this\.options\.dataDir\),'FOREGROUND'\)/g) || []).length >= 2);
+  assert.match(source, /assertForegroundEpoch\(startEpoch\)/);
+  assert.match(source, /markAgentForegroundAction\(\)/);
 });
 
 test('runtime mode stays inside the bounded 24-capability heartbeat envelope', () => {

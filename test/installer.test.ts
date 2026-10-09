@@ -12,6 +12,21 @@ import { ART_AGENT_VERSION } from '../src/version.js';
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const require = createRequire(import.meta.url);
 
+test('Windows OTA swap does not use reserved PowerShell PID variable', async () => {
+  const source = await readFile(new URL('../src/desktop-core-update.ts', import.meta.url), 'utf8');
+  const helper = source.slice(source.indexOf('const WINDOWS_HELPER=['), source.indexOf("].join('\\r\\n')", source.indexOf('const WINDOWS_HELPER=[')));
+  assert.ok(helper.length > 300, 'Windows swap helper exists');
+  assert.match(helper, /param\(\[int\]\$TargetProcessId/);
+  assert.doesNotMatch(helper, /\$Pid\b/i, 'PowerShell PID is an automatic read-only variable');
+  assert.match(source, /'-TargetProcessId',String\(process\.pid\)/);
+  if (process.platform === 'win32') {
+    const probe = spawnSync('powershell.exe', ['-NoProfile','-NonInteractive','-Command',
+      '& { param([int]$TargetProcessId) Write-Output $TargetProcessId } 123'], { encoding:'utf8', timeout:10000 });
+    assert.equal(probe.status, 0, probe.stderr || 'PowerShell update parameter binding failed');
+    assert.match(probe.stdout, /123/);
+  }
+});
+
 test('AWH packaging configuration keeps Squirrel per-user behavior and public artifact names', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
     version?: string;
@@ -230,6 +245,12 @@ test('macOS wizard installer preserves AWH state, verifies the payload, rolls ba
   assert.match(verifier, /preservesTcc: true/);
   assert.match(verifier, /rollback: true/);
   assert.match(verifier, /relaunch: true/);
+  assert.match(verifier, /canonicalBrandDataUri/);
+  assert.match(verifier, /installer page does not embed canonical AWH logo/);
+  assert.match(verifier, /dangling external installer logo reference remains/);
+  assert.match(verifier, /brandAsset: 'embedded-data-uri'/);
+  assert.match(verifier, /canonicalBrandAsset: true/);
+
   assert.match(verifier, /\/bin\/sh/);
   assert.match(verifier, /codesign --verify --deep --strict/);
 
@@ -269,13 +290,50 @@ test('macOS installer never requests Automation permission to quit AWH Agent', a
 });
 
 
-test('macOS wizard ships and displays the canonical AWH logo', async () => {
+test('macOS wizard embeds the canonical AWH logo into every Installer page', async () => {
   const builder = await readFile(new URL('../scripts/package-macos-installer.mjs', import.meta.url), 'utf8');
   assert.ok(builder.includes("join(ROOT, 'logo-256x256.png')"));
-  assert.ok(builder.includes("join(resources, 'awh-logo.png')"));
-  assert.ok(builder.includes('<img src="awh-logo.png" alt="AWH Agent"'));
-  assert.doesNotMatch(builder, /awh-logo\.svg/);
+  assert.match(builder, /const logoDataUri = `data:image\/png;base64,/);
+  assert.ok(builder.includes('src="${logoDataUri}" alt="AWH Agent"'));
+  assert.doesNotMatch(builder, /src="awh-logo\.(?:png|svg)"/);
   assert.match(builder, /KRUART Workspace Hub/);
+});
+
+
+test('connected bridge is platform-aware, Windows-desktop sized, and keeps versions out of normal UI', async () => {
+  const [main, renderer, html, styles] = await Promise.all([
+    readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../desktop/connect.js', import.meta.url), 'utf8'),
+    readFile(new URL('../desktop/connect.html', import.meta.url), 'utf8'),
+    readFile(new URL('../desktop/connect.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(main, /width: process\.platform === 'win32' \? 920 : 420/);
+  assert.match(main, /height: process\.platform === 'win32' \? 760 : 590/);
+  assert.match(main, /let osReady = true/);
+  assert.match(main, /permissionSetupComplete = process\.platform !== 'darwin'/);
+  assert.match(main, /coreUpdateState === 'AVAILABLE' \? 'อัปเดต AWH Agent'/);
+  assert.doesNotMatch(main, /อัปเดต AWH Agent →/);
+
+  assert.match(renderer, /WINDOWS DEVICE CONTROL/);
+  assert.match(renderer, /Windows ไม่ต้องเปิด Accessibility หรือ Screen Recording แบบ macOS/);
+  assert.match(renderer, /settings\.hidden = !isMac/);
+  assert.match(renderer, /Ctrl \+ Shift \+ F12/);
+  assert.match(renderer, /AWH Full Device Control/);
+  assert.doesNotMatch(renderer, /health\.agent\?\.version|health\.runtime\?\.version|candidateVersion|result\.candidate\?\.version|result\.version/);
+
+  assert.match(html, /id="permission-eyebrow"/);
+  assert.match(html, /id="permission-copy"/);
+  assert.match(html, /id="emergency-shortcut"/);
+  assert.doesNotMatch(html, /หาก macOS ยังอนุญาตอยู่/);
+  assert.match(styles, /@media\(min-width:620px\)/);
+  assert.match(styles, /overflow-x:hidden/);
+  assert.match(styles, /grid-template-columns:minmax\(0,1\.08fr\) minmax\(0,\.92fr\)/);
+  assert.match(styles, /grid-template-areas:/);
+  assert.match(styles, /body\.setup-required \.activity-card,body\.setup-required \.health-card\{display:none\}/);
+  assert.match(html, /OFF<span>เบื้องหลังเท่านั้น · ไม่คลิกหรือพิมพ์<\/span>/);
+  assert.match(html, /ON<span>ใช้เครื่องร่วมกัน · ควบคุมเมื่อจำเป็น<\/span>/);
+  assert.match(html, /LIVE<span>ให้ AWH ใช้เต็มที่ · คนกลับมาแล้วลดเป็น ON<\/span>/);
 });
 
 

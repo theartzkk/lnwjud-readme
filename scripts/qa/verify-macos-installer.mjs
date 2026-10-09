@@ -69,6 +69,18 @@ try {
   }
   if (!distribution.includes(`hostArchitectures="${expectedHostArch}"`)) throw new Error('installer architecture gate mismatch');
 
+  const canonicalBrandAsset = join(ROOT, 'logo-256x256.png');
+  const canonicalBrandDataUri = `data:image/png;base64,${(await readFile(canonicalBrandAsset)).toString('base64')}`;
+  for (const pageName of ['welcome.html', 'readme.html', 'conclusion.html']) {
+    const pagePath = await findNamed(expanded, pageName);
+    if (!pagePath) throw new Error(`installer page missing: ${pageName}`);
+    const page = await readFile(pagePath, 'utf8');
+    if (!page.includes(`src="${canonicalBrandDataUri}"`)) {
+      throw new Error(`installer page does not embed canonical AWH logo: ${pageName}`);
+    }
+    if (/awh-logo\.(?:png|svg)/i.test(page)) throw new Error(`dangling external installer logo reference remains: ${pageName}`);
+  }
+
   const packageInfo = await findNamed(expanded, 'PackageInfo');
   if (!packageInfo) throw new Error('component PackageInfo missing');
   const packageXml = await readFile(packageInfo, 'utf8');
@@ -109,6 +121,8 @@ try {
     preservesTcc: true,
     rollback: true,
     relaunch: true,
+    brandAsset: 'embedded-data-uri',
+    canonicalBrandAsset: true,
   }));
 } finally {
   await rm(verifyRoot, { recursive: true, force: true });

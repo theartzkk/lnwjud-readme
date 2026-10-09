@@ -22,7 +22,7 @@ import { explicitWorkspaceEnv, loadConfig } from '../config.js';
 import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings, type AgentRuntimeMode } from '../settings.js';
-import { currentAgentMode, setAgentMode, modeLabel } from '../agent-runtime-policy.js';
+import { currentAgentMode, setAgentMode, modeLabel, liveModeShouldYieldToHuman } from '../agent-runtime-policy.js';
 import { emergencyStopForeground } from '../agent-runtime-control.js';
 import { agentRuntimeStatus, recentAgentForegroundAction } from '../agent-runtime-status.js';
 import { appendAgentActivity, readAgentActivity } from '../agent-activity-log.js';
@@ -1040,10 +1040,10 @@ async function createWindow(showOnReady = true): Promise<BrowserWindow> {
   // AWH Agent is intentionally a thin local bridge. All management surfaces
   // live on AWH Web; the desktop package never exposes a second Control Panel.
   const win = new BrowserWindow({
-    width: 420,
-    height: 590,
-    minWidth: 380,
-    minHeight: 520,
+    width: process.platform === 'win32' ? 920 : 420,
+    height: process.platform === 'win32' ? 760 : 590,
+    minWidth: process.platform === 'win32' ? 760 : 380,
+    minHeight: process.platform === 'win32' ? 660 : 520,
     show: false,
     title: `AWH Agent — ${PRODUCT.productName}`,
     backgroundColor: '#f7f6f2',
@@ -1094,7 +1094,7 @@ function startLiveReturnMonitor(): void {
       const idle = powerMonitor.getSystemIdleTime();
       if (mode !== 'LIVE') { liveSawIdle = false; previousIdleSeconds = idle; return; }
       if (idle >= 5) liveSawIdle = true;
-      const humanReturned = liveSawIdle && previousIdleSeconds >= 3 && idle <= 1 && !recentAgentForegroundAction(3500);
+      const humanReturned = liveModeShouldYieldToHuman(previousIdleSeconds, idle, liveSawIdle, recentAgentForegroundAction(3500));
       previousIdleSeconds = idle;
       if (!humanReturned) return;
       emergencyStopForeground();
@@ -1138,7 +1138,7 @@ function refreshTray(): void {
     { label: 'LIVE · ให้ AWH ใช้เครื่องเต็มที่', type: 'radio', checked: mode === 'LIVE', click: () => { void changeRuntimeMode('LIVE'); } },
     { type: 'separator' },
     { label: 'หยุดงานทันที', accelerator: 'CommandOrControl+Shift+F12', click: () => { void emergencyStop(); } },
-    { label: coreUpdateState === 'AVAILABLE' ? `อัปเดต AWH Agent → ${coreUpdateCandidate?.version ?? 'เวอร์ชันใหม่'}` : `AWH Agent ${VERSION} · ${coreUpdateState === 'ERROR' ? 'ตรวจอัปเดตไม่ได้' : 'ล่าสุด'}`, enabled: coreUpdateState === 'AVAILABLE', click: showLocalBridge },
+    { label: coreUpdateState === 'AVAILABLE' ? 'อัปเดต AWH Agent' : `AWH Agent · ${coreUpdateState === 'ERROR' ? 'ตรวจอัปเดตไม่ได้' : 'ล่าสุด'}`, enabled: coreUpdateState === 'AVAILABLE', click: showLocalBridge },
     { label: 'เปิด AWH', click: () => { void openAwhWeb('home'); } },
     { label: 'จัดการอุปกรณ์บนเว็บ', click: () => { void openAwhWeb('devices'); } },
     { label: 'ตั้งค่าและตรวจสุขภาพเครื่องนี้', click: showLocalBridge },
