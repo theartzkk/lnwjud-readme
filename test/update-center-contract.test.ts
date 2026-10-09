@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 
 const ROOT=process.cwd();
@@ -295,6 +296,7 @@ test('Update Center gives the owner one human-readable next action before techni
   assert.match(script,/function ownerFacingName\(item\)/);
   assert.match(script,/ระบบพื้นฐาน AWH/);
   assert.match(css,/\.updates-next/);
+  assert.match(css,/\.updates-next>a\{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-height:44px;padding:11px 16px;text-decoration:none;text-align:center;line-height:1\.25\}/);
   assert.match(css,/\.updates-next>a\{width:100%;min-height:48px\}/);
 });
 
@@ -595,6 +597,11 @@ test('Update Center owner actions keep target-scoped feedback and expose only sa
   assert.match(service,/'canCancel'=>is_array\(\$activePlatform\)/);
   assert.match(service,/'canCancel'=>is_array\(\$activeLearnLab\)/);
   assert.match(service,/'canCancel'=>is_array\(\$activeAssessment\)/);
+  assert.match(service,/เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติ/);
+  assert.doesNotMatch(service,/กดทำต่อ/);
+  assert.match(script,/เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติ/);
+  assert.doesNotMatch(script,/กดทำต่อ/);
+  assert.match(service,/\$taskState = \$decision === 'APPROVED' \? 'WAITING_FOR_WORKER'/);
   assert.match(service,/\$hostingTaskActive=is_string\(\$site\['taskId'\]\?\?null\)/);
   assert.match(service,/'taskId'=>\$site\['taskId'\]\?\?null/);
   assert.match(service,/'canCancel'=>\(\$site\['canCancel'\]\?\?false\)===true/);
@@ -609,7 +616,8 @@ test('Update Center owner actions keep target-scoped feedback and expose only sa
   assert.match(script,/item\.canCancel===true&&item\.taskId/);
   assert.match(script,/await cancelTask\(item\.taskId\)/);
   assert.match(script,/TASK_NOT_CANCELLABLE/);
-  assert.match(script,/item\?\.taskState\|\|event\?\.state/);
+  assert.match(script,/const state=String\(event\?\.state\|\|item\?\.taskState\|\|''\)\.toUpperCase\(\)/);
+  assert.doesNotMatch(script,/const progress=Math\.max\(0,Math\.min\(100,Number\(event\?\.progress/);
   assert.match(script,/item\?\.canCancel===true/);
   assert.match(script,/function reconcileTargetFeedback\(item\)/);
   assert.match(script,/item\.state==='UPDATE_AVAILABLE'&&item\.actionable===true&&!item\.taskId&&!item\.approvalId/);
@@ -677,7 +685,11 @@ test('Update Center accessibility contract keeps live regions bounded and contro
   assert.match(script,/function itemRequiresReview\(item\)/);
   assert.match(script,/document\.title='มีอัปเดต '\+counts\.update/);
   assert.match(script,/filterMode==='ATTENTION'&&!itemRequiresReview\(item\)/);
-  assert.match(script,/meter\.setAttribute\('aria-valuenow'/);
+  assert.doesNotMatch(page,/id="operation-progress-meter"[^>]*aria-valuenow=/);
+  assert.match(script,/meter\.removeAttribute\('aria-valuenow'\)/);
+  assert.match(script,/aria-valuetext/);
+  assert.doesNotMatch(script,/Math\.round\(progress\)\+'%'/);
+  assert.doesNotMatch(script,/operation-progress-bar'\)\.style\.width=progress\+'%'/);
   assert.match(script,/step\.setAttribute\('aria-current','step'\)/);
   assert.match(script,/card\.setAttribute\('aria-labelledby',h3\.id\)/);
   assert.match(script,/link\.setAttribute\('aria-label','เปิด '\+item\.name\+' ในแท็บใหม่'\)/);
@@ -695,6 +707,28 @@ test('Update Center accessibility contract keeps live regions bounded and contro
   assert.match(css,/\.update-search input::placeholder\{color:#68778d!important/);
   assert.match(css,/button\.primary-button\[data-operation-state=\"active\"\]/);
   assert.match(css,/background:linear-gradient\(135deg,#eaf3ff,#f7fbff\)!important/);
+});
+
+test('Update Center shows only verified backend milestone percentages, with safe fallback', async()=>{
+  const script=await readFile(join(ROOT,'web/updates.js'),'utf8');
+  const start=script.indexOf('function serverMilestoneProgress(');
+  const end=script.indexOf('\n}\n',start)+2;
+  assert.ok(start>=0&&end>start,'expected testable canonical backend progress selector');
+  const milestone=runInNewContext('('+script.slice(start,end)+')') as
+    (item:Record<string,unknown>|null,event:Record<string,unknown>|null,waiting:boolean,queued:boolean)=>number|null;
+  const active={state:'UPDATING',progress:28};
+  assert.equal(milestone(active,{progress:24},false,false),28);
+  assert.equal(milestone({state:'UPDATING',progress:null},{progress:55},false,false),55);
+  assert.equal(milestone({state:'UPDATING',progress:0},null,false,false),0);
+  assert.equal(milestone(active,null,false,true),null,'queued release must not claim progress');
+  assert.equal(milestone(active,null,true,false),null,'approval wait must not claim progress');
+  assert.equal(milestone({state:'UPDATE_AVAILABLE',progress:70},null,false,false),null);
+  for(const invalid of [null,undefined,'',NaN,-1,101,100,12.6])
+    assert.equal(milestone({state:'UPDATING',progress:invalid},null,false,false),null);
+  assert.equal(milestone({state:'UPDATING'},null,false,false),null,'unknown status must not display a fake 0%');
+  assert.match(script,/meter\.setAttribute\('aria-valuenow',String\(percent\)\)/);
+  assert.match(script,/percent===null\?'0%':percent\+'%'/);
+  assert.match(script,/ความคืบหน้าตามขั้นตอน/);
 });
 
 test('Update Center streams canonical release progress in real time with bounded fallback', async()=>{
@@ -860,6 +894,33 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.match(css,/update-group\[data-group="line-oa"\]/);
 });
 
+test('future registered projects enter Update Center generically without a new layout or authority', async()=>{
+  const [registry,contractText,service,script]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubUpdateTargetRegistry.php'),'utf8'),
+    readFile(join(ROOT,'config/ecosystem-release-contract.json'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+  ]);
+  const contract=JSON.parse(contractText);
+  assert.equal(contract.rules.registryDrivenUpdateCenter,true);
+  assert.equal(contract.rules.updateCenterLayoutMutationForNewTrackForbidden,true);
+  assert.match(service,/\(\$project\['projectClass'\] \?\? 'PRODUCTION'\) !== 'PRODUCTION'/);
+  assert.match(service,/'key'=>'project-'\.\$projectId[\s\S]*'adapter'=>'SOURCE_ONLY'/);
+  assert.match(service,/Source อยู่ใน AWH Vault แล้ว แต่โปรเจคนี้ยังไม่มี deploy adapter ที่ปลอดภัย/);
+  assert.match(script,/for\(const item of rows\)list\.append\(renderCard\(item\)\)/);
+  const adapters={
+    'vps-platform':'PLATFORM_RELEASE','awh':'CORE_RELEASE','awh-agent':'AGENT_MANAGED',
+    'awh-line-gateway':'MANAGED_HOSTING','bay-excuse-x':'BAY_UPDATE_CENTER','line-oa':'BAY_UPDATE_CENTER',
+    'bay-cooperative':'BAY_UPDATE_CENTER','bay-pp':'BAY_UPDATE_CENTER','bay-assessment':'ASSESSMENT_RELEASE',
+    'bay-learnlab':'LEARNLAB_RELEASE','bay-computer-lab':'SOURCE_ONLY','school-website':'MANAGED_HOSTING','bay-hub':'SOURCE_ONLY',
+  };
+  for(const [track,adapter] of Object.entries(adapters)){
+    assert.equal(contract.releaseTracks[track].deploymentAdapter,adapter);
+    const escaped=track.replace(/[.*+?^$()|[\]\\]/g,'\\$&');
+    assert.match(registry,new RegExp("'"+escaped+"'[\\s\\S]*?'deploymentAdapter'=>'"+adapter+"'"));
+  }
+});
+
 test('Update Center self-recovers from stale PWA module caches instead of showing an empty project list', async()=>{
   const [page,boot,script,worker,releaseFiles]=await Promise.all([
     readFile(join(ROOT,'web/updates.html'),'utf8'),
@@ -935,12 +996,21 @@ test('Update Center owner flow is per-target, queue-aware, exact-target pinned, 
   assert.match(script,/ใช้สถานะล่าสุด · จะตรวจใหม่อัตโนมัติ/);
   assert.match(script,/const storageBlocked=Boolean\(telemetryReady\)/);
   assert.match(script,/function reconcileRecoveredActionMessage\(\)/);
+  assert.match(script,/function syncPinnedOperationProjection\(\)/);
+  assert.ok((script.match(/syncPinnedOperationProjection\(\);/g)||[]).length>=3,'pinned operation submit, accept and outcome-unknown paths must refresh the owner summary immediately');
   assert.match(script,/!active&&\/\(\?:เริ่มอัปเดตแล้ว\|เข้าคิวแล้ว\)/);
   assert.match(script,/function ownerStageElapsed\(event\)/);
   assert.match(script,/ขั้นนี้ \$\{minutes\} นาที/);
-  assert.match(script,/if\(progress<23\)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'\+elapsed/);
-  assert.match(script,/if\(progress<55\)return 'กำลังตรวจความพร้อมและ QA ก่อนติดตั้ง'\+elapsed/);
-  assert.match(script,/const thresholds=\[22,54,84,98,100\]/);
+  assert.match(script,/RUNNING:'กำลังดำเนินการตามขั้นตอนที่บันทึกไว้'/);
+  assert.match(script,/VERIFYING:'กำลังตรวจการทำงานของรุ่นใหม่และยืนยันผล'/);
+  assert.match(script,/RECOVERING:'กำลังกู้และทำต่อจาก checkpoint เดิม'/);
+  assert.match(script,/const explicitStage=\{PREPARING:0,QA:0,DEPLOYING:2,VERIFYING:3\}\[truthState\]/);
+  assert.doesNotMatch(script,/const thresholds=\[22,54,84,98,100\]/);
   assert.match(script,/ownerReleaseNoteText/);
   assert.match(script,/แก้สิทธิ์ระบบ Managed Hosting ให้จัดการบัญชีบริการได้อย่างเสถียร/);
+  assert.match(service,/'dispatcherState'=>is_array\(\$activePlatform\)/);
+  assert.match(service,/'dispatcherState'=>is_array\(\$activeCore\)/);
+  assert.match(service,/ตัวควบคุมการอัปเดตขาด heartbeat ชั่วคราว/);
+  assert.match(script,/item\?\.dispatcherState==='RECOVERING'/);
+  assert.match(script,/ทำต่องานเดิมอัตโนมัติ/);
 });

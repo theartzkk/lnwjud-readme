@@ -61,6 +61,21 @@ try{
  ob_code('OPERATOR_CONFIRMATION_REQUIRED',fn()=>$service->handle(['schemaVersion'=>1,'action'=>'vault.import','project'=>'bay-excuse-x'],$now));
  ob_code('OPERATOR_REQUEST_INVALID',fn()=>$service->handle(['schemaVersion'=>1,'action'=>'vault.import','project'=>'bay-excuse-x','expectedActiveRevisionId'=>$revision,'archiveSha256'=>str_repeat('a',64),'stagedFile'=>'wrong.zip','missionExecutionId'=>'33333333-3333-4333-8333-333333333333','confirmation'=>'IMPORT_CANONICAL_VAULT_SOURCE'],$now));
  ob_code('OPERATOR_REQUEST_INVALID',fn()=>$service->handle(['schemaVersion'=>1,'action'=>'vault.export','project'=>'bay-excuse-x','destination'=>'/tmp/forbidden.zip','confirmation'=>'EXPORT_CANONICAL_VAULT_SOURCE'],$now));
+ $manifestReq=['schemaVersion'=>1,'action'=>'vault.manifest','project'=>'bay-excuse-x','expectedActiveRevisionId'=>$revision,'offset'=>0,'limit'=>1,'confirmation'=>'READ_CANONICAL_VAULT_MANIFEST'];
+ ob_code('OPERATOR_CONFIRMATION_REQUIRED',fn()=>$service->handle(array_diff_key($manifestReq,['confirmation'=>true]),$now));
+ $manifestFirst=$service->handle($manifestReq,$now);
+ $manifestSecond=$service->handle(array_replace($manifestReq,['offset'=>1]),$now);
+ ob_assert(($manifestFirst['state']??null)==='CURRENT'&&($manifestFirst['vaultRevisionId']??null)===$revision
+   &&($manifestFirst['contentSha256']??null)===$vaultFixture['contentSha256']
+   &&($manifestFirst['fileCount']??0)===2&&($manifestFirst['nextOffset']??null)===1
+   &&count($manifestFirst['files']??[])===1&&count($manifestSecond['files']??[])===1
+   &&array_key_exists('nextOffset',$manifestSecond)&&$manifestSecond['nextOffset']===null
+   &&($manifestFirst['files'][0]['path']??null)==='VERSION'
+   &&($manifestSecond['files'][0]['path']??null)==='assets/example.css'
+   &&($manifestFirst['files'][0]['sha256']??null)===hash('sha256',"fixture-version\n"),
+   'read-only Vault manifest pages preserve exact active revision, content digest, and ordered per-file hashes');
+ ob_code('OPERATOR_VAULT_BASE_MOVED',fn()=>$service->handle(array_replace($manifestReq,['expectedActiveRevisionId'=>'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']),$now));
+ ob_code('OPERATOR_REQUEST_INVALID',fn()=>$service->handle(array_replace($manifestReq,['limit'=>81]),$now));
  $export=$service->handle(['schemaVersion'=>1,'action'=>'vault.export','project'=>'bay-excuse-x','confirmation'=>'EXPORT_CANONICAL_VAULT_SOURCE'],$now);$exportPath=$stage.'/'.$export['stagedFile'];ob_assert(($export['state']??null)==='EXPORTED'&&($export['vaultRevisionId']??null)===$revision&&($export['contentSha256']??null)===$vaultFixture['contentSha256']&&is_file($exportPath)&&hash_equals((string)$export['archiveSha256'],(string)hash_file('sha256',$exportPath)),'canonical Vault export writes one exact verified archive into operator staging');$ez=new ZipArchive();ob_assert($ez->open($exportPath)===true&&$ez->getFromName('VERSION')==="fixture-version\n"&&$ez->getFromName('assets/example.css')==="body{color:#17305A}\n",'canonical Vault export preserves exact revision bytes');$ez->close();
  $otherRevision='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';$pdo->prepare('UPDATE control_project_vaults SET active_revision_id=? WHERE project_id=?')->execute([$otherRevision,$project]);ob_code('OPERATOR_PROJECT_GATE_BLOCKED',fn()=>$service->handle(['schemaVersion'=>1,'action'=>'vault.export','project'=>'bay-excuse-x','confirmation'=>'EXPORT_CANONICAL_VAULT_SOURCE'],$now));$pdo->prepare('UPDATE control_project_vaults SET active_revision_id=? WHERE project_id=?')->execute([$revision,$project]);
  $contentGate=$service->handle(['schemaVersion'=>1,'action'=>'project.gate','project'=>'ประเมินครูผู้ช่วย'],$now);ob_assert($contentGate['ready']===true&&$contentGate['state']==='ATTENTION'&&$contentGate['productionReady']===false&&$contentGate['sourceRequired']===false,'work gate allows unbound content project while surfacing source attention');

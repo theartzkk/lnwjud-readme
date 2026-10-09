@@ -938,10 +938,17 @@ import {
   }
 
   function renderHatchet() {
-    const value = state.hatchet || {}; const configured = value.credentialConfigured === true;
+    const value = state.hatchet || {}; const configured = value.credentialConfigured === true; const workerState = String(value.state || 'UNKNOWN');
     const status = $('hatchet-status'); const dot = $('hatchet-dot'); const remove = $('hatchet-credential-remove');
-    if (status) status.textContent = configured ? 'Hatchet Cloud credential พร้อม · รอหรือกำลังเปิด ReadyIDC worker' : 'ยังไม่ได้เชื่อม Hatchet Cloud';
-    if (dot) { dot.classList.toggle('good', configured); dot.classList.toggle('attention', !configured); }
+    const copy = {
+      READY: 'Hatchet worker พร้อม · heartbeat สดและทำงานด้วย exact execution ID',
+      STALE: 'Hatchet worker สัญญาณเก่า · canonical execution ยังถูกเก็บไว้',
+      DEGRADED: 'Hatchet worker มีปัญหาที่ dispatch ล่าสุด · ยังไม่ถือว่าพร้อม',
+      NOT_RUNNING: 'มี Hatchet credential แต่ยังไม่พบ worker heartbeat',
+      NOT_CONFIGURED: 'ยังไม่ได้เชื่อม Hatchet'
+    }[workerState] || 'กำลังตรวจ Hatchet worker';
+    if (status) status.textContent = copy;
+    if (dot) { dot.classList.toggle('good', workerState === 'READY'); dot.classList.toggle('attention', workerState !== 'READY'); }
     if (remove) remove.disabled = !configured;
   }
 

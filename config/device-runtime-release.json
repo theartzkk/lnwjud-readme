@@ -65,6 +65,7 @@
   },
   "browserQa": {
     "playwrightVersion": "1.63.0",
+    "axeCoreVersion": "4.13.0",
     "minimumNodeVersion": "22.12.0"
   }
 }

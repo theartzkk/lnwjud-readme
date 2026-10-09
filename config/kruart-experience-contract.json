@@ -227,7 +227,17 @@
     "longRunningStatusMs": 1800,
     "touchTargetPx": 44,
     "safeAreaRequired": true,
-    "ariaLiveForAsyncStatus": true
+    "ariaLiveForAsyncStatus": true,
+    "mobileInputMinFontPx": 16,
+    "visualViewportRequired": true,
+    "focusedControlMustRemainVisible": true,
+    "keyboardDismissRestoresLayout": true,
+    "dynamicViewportUnitRequired": true,
+    "minimumViewportPx": 320,
+    "keyboardReferenceViewportsPx": [
+      390,
+      430
+    ]
   },
   "experienceGate": {
     "rejectDuplicatePortalRoots": true,
@@ -237,6 +247,11 @@
     "rejectPublicInternalTerminology": true,
     "rejectMissingInteractionFeedback": true,
     "rejectBottomNavigationOverlap": true,
+    "rejectHorizontalOverflow": true,
+    "rejectFocusedControlOcclusion": true,
+    "rejectSoftwareKeyboardOverlay": true,
+    "rejectMobileInputZoom": true,
+    "requireKeyboardDismissRecovery": true,
     "requireVisualVerificationForVisualChanges": true
   },
   "visualAcceptance": {

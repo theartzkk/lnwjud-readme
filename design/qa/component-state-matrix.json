@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "authority": "config/kruart-experience-contract.json",
+  "mode": "REAL_SURFACE_FIXTURE",
+  "storybookPolicy": "DEFER_UNTIL_SHARED_COMPONENT_PACKAGE_EXISTS",
+  "reason": "Production UI is currently a mixed real-surface architecture with shared DOM runtime plus React islands. State QA must exercise canonical runtime markup instead of creating a second mock component authority.",
+  "requiredStates": [
+    "idle",
+    "pressed",
+    "loading",
+    "success",
+    "error",
+    "disabled",
+    "offline"
+  ],
+  "evidence": {
+    "idle": [
+      "scripts/review/visual-review-capture.cjs#home-empty"
+    ],
+    "pressed": [
+      "web/interaction-feedback.js#kruart-ui-pressed"
+    ],
+    "loading": [
+      "web/interaction-feedback.js#aria-busy",
+      "web/interaction-feedback.js#data-ui-loading"
+    ],
+    "success": [
+      "web/updates.js#tone-good",
+      "web/panel.js#is-good"
+    ],
+    "error": [
+      "web/updates.js#tone-bad",
+      "web/panel.js#is-bad"
+    ],
+    "disabled": [
+      "web/interaction-feedback.js#:disabled"
+    ],
+    "offline": [
+      "web/automation-surface.js#project.worker.offline"
+    ]
+  },
+  "realSurfaceLab": {
+    "fixture": "scripts/qa/control-web-fixture.mjs",
+    "visualCapture": "scripts/review/visual-review-capture.cjs",
+    "browserInteraction": "scripts/qa/chat-modern-browser.mjs",
+    "accessibility": "scripts/qa/accessibility-browser.mjs"
+  }
+}

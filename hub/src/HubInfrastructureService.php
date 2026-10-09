@@ -6,6 +6,7 @@ final class HubInfrastructureService
 {
     private const MAX_SNAPSHOT_BYTES = 262144;
     private const STALE_SECONDS = 180;
+    private const CANONICAL_GIT_REPO = '/srv/awh-git/awh.git';
     private const SERVICE_KEYS = ['nginx', 'php-fpm', 'native-executor', 'backup', 'source-drift', 'gatus', 'beszel', 'fail2ban', 'updates'];
     private const STATES = ['ACTIVE', 'INACTIVE', 'FAILED', 'ACTIVATING', 'DEACTIVATING', 'RELOADING', 'UNKNOWN'];
     private const STARTUP = ['ENABLED', 'DISABLED', 'STATIC', 'INDIRECT', 'MASKED', 'GENERATED', 'TRANSIENT', 'UNKNOWN'];
@@ -63,12 +64,15 @@ final class HubInfrastructureService
         $webSha = self::manifestSource('/var/www/awh-web/current/release.json', $web);
         $enrollmentSha = self::manifestSource('/opt/awh-hub/enrollment-current/release-source.json', $enrollment);
         $enrollmentRef = $enrollmentSha ?? self::releaseSourceRef($enrollment);
-        $sourceState = $controlSha === null || $webSha === null ? 'UNKNOWN' : (hash_equals($controlSha, $webSha) ? 'MATCHED' : 'MISMATCH');
-        $enrollmentMatches = $controlSha !== null && $enrollmentRef !== null ? ($enrollmentSha !== null ? hash_equals($controlSha, $enrollmentSha) : str_starts_with($controlSha, $enrollmentRef)) : null;
-        $componentState = $sourceState === 'UNKNOWN' || $enrollmentMatches === null ? 'UNKNOWN' : ($sourceState === 'MATCHED' && $enrollmentMatches ? 'COHERENT' : 'SPLIT');
+        $trackSplit = self::trackSplitCoherent($controlSha, $webSha);
+        $sourceState = $controlSha === null || $webSha === null ? 'UNKNOWN' : (hash_equals($controlSha, $webSha) ? 'MATCHED' : ($trackSplit ? 'TRACK_COHERENT' : 'MISMATCH'));
+        $runtimeSha = $sourceState === 'TRACK_COHERENT' ? $webSha : $controlSha;
+        $enrollmentMatches = $runtimeSha !== null && $enrollmentRef !== null ? ($enrollmentSha !== null ? hash_equals($runtimeSha, $enrollmentSha) : str_starts_with($runtimeSha, $enrollmentRef)) : null;
+        $componentState = $sourceState === 'UNKNOWN' || $enrollmentMatches === null ? 'UNKNOWN' : (in_array($sourceState, ['MATCHED','TRACK_COHERENT'], true) && $enrollmentMatches ? 'COHERENT' : 'SPLIT');
+        $sourceTopology = $sourceState === 'MATCHED' ? 'UNIFIED' : ($sourceState === 'TRACK_COHERENT' ? 'TRACK_SPLIT' : ($sourceState === 'UNKNOWN' ? 'UNKNOWN' : 'UNVERIFIED_SPLIT'));
         return [
-            'controlSourceSha' => $controlSha, 'webSourceSha' => $webSha, 'enrollmentSourceSha' => $enrollmentSha, 'enrollmentSourceRef' => $enrollmentRef,
-            'sourceState' => $sourceState, 'componentState' => $componentState,
+            'controlSourceSha' => $controlSha, 'webSourceSha' => $webSha, 'runtimeSourceSha' => $runtimeSha, 'enrollmentSourceSha' => $enrollmentSha, 'enrollmentSourceRef' => $enrollmentRef,
+            'sourceState' => $sourceState, 'sourceTopology' => $sourceTopology, 'componentState' => $componentState,
             'controlReleaseId' => $control, 'webReleaseId' => $web, 'enrollmentReleaseId' => $enrollment,
             'pointersMatch' => $control !== null && hash_equals($control, (string) $web),
             'components' => ['control'=>$control,'web'=>$web,'enrollment'=>$enrollment],
@@ -86,6 +90,43 @@ final class HubInfrastructureService
         if (!is_array($value) || ($value['schemaVersion'] ?? null) !== 1 || ($value['releaseId'] ?? null) !== $releaseId || ($value['sourceState'] ?? null) !== 'COMMITTED') return null;
         $sha = $value['sourceSha'] ?? null;
         return is_string($sha) && preg_match('/^[0-9a-f]{40}$/D', $sha) === 1 ? $sha : null;
+    }
+
+    private static function trackSplitCoherent(?string $controlSha, ?string $webSha): bool
+    {
+        if ($controlSha === null || $webSha === null || hash_equals($controlSha, $webSha)) return false;
+        $platform = self::canonicalRefSha('platform/production');
+        $runtime = self::canonicalRefSha('runtime/production');
+        $production = self::canonicalRefSha('production');
+        return $platform !== null && $runtime !== null && $production !== null
+            && hash_equals($platform, $controlSha)
+            && hash_equals($runtime, $webSha)
+            && hash_equals($production, $webSha);
+    }
+
+    private static function canonicalRefSha(string $branch): ?string
+    {
+        if (!in_array($branch, ['production','runtime/production','platform/production'], true)) return null;
+        $configured = getenv('AWH_CORE_CANONICAL_GIT');
+        $path = is_string($configured) && $configured !== '' ? $configured : self::CANONICAL_GIT_REPO;
+        if (!str_starts_with($path, '/') || is_link($path)) return null;
+        $repo = realpath($path); if (!is_string($repo) || !is_dir($repo)) return null;
+        $ref = $repo . '/refs/heads/' . $branch;
+        if (is_file($ref) && !is_link($ref) && is_readable($ref)) {
+            $sha = strtolower(trim((string) file_get_contents($ref)));
+            if (preg_match('/^[0-9a-f]{40}$/D', $sha) === 1) return $sha;
+        }
+        $packed = $repo . '/packed-refs';
+        if (!is_file($packed) || is_link($packed) || !is_readable($packed) || filesize($packed) > 8 * 1024 * 1024) return null;
+        $needle = 'refs/heads/' . $branch;
+        foreach (preg_split('/\\r?\\n/', (string) file_get_contents($packed)) ?: [] as $line) {
+            if ($line === '' || $line[0] === '#' || $line[0] === '^') continue;
+            $parts = preg_split('/\\s+/', trim($line));
+            if (!is_array($parts) || count($parts) !== 2 || $parts[1] !== $needle) continue;
+            $sha = strtolower((string) $parts[0]);
+            if (preg_match('/^[0-9a-f]{40}$/D', $sha) === 1) return $sha;
+        }
+        return null;
     }
 
     private static function pointerRelease(string $pointer): ?string

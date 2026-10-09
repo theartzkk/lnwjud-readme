@@ -16,6 +16,7 @@ function deviceFriendlyName(worker){
   const family=platform==='darwin'?(arch==='arm64'?'Mac Apple Silicon':['x64','x86_64'].includes(arch)?'Mac Intel':'Mac'):platform.startsWith('win')?'Windows':'';
   return family?name+' · '+family:name;
 }
+const sourceCoherent=(state)=>['MATCHED','TRACK_COHERENT'].includes(String(state||'').toUpperCase());
 
 function row(title,detail,label,state=''){
   const item=document.createElement('div');item.className='cp-row';
@@ -50,7 +51,7 @@ function attention(title,detail,state='WARNING',action=null){
 }
 function healthTone(state){
   const value=String(state||'UNKNOWN').toUpperCase();
-  if(['READY','ACTIVE','HEALTHY','VERIFIED','PASS','MATCHED','ONLINE','NORMAL'].includes(value))return 'good';
+  if(['READY','ACTIVE','HEALTHY','VERIFIED','PASS','MATCHED','TRACK_COHERENT','ONLINE','NORMAL'].includes(value))return 'good';
   if(['FAILED','CRITICAL','DOWN','ERROR','INVALID'].includes(value))return 'bad';
   return 'warn';
 }
@@ -77,7 +78,7 @@ function renderHealthMatrix(data){
   const workerReady=workers.filter(item=>['READY','WORKING'].includes(String(item?.state||''))).length;
   const domains=Array.isArray(server?.domains)?server.domains:[];
   const domainReady=domains.length>0&&domains.every(item=>item?.tls===true);
-  const runtimeState=deployment.sourceState==='MATCHED'?'MATCHED':deployment.sourceState||'UNKNOWN';
+  const runtimeState=sourceCoherent(deployment.sourceState)?deployment.sourceState:deployment.sourceState||'UNKNOWN';
   const storageState=storage.state||((Number(storage.usedPercent)>=90)?'CRITICAL':Number(storage.usedPercent)>=80?'WARNING':'NORMAL');
   const dbState=db.state||'UNKNOWN';
   const backupState=backup.state||'UNKNOWN';
@@ -109,15 +110,15 @@ function renderCommandCenter(data){
   const server=data?.telemetry?.server||{},storage=data?.storage||server?.storage||{},deployment=data?.deployment||{},queue=data?.queue||{};
   const workers=Array.isArray(data?.workers)?data.workers:[];
   const readyWorkers=workers.filter(worker=>['READY','WORKING'].includes(String(worker?.state||''))).length;
-  const activeTasks=Number(queue.activeTaskCount||0);
+  const trackedTasks=Number(queue.activeTaskCount||0);
   const note=$('cp-command-note');
   if(note){
-    const source=deployment.sourceState==='MATCHED'?'รุ่นระบบตรงกัน':'กำลังตรวจรุ่นระบบ';
+    const source=deployment.sourceState==='TRACK_COHERENT'?'Control/Web แยก release track ถูกต้อง':sourceCoherent(deployment.sourceState)?'รุ่นระบบตรงกัน':'กำลังตรวจรุ่นระบบ';
     const disk=Number(storage.freeBytes)>0?'พื้นที่ว่าง '+bytes(storage.freeBytes):'กำลังตรวจพื้นที่';
-    note.textContent=source+' · '+activeTasks+' งานกำลังทำ · '+disk;
+    note.textContent=source+' · '+trackedTasks+' งานที่ระบบกำลังติดตาม · '+disk;
   }
   syncCommandAttention();
-  if($('cp-command-running'))$('cp-command-running').textContent=String(activeTasks);
+  if($('cp-command-running'))$('cp-command-running').textContent='—';
   if($('cp-command-devices'))$('cp-command-devices').textContent=readyWorkers+'/'+workers.length;
 }
 const shortSha=(value)=>typeof value==='string'&&/^[0-9a-f]{40}$/i.test(value)?value.slice(0,9):'—';
@@ -162,8 +163,7 @@ function renderUpdateSummary(snapshot,error=null){
     .slice(0,3);
   if(!attentionItems.length){host.append(row('ทุกระบบที่แสดง','ไม่มีรายการที่ต้องจัดการตอนนี้','พร้อม','READY'));return;}
   for(const item of attentionItems){
-    const progress=Number(item?.progress);
-    const detail=(item?.reason||'ดูรายละเอียดใน Update Center')+(Number.isFinite(progress)&&progress>0?' · '+Math.round(progress)+'%':'');
+    const detail=item?.reason||'ดูรายละเอียดใน Update Center';
     const tone=String(item?.state)==='BLOCKED'?'CRITICAL':'WARNING';
     host.append(row(String(item?.name||'ระบบ'),detail,updateStateLabel(item?.state),tone));
   }
@@ -192,9 +192,14 @@ function renderServer(data){
   $('cp-backup-card').textContent=latest?(backup.state||'—')+' · '+date(latest.verifiedAt):(backup.state||'ยังไม่มีข้อมูล');
   $('cp-db').textContent='Schema '+(db.schemaVersion??'—')+' · '+(db.state||'UNKNOWN');
   const deployment=data?.deployment||{};
-  $('cp-release').textContent='Control '+(deployment.controlReleaseId||'—')+' · Web '+(deployment.webReleaseId||'—')+' · '+(deployment.sourceState==='MATCHED'?'Control/Web SHA '+shortSha(deployment.controlSourceSha)+' ตรงกัน':'ยังยืนยัน Control/Web source ไม่ได้');
+  const releaseCoherence=deployment.sourceState==='MATCHED'
+    ?'Control/Web SHA '+shortSha(deployment.controlSourceSha)+' ตรงกัน'
+    :deployment.sourceState==='TRACK_COHERENT'
+      ?'Control '+shortSha(deployment.controlSourceSha)+' · Web '+shortSha(deployment.webSourceSha)+' แยก release track ถูกต้อง'
+      :'ยังยืนยัน Control/Web source ไม่ได้';
+  $('cp-release').textContent='Control '+(deployment.controlReleaseId||'—')+' · Web '+(deployment.webReleaseId||'—')+' · '+releaseCoherence;
   const overall=$('cp-overall'),warnings=[];
-  if(deployment.sourceState!=='MATCHED')warnings.push('Source');
+  if(!sourceCoherent(deployment.sourceState))warnings.push('Source');
   if(!server||!db.state||!backup.state)warnings.push('ข้อมูลไม่ครบ');
   if(db.state&&db.state!=='HEALTHY')warnings.push('Database');
   if(backup.state&&backup.state!=='VERIFIED')warnings.push('Backup');
@@ -249,8 +254,12 @@ function renderEcosystem(data){
   const labels={awh:'AWH Control Plane',bay:'BAY EXCUSE X',learnlab:'BAY LearnLab',website:'เว็บไซต์โรงเรียน'};
   for(const service of services){
     const detail=service.detail||'HTTP '+(service.http??'—')+' · '+(service.latencyMs??'—')+' ms';
-    host.append(row(labels[service.id]||service.name||service.id,detail,service.ok?'Online':'ต้องตรวจ',service.ok?'READY':'FAILED'));
-    if(service.critical&&service.ok!==true)attention((labels[service.id]||service.name||service.id)+' ผิดปกติ',detail,'CRITICAL');
+    const http=Number(service.http);
+    const publicReachable=Number.isFinite(http)&&http>=200&&http<500;
+    const verificationPending=service.ok!==true&&publicReachable&&/ยังไม่ยืนยัน|กำลังยืนยัน|authenticated|post[- ]login|verification/i.test(detail);
+    const state=service.ok?'READY':verificationPending?'VERIFYING':'FAILED';
+    host.append(row(labels[service.id]||service.name||service.id,detail,service.ok?'Online':verificationPending?'กำลังยืนยัน':'ต้องตรวจ',state));
+    if(service.critical&&service.ok!==true&&!verificationPending)attention((labels[service.id]||service.name||service.id)+' ผิดปกติ',detail,'CRITICAL');
   }
 }
 function renderAgentControl(data){
@@ -334,19 +343,24 @@ function makeControlButton(label,run,{tone='',confirmText=null,busyLabel='กำ
   });
   return button;
 }
+const TASK_TERMINAL_STATES=new Set(['COMPLETED','FAILED','CANCELLED','SUPERSEDED']);
+const TASK_RUNNING_STATES=new Set(['RUNNING','VERIFYING','RECOVERING','PREPARING','QA','DEPLOYING','UPDATING']);
 function taskStateLabel(state){
-  return ({QUEUED:'อยู่ในคิว',WAITING_FOR_WORKER:'รออุปกรณ์',WAITING_FOR_APPROVAL:'รอยืนยัน',RUNNING:'กำลังทำ',VERIFYING:'กำลังตรวจ',RECOVERING:'กำลังกู้ต่อ',COMPLETED:'เสร็จ',FAILED:'ล้มเหลว',CANCELLED:'ยกเลิกแล้ว'})[String(state||'')]||String(state||'—');
+  return ({CREATED:'พร้อมเริ่ม',PENDING:'รอเริ่ม',QUEUED:'อยู่ในคิว',WAITING_FOR_WORKER:'รอ executor',WAITING_FOR_APPROVAL:'รอยืนยัน',STALE_RESUMABLE:'กำลังกู้จากงานเดิม',BLOCKED:'ติดเงื่อนไข',PREPARING:'กำลังเตรียม',QA:'กำลังทดสอบ',DEPLOYING:'กำลังติดตั้ง',UPDATING:'กำลังอัปเดต',RUNNING:'กำลังทำ',VERIFYING:'กำลังตรวจ',RECOVERING:'กำลังกู้ต่อ',COMPLETED:'เสร็จ',FAILED:'ล้มเหลว',CANCELLED:'ยกเลิกแล้ว',SUPERSEDED:'มีงานใหม่แทนแล้ว'})[String(state||'')]||String(state||'—');
 }
 function renderLiveTasks(control){
   cpControlData=control;
   const host=$('cp-live-tasks');if(!host)return;
   const tasks=Array.isArray(control?.tasks)?control.tasks:[];
-  const active=tasks.filter(task=>!['COMPLETED','FAILED','CANCELLED'].includes(String(task?.state||''))).slice(0,8);
+  const unfinished=tasks.filter(task=>!TASK_TERMINAL_STATES.has(String(task?.state||'')));
+  const running=unfinished.filter(task=>TASK_RUNNING_STATES.has(String(task?.state||'')));
+  const waiting=unfinished.filter(task=>!TASK_RUNNING_STATES.has(String(task?.state||'')));
+  const active=[...running,...waiting].slice(0,8);
   host.replaceChildren();
-  if($('cp-command-running'))$('cp-command-running').textContent=String(active.length);
+  if($('cp-command-running'))$('cp-command-running').textContent=String(running.length);
   if(!active.length){empty(host,'ไม่มีงานที่กำลังทำหรือรออยู่');return;}
   for(const task of active){
-    const detail=[task.projectName,task.lastEvent?.message,Number.isFinite(Number(task.progress))?Math.round(Number(task.progress))+'%':null].filter(Boolean).join(' · ');
+    const detail=[task.projectName,task.lastEvent?.message].filter(Boolean).join(' · ');
     const item=row(task.goal||'งาน AWH',detail,taskStateLabel(task.state),task.state);
     if(task.canCancel===true){
       const actions=document.createElement('span');actions.className='cp-control-actions';
@@ -422,8 +436,10 @@ function renderCoreReleaseControl(status){
   const active=releases.find(item=>!['COMPLETED','FAILED','CANCELLED'].includes(String(item?.taskState||'')));
   button.disabled=true;button.dataset.releaseSha='';
   if(active){
-    button.textContent='AWH กำลังอัปเดต '+Math.max(0,Math.min(100,Number(active.progress||0)))+'%';
-    message.textContent=active.resultSummary||'AWH กำลังอัปเดตและตรวจสอบผล';return;
+    const value=Number(active.progress||0);
+    const completion=Number.isFinite(value)&&value>0?' · '+Math.max(0,Math.min(100,Math.round(value)))+'%':'';
+    button.textContent='AWH · '+taskStateLabel(active.taskState||active.state||'RUNNING')+completion;
+    message.textContent=active.resultSummary||active.lastEvent?.message||'ระบบกำลังทำงานจากสถานะจริงของ release controller';return;
   }
   if(!target){button.textContent='ยังไม่มีรุ่นพร้อมอัปเดต';message.textContent=status?.releaseBlocker||'ยังไม่พบรุ่นที่พร้อมอัปเดต';return;}
   if(runtime&&target===runtime){button.textContent='AWH เป็นรุ่นล่าสุด';message.textContent='AWH ใช้รุ่นล่าสุดแล้ว · '+shortSha(runtime);return;}
@@ -532,10 +548,20 @@ function renderProviderHub(data){
   remove.addEventListener('click',async()=>{const confirmed=await confirmOwnerAction({title:'ยกเลิกการเชื่อมต่อ '+(provider.displayName||provider.providerId),detail:'AWH จะหยุดใช้ key นี้จนกว่าจะเชื่อมใหม่',confirmLabel:'ยืนยันยกเลิกการเชื่อมต่อ',danger:true});if(!confirmed)return;form.dataset.submitting='true';remove.disabled=true;msg.textContent='กำลังยกเลิกการเชื่อมต่อ…';try{await withOwnerStepUp(()=>updateProviderHubCredential(provider.providerId,'REMOVE',null),'การยกเลิกการเชื่อมต่อ '+(provider.displayName||provider.providerId));await reload();}catch(error){msg.textContent=error instanceof Error?error.message:'ยังยกเลิกการเชื่อมต่อไม่ได้';}finally{delete form.dataset.submitting;remove.disabled=false;}});
  }}
 function renderHatchetOwnerStatus(data){
-  const configured=data?.hatchet?.credentialConfigured===true;
+  const value=data?.hatchet||{};
+  const configured=value.credentialConfigured===true;
+  const state=String(value.state||'UNKNOWN');
   const status=$('cp-hatchet-status');
-  if(status)status.textContent=configured?'พร้อมใช้งาน · credential ถูกเก็บแบบไม่แสดงกลับ':'ยังไม่เชื่อม · กดเชื่อมได้จาก AWH โดยตรง';
+  const copy={
+    READY:'พร้อมทำงาน · worker heartbeat สดและใช้ exact execution ID',
+    STALE:'สัญญาณ worker เก่า · งานเดิมยังอยู่ใน canonical execution',
+    DEGRADED:'worker เชื่อมอยู่แต่ dispatch ล่าสุดมีปัญหา · ระบบจะไม่อ้างว่า READY',
+    NOT_RUNNING:'มี credential แต่ยังไม่พบ worker heartbeat',
+    NOT_CONFIGURED:'ยังไม่เชื่อม Hatchet'
+  }[state]||'กำลังตรวจ Hatchet worker';
+  if(status)status.textContent=copy;
   if(!configured)attention('เชื่อม Hatchet Cloud','เหลือเชื่อม token เพื่อให้งานที่ใช้ Cloud worker พร้อมทำงาน','WARNING',{label:'เชื่อมตอนนี้',href:'./?awh-settings=hatchet'});
+  else if(state!=='READY')attention('ตรวจ Hatchet worker',copy,'WARNING',{label:'ดูสุขภาพระบบ',href:'#system-health'});
 }
 const ownerActionIndex=[
   {label:'เชื่อมผู้ให้บริการ AI',detail:'Groq, OpenAI และผู้ให้บริการที่ AWH รองรับ',href:'#ai',keywords:'ai groq openai provider api key เชื่อม เอไอ'},

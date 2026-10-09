@@ -10,3 +10,4 @@ cleanup(){ kill "$FIXTURE_PID" 2>/dev/null || true; wait "$FIXTURE_PID" 2>/dev/n
 trap cleanup EXIT HUP INT TERM
 i=0; until curl -fsS http://127.0.0.1:4174/ >/dev/null 2>&1; do i=$((i+1)); [ "$i" -lt 50 ] || { cat /tmp/awh-control-web-fixture.log >&2; exit 1; }; sleep 0.1; done
 AWH_CLOSURE_FIXTURE_URL=http://127.0.0.1:4174/ AWH_CHROME_PATH="$AWH_CHROME_PATH" AWH_PLAYWRIGHT_MODULE="$AWH_PLAYWRIGHT_MODULE" "$AWH_BROWSER_QA_NODE_BIN" scripts/qa/chat-continuity-browser.mjs
+AWH_ACCESSIBILITY_FIXTURE_URL=http://127.0.0.1:4174/ AWH_CHROME_PATH="$AWH_CHROME_PATH" AWH_PLAYWRIGHT_MODULE="$AWH_PLAYWRIGHT_MODULE" AWH_AXE_CORE_PATH="$AWH_AXE_CORE_PATH" "$AWH_BROWSER_QA_NODE_BIN" scripts/qa/accessibility-browser.mjs

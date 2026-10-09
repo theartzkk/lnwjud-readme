@@ -500,9 +500,18 @@ async function fastQaCheck() {
 
 async function experienceContractCheck() {
   const started = Date.now();
-  const script = join(ROOT, 'scripts', 'qa', 'experience-contract.mjs');
-  const result = await run(process.execPath, [script], { timeoutMs: 30_000 });
-  check('experience-contract', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'KRUART navigation, portal, interaction and release-track contract passed' : 'KRUART experience contract failed', started);
+  const scripts = [
+    join(ROOT, 'scripts', 'qa', 'experience-contract.mjs'),
+    join(ROOT, 'scripts', 'qa', 'component-state-contract.mjs'),
+  ];
+  for (const script of scripts) {
+    const result = await run(process.execPath, [script], { timeoutMs: 30_000 });
+    if (result.code !== 0) {
+      check('experience-contract', 'FAIL', 'KRUART experience/component-state contract failed', started);
+      return;
+    }
+  }
+  check('experience-contract', 'PASS', 'KRUART navigation, interaction, component-state and release-track contracts passed', started);
 }
 
 async function finalUatShellCheck() {

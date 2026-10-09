@@ -116,15 +116,18 @@ final class HubDurableExecutionService
      * This is not a second queue: every item is still claimed through runOnce()
      * and the existing one-to-one control_task_executions authority.
      *
-     * @return array{processed:int,completed:int,waiting:int,failed:int,recovered:int,continuationRecovered:int,results:list<array<string,mixed>>}
+     * @return array{processed:int,completed:int,waiting:int,failed:int,recovered:int,continuationOrphansRecovered:int,continuationRecovered:int,results:list<array<string,mixed>>}
      */
     public function runBatch(int $maxItems = self::MAX_BATCH_ITEMS, ?string $now = null): array
     {
         if ($maxItems < 1 || $maxItems > self::MAX_BATCH_ITEMS) throw new HubDurableExecutionException('Execution batch bound is invalid', 'EXECUTION_INVALID');
         $at=self::timestamp($now ?? gmdate('c'));
         $recovered = count($this->recoverExpired($at));
+        $continuationOrphansRecovered=$this->recoverInterruptedContinuations($at);
         $continuationRecovered=$this->recoverFailedContinuations($at);
         $results = []; $completed = 0; $waiting = 0; $failed = 0;
+        if(getenv('AWH_HATCHET_DISPATCH_MODE')==='1')
+            return ['processed'=>0,'completed'=>0,'waiting'=>0,'failed'=>0,'recovered'=>$recovered,'continuationOrphansRecovered'=>$continuationOrphansRecovered,'continuationRecovered'=>$continuationRecovered,'results'=>[]];
         for ($i = 0; $i < $maxItems; $i++) {
             $result = $this->runOnce($now);
             if ($result === null) break;
@@ -134,7 +137,44 @@ final class HubDurableExecutionService
             elseif ($state === 'FAILED') $failed++;
             else $waiting++;
         }
-        return ['processed' => count($results), 'completed' => $completed, 'waiting' => $waiting, 'failed' => $failed, 'recovered' => $recovered, 'continuationRecovered'=>$continuationRecovered, 'results' => $results];
+        return ['processed' => count($results), 'completed' => $completed, 'waiting' => $waiting, 'failed' => $failed, 'recovered' => $recovered, 'continuationOrphansRecovered'=>$continuationOrphansRecovered, 'continuationRecovered'=>$continuationRecovered, 'results' => $results];
+    }
+
+    /**
+     * Recover the crash window after a completed parent was persisted but
+     * before its requested continuation outcome was recorded.
+     */
+    private function recoverInterruptedContinuations(string $at): int
+    {
+        if ($this->continuationMaterializer === null || $this->agent === null) return 0;
+        $q=$this->pdo->query("SELECT e.*,t.goal,t.conversation_id,t.user_id,t.result_summary,t.state AS task_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.executor_kind='VPS' AND e.state='COMPLETED' AND t.state='COMPLETED' AND e.checkpoint_json LIKE '%\"continuation\"%' AND e.checkpoint_json NOT LIKE '%\"_continuationOutcome\"%' ORDER BY e.updated_at,e.execution_id LIMIT 40");
+        $count=0;
+        foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){
+            try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,32,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            $continuation=is_array($checkpoint['continuation']??null)?$checkpoint['continuation']:null;
+            if(!is_array($continuation)||($continuation['enabled']??false)!==true||isset($checkpoint['_continuationOutcome']))continue;
+            try{
+                $this->pdo->exec('BEGIN IMMEDIATE');
+                $fresh=$this->pdo->prepare("SELECT e.checkpoint_json,e.state AS execution_state,t.state AS task_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.execution_id=:execution");
+                $fresh->execute(['execution'=>$row['execution_id']]);$current=$fresh->fetch(PDO::FETCH_ASSOC);
+                if(!is_array($current)||($current['execution_state']??null)!=='COMPLETED'||($current['task_state']??null)!=='COMPLETED'){$this->pdo->exec('COMMIT');continue;}
+                $freshCheckpoint=json_decode((string)$current['checkpoint_json'],true,32,JSON_THROW_ON_ERROR);
+                $freshContinuation=is_array($freshCheckpoint['continuation']??null)?$freshCheckpoint['continuation']:null;
+                if(!is_array($freshContinuation)||($freshContinuation['enabled']??false)!==true||isset($freshCheckpoint['_continuationOutcome'])){$this->pdo->exec('COMMIT');continue;}
+                $expected=(string)$current['checkpoint_json'];
+                $freshCheckpoint['_continuationOutcome']=['state'=>'FAILED','at'=>$at,'nextTaskId'=>null,'attempts'=>0,'nextEligibleAt'=>$at];
+                $encoded=json_encode($freshCheckpoint,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+                $claim=$this->pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution AND state='COMPLETED' AND checkpoint_json=:expected");
+                $claim->execute(['checkpoint'=>$encoded,'at'=>$at,'execution'=>$row['execution_id'],'expected'=>$expected]);
+                if($claim->rowCount()!==1){$this->pdo->exec('COMMIT');continue;}
+                $this->pdo->exec('COMMIT');$checkpoint=$freshCheckpoint;unset($checkpoint['_continuationOutcome']);
+            }catch(Throwable){$this->rollbackImmediate();continue;}
+            $summary=is_string($row['result_summary']??null)&&trim((string)$row['result_summary'])!==''?(string)$row['result_summary']:(string)$row['goal'];
+            $state=$this->continueIfRequested($row,$checkpoint,$summary,$at);
+            $this->publishAfterContinuation($row,'RESULT',$summary,$state,$at);
+            $count++;
+        }
+        return $count;
     }
 
     private function recoverFailedContinuations(string $at): int

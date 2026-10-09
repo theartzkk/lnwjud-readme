@@ -4,16 +4,21 @@ Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
-ConditionPathExists=/var/lib/awh-hub/provider-credentials/hatchet.key
 
 [Service]
 Type=simple
 User=awh-hub
 Group=awh-hub
 WorkingDirectory=/opt/awh-tools/hatchet-worker
-Environment=AWH_HATCHET_CREDENTIAL_FILE=/var/lib/awh-hub/provider-credentials/hatchet.key
+Environment=AWH_HATCHET_MODE=embedded
+Environment=AWH_HATCHET_EMBEDDED_VERSION=v0.110.5
+Environment=AWH_HATCHET_EMBEDDED_CHECKSUM=18ddacae0005042bd982328bcb8d370cca6907352a1ab2a3c8406001d31e7dee
+Environment=AWH_HATCHET_EMBEDDED_DATA_DIR=/var/lib/awh-hub/hatchet-embedded/postgres
+Environment=AWH_HATCHET_EMBEDDED_GRPC_PORT=7070
+Environment=AWH_HATCHET_EMBEDDED_API_PORT=28243
 Environment=AWH_HATCHET_SLOTS=4
 Environment=AWH_HATCHET_DISPATCH_INTERVAL_MS=2000
+Environment=AWH_HATCHET_HEARTBEAT_FILE=/var/lib/awh-hub/hatchet-worker-heartbeat.json
 Environment=AWH_HATCHET_BRIDGE=/opt/awh-hub/control-plane-current/hub/bin/awh-hatchet-execution.php
 Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
 Environment=AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault
@@ -25,12 +30,14 @@ Environment=AWH_PROVIDER_CREDENTIAL_ROOT=/var/lib/awh-hub/provider-credentials
 ExecStart=/opt/awh-tools/hatchet-worker/node/bin/node /opt/awh-tools/hatchet-worker/app/worker.cjs
 Restart=on-failure
 RestartSec=5s
+TimeoutStopSec=30s
+KillMode=control-group
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
-ReadOnlyPaths=/var/lib/awh-hub/provider-credentials/hatchet.key /opt/awh-tools/hatchet-worker /opt/awh-hub/control-plane-current
+ReadOnlyPaths=/opt/awh-tools/hatchet-worker /opt/awh-hub/control-plane-current
 ReadWritePaths=/var/lib/awh-hub /var/lib/awh-hub/project-vault /var/lib/awh-hub/task-workspaces /var/lib/awh-hub/task-transfers /var/lib/awh-hub/artifacts
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 UMask=0077

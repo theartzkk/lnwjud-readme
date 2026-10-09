@@ -25,6 +25,7 @@ final class HubOperatorBridgeService
     private const MAX_BAY_PACKAGE_BYTES=9437184;
     private const VERIFICATION_CONFIRMATION='STORE_VERIFICATION_EVIDENCE';
     private const VAULT_EXPORT_CONFIRMATION='EXPORT_CANONICAL_VAULT_SOURCE';
+    private const VAULT_MANIFEST_CONFIRMATION='READ_CANONICAL_VAULT_MANIFEST';
     private const VAULT_IMPORT_CONFIRMATION='IMPORT_CANONICAL_VAULT_SOURCE';
     private const MAX_VAULT_IMPORT_BYTES=134217728;
     private const MAX_VERIFICATION_DOCUMENT_BYTES=196608;
@@ -73,6 +74,7 @@ final class HubOperatorBridgeService
             'verification.store'=>$this->verificationStore($request,$at),
             'verification.regressions'=>$this->verificationRegressions($request,$at),
             'vault.export'=>$this->vaultExport($request,$at),
+            'vault.manifest'=>$this->vaultManifest($request,$at),
             'vault.import'=>$this->vaultImport($request,$at),
             'mission.status'=>$this->missionStatus(self::text($request,'project',160),$at),
             'mission.acquire'=>$this->missionAcquire($request,$at),
@@ -232,6 +234,66 @@ final class HubOperatorBridgeService
         $state=$hardBlocked?'BLOCKED':($attention?'ATTENTION':'READY');
         $decision=$hardBlocked?'WAIT_CONFLICT':(count($coordinationRows)>0?'CONTINUE_OR_JOIN':'CONTINUE');
         return ['schemaVersion'=>2,'state'=>$state,'ready'=>$ready,'mutationReady'=>$ready,'sourceReady'=>$sourceGateReady,'blocking'=>$hardBlocked,'decision'=>$decision,'decisionAuthority'=>'AWH_EXECUTION_GATE','productionReady'=>$sourceGateReady,'productionReadyDeprecated'=>true,'runtimeParityState'=>'NOT_EVALUATED','readinessSemantics'=>['ready'=>'MUTATION_GATE','mutationReady'=>'MUTATION_GATE','sourceReady'=>'SOURCE_AUTHORITY_AND_VAULT','productionReady'=>'DEPRECATED_ALIAS_OF_SOURCE_READY','runtimeParityState'=>'SEPARATE_RELEASE_VERIFICATION'],'sourceRequired'=>$requireSource,'requestedMutationResource'=>$requestedResource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($writerRows),'conflictingMutationCount'=>count($conflictingRows),'runningMutationExecutionCount'=>count($writerRows),'unscopedRunningMutationExecutionCount'=>$unscopedCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'scope'=>(string)$r['mutation_scope'],'resource'=>HubCapabilityRegistryService::mutationResourceForExecution((string)$r['required_capability'],(string)$r['executor_kind'],is_string($r['checkpoint_json']??null)?(string)$r['checkpoint_json']:null),'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$writerRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'coordination'=>['activeMissionCount'=>count($coordinationRows),'blocksMutation'=>false,'mutationDecision'=>$hardBlocked?'WAIT_CONFLICT':'CONTINUE','nextUserAction'=>$hardBlocked?'RESOLVE_CONFLICT':'NONE','rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','missions'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal'],'releaseTrack'=>self::missionReleaseTrackFromCheckpoint((string)($r['checkpoint_json']??'')),'ownerActionRequired'=>false,'nextUserAction'=>'NONE'],$coordinationRows)],'checks'=>$checks,'observedAt'=>$at];
+    }
+
+    /** A bounded, Owner-confirmed read of the immutable ACTIVE Vault manifest.
+     * Never exports content bytes, creates a revision, acquires a writer or
+     * weakens the project-scoped source gate. Pagination keeps operator
+     * responses within the native tool result limit.
+     *
+     * @param array<string,mixed> $request
+     * @return array<string,mixed>
+     */
+    private function vaultManifest(array $request,string $at): array
+    {
+        if(($request['confirmation']??null)!==self::VAULT_MANIFEST_CONFIRMATION)
+            throw new HubOperatorBridgeException('Owner confirmation is required for Vault manifest inspection','OPERATOR_CONFIRMATION_REQUIRED');
+        $keys=array_keys($request);sort($keys);
+        if($keys!==['action','confirmation','expectedActiveRevisionId','limit','offset','project','schemaVersion'])
+            throw new HubOperatorBridgeException('Canonical Vault manifest request is invalid','OPERATOR_REQUEST_INVALID');
+        $selector=self::text($request,'project',160);
+        $expected=strtolower(self::text($request,'expectedActiveRevisionId',36));
+        $offset=$request['offset']??null;$limit=$request['limit']??null;
+        if(!self::uuidValid($expected)||!is_int($offset)||$offset<0||$offset>10000||!is_int($limit)||$limit<1||$limit>80)
+            throw new HubOperatorBridgeException('Vault manifest pagination or revision is invalid','OPERATOR_REQUEST_INVALID');
+        $gate=$this->projectGate($selector,$at,true,'artifact.object');
+        if(($gate['sourceReady']??false)!==true)
+            throw new HubOperatorBridgeException('Project source gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
+        $source=is_array($gate['source']??null)?$gate['source']:[];
+        $project=is_array($gate['project']??null)?$gate['project']:[];
+        $projectId=(string)($project['projectId']??'');$revision=(string)($source['activeVaultRevisionId']??'');
+        if(!self::uuidValid($projectId)||($source['authority']??null)!=='AWH_VAULT'||($source['syncState']??null)!=='SYNCED'
+            ||!hash_equals($revision,(string)($source['canonicalVaultRevisionId']??''))||!hash_equals($expected,$revision))
+            throw new HubOperatorBridgeException('Active Vault revision changed; retry after reinspection','OPERATOR_VAULT_BASE_MOVED');
+        $stmt=$this->pdo->prepare("SELECT content_sha256,state FROM control_project_vault_revisions WHERE revision_id=:revision AND project_id=:project LIMIT 1");
+        $stmt->execute(['revision'=>$revision,'project'=>$projectId]);$row=$stmt->fetch();
+        if(!is_array($row)||($row['state']??null)!=='ACTIVE')
+            throw new HubOperatorBridgeException('Active Vault manifest is unavailable','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        $sha=strtolower((string)($row['content_sha256']??''));
+        if(preg_match('/^[a-f0-9]{64}$/',$sha)!==1)
+            throw new HubOperatorBridgeException('Active Vault manifest identity is invalid','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        // Rehash actual immutable Vault file bytes instead of trusting a stored
+        // JSON manifest alone. This also works with older Vault SQL fixtures.
+        try{$files=HubProjectVault::fromEnvironment()->manifest($projectId,$revision);}
+        catch(HubProjectVaultException){throw new HubOperatorBridgeException('Active Vault files are unreadable or unsafe','OPERATOR_VAULT_EXPORT_UNAVAILABLE');}
+        $total=count($files);
+        if($total<1||$total>HubProjectVault::MAX_FILES)
+            throw new HubOperatorBridgeException('Active Vault file count exceeds safe limits','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        $manifestJson=json_encode(['schemaVersion'=>1,'files'=>$files],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+        if(!hash_equals($sha,hash('sha256',$manifestJson)))
+            throw new HubOperatorBridgeException('Active Vault filesystem digest differs from the recorded revision','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        $subset=array_slice($files,$offset,$limit);
+        foreach($subset as $file){
+            if(!is_array($file)||!is_string($file['path']??null)||!is_string($file['sha256']??null)
+                ||preg_match('/^[a-f0-9]{64}$/',$file['sha256'])!==1
+                ||str_starts_with($file['path'],'/')||str_contains($file['path'],"\0")
+                ||preg_match('#(?:^|/)\\.\\.(?:/|$)#',$file['path'])===1||!is_int($file['sizeBytes']??null))
+                throw new HubOperatorBridgeException('Stored Vault manifest contains invalid entries','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        }
+        return ['schemaVersion'=>1,'state'=>'CURRENT','projectId'=>$projectId,'vaultRevisionId'=>$revision,
+            'contentSha256'=>$sha,'fileCount'=>$total,'offset'=>$offset,'limit'=>$limit,
+            'nextOffset'=>($offset+count($subset))<$total?$offset+count($subset):null,
+            'files'=>$subset,'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -1502,6 +1564,22 @@ final class HubOperatorBridgeService
         if($q->rowCount()!==1)throw new HubOperatorBridgeException('Release details could not be bound to source promotion','OPERATOR_RELEASE_DETAILS_REQUIRED');
     }
 
+    private function beginImmediateWithRetry(): void
+    {
+        $last=null;
+        foreach([0,100000,300000] as $delay){
+            if($delay>0)usleep($delay);
+            try{$this->pdo->exec('BEGIN IMMEDIATE');return;}
+            catch(PDOException $error){
+                $last=$error;$info=$error->errorInfo;$sqliteCode=is_array($info)&&isset($info[1])?(int)$info[1]:0;$message=strtolower($error->getMessage());
+                $busy=in_array($sqliteCode,[5,6],true)||str_contains($message,'database is locked')||str_contains($message,'database is busy');
+                if(!$busy)throw $error;
+            }
+        }
+        if($last instanceof PDOException)throw $last;
+        throw new RuntimeException('SQLite write authority unavailable');
+    }
+
     /** @param array<string,mixed> $checkpoint @return array{executionId:string,taskId:string,projectId:string,leaseExpiresAt:string,joined?:bool} */
     private function acquireMutationAuthority(string $projectId,string $goal,string $capability,array $checkpoint,string $at,int $leaseSeconds=300,string $leaseOwner='operator-bridge'): array
     {
@@ -1509,7 +1587,7 @@ final class HubOperatorBridgeService
         if($leaseSeconds<60||$leaseSeconds>14400||preg_match('/^[a-z][a-z0-9-]{2,31}$/',$leaseOwner)!==1)throw new HubOperatorBridgeException('Mutation lease request is invalid','OPERATOR_REQUEST_INVALID');
         $lease=gmdate('c',strtotime($at)+$leaseSeconds); $taskId=self::uuid(); $executionId=self::uuid();
         try{
-            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->beginImmediateWithRetry();
             if($capability===self::MISSION_CAPABILITY){
                 $requestedTrack=is_string($checkpoint['requestedReleaseTrack']??null)?strtolower(trim((string)$checkpoint['requestedReleaseTrack'])):'';
                 $requestedWorkstream=is_string($checkpoint['workstreamKey']??null)?strtolower(trim((string)$checkpoint['workstreamKey'])):'';
@@ -1546,7 +1624,7 @@ final class HubOperatorBridgeService
     private function releaseMutationAuthority(array $authority,bool $success,string $at): void
     {
         try{
-            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->beginImmediateWithRetry();
             (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState($authority['executionId'],'RELEASED',null,$at);
             $state=$success?'COMPLETED':'FAILED';$summary=$success?'Guarded operator mutation completed':'Guarded operator mutation failed and released authority';$error=$success?null:'OPERATOR_MUTATION_FAILED';
             $this->pdo->prepare('UPDATE control_task_executions SET state=:state,lease_owner=NULL,lease_expires_at=NULL,last_error_code=:error,updated_at=:at WHERE execution_id=:execution')->execute(['state'=>$state,'error'=>$error,'at'=>$at,'execution'=>$authority['executionId']]);

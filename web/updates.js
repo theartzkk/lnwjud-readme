@@ -64,6 +64,10 @@ function persistPinnedOperations(){
     sessionStorage.setItem(OWNER_OPERATION_STORAGE_KEY,JSON.stringify(value));
   }catch{}
 }
+function syncPinnedOperationProjection(){
+  if(!center)return;
+  summary();renderNextAction();renderProgress();
+}
 function pinnedOperationFor(key){return typeof key==='string'?pinnedOperations.get(key)||null:null;}
 function pinnedFor(item){return Boolean(pinnedOperationFor(item?.key));}
 function clearPinnedOperation(key){
@@ -93,6 +97,7 @@ function beginPinnedOperation(item,name,queuedHint=false){
   pinnedOperations.set(key,operation);persistPinnedOperations();
   if(!queuedHint)localOperation={key,name,progress:6,message:'กำลังส่งคำสั่งและตรึงรุ่นที่อนุมัติ'};
   targetFeedback.set(key,{text:queuedHint?'กำลังส่งคำขอเข้าคิว · รุ่นที่เลือกจะไม่ถูกสลับระหว่างรอ':'กำลังส่งคำสั่งและตรึงรุ่นที่อนุมัติ',tone:'info'});
+  syncPinnedOperationProjection();
   return operation;
 }
 function pinAcceptedOperation(item,name,request,progress,messageText,queuedHint=false){
@@ -103,6 +108,7 @@ function pinAcceptedOperation(item,name,request,progress,messageText,queuedHint=
   pinnedOperations.set(key,operation);persistPinnedOperations();
   if(!queued)localOperation={key,name,progress,message:messageText};
   targetFeedback.set(key,{text:queued?'รับคำสั่งแล้ว · รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':'เริ่มอัปเดตแล้ว · ระบบกำลังทำงานและตรวจผลให้อัตโนมัติ',tone:'info'});
+  syncPinnedOperationProjection();
   return queued;
 }
 function markPinnedOutcomeUnknown(item,name){
@@ -110,6 +116,7 @@ function markPinnedOutcomeUnknown(item,name){
   const previous=pinnedOperations.get(key)||{key,name,target:operationTarget(item)||null,acceptedAt:Date.now()};
   pinnedOperations.set(key,{...previous,key,name,status:'OUTCOME_UNKNOWN',outcomeUnknownAt:Date.now()});persistPinnedOperations();
   targetFeedback.set(key,{text:'การตอบกลับขาดหายหลังส่งคำสั่ง · กำลังยืนยันงานเดิมให้อัตโนมัติ',tone:'info'});
+  syncPinnedOperationProjection();
 }
 function queuedPinnedOperations(){return [...pinnedOperations.values()].filter((operation)=>operation?.status==='QUEUED');}
 function reconcilePinnedOperations(){
@@ -678,6 +685,7 @@ function actionButton(text,handler,className='primary-button',targetKey=null,suc
 }
 function ownerFacingReason(item){
   if(!item)return 'ระบบที่เกี่ยวข้องยังไม่พร้อม';
+  if(item?.dispatcherState==='RECOVERING')return 'ตัวควบคุมการอัปเดตขาด heartbeat ชั่วคราว · ระบบกำลังกู้และจะทำต่องานเดิมอัตโนมัติ';
   const pinned=pinnedOperationFor(item?.key);
   if(pinned?.status==='QUEUED')return 'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ';
   if(pinned?.status==='OUTCOME_UNKNOWN')return 'ส่งคำสั่งแล้ว · กำลังยืนยันงานเดิมให้อัตโนมัติ';
@@ -687,7 +695,7 @@ function ownerFacingReason(item){
   if(item.state==='CURRENT')return 'ระบบนี้เป็นรุ่นล่าสุด';
   if(item.state==='UPDATE_AVAILABLE')return 'มีรุ่นใหม่พร้อมอัปเดต';
   if(item.state==='UPDATING')return 'ระบบกำลังอัปเดตและตรวจสอบผล';
-  if(item.state==='WAITING_FOR_APPROVAL')return 'พบงานอัปเดตเดิมที่ยังไม่เริ่มติดตั้งจริง · กดทำต่อจากงานเดิมได้ทันที';
+  if(item.state==='WAITING_FOR_APPROVAL')return 'พบงานอัปเดตเดิมที่รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติจากงานเดิม';
   if(item.state==='REMOTE_CHECK_REQUIRED')return 'กำลังตรวจสถานะล่าสุด';
   if(item.state==='INTERNAL_MANAGED')return 'ระบบนี้ดูแลการอัปเดตให้อัตโนมัติ';
   if(/storage/i.test(reason))return 'พื้นที่สำหรับอัปเดตยังไม่เพียงพอ ระบบจะไม่เริ่มจนกว่าจะปลอดภัย';
@@ -701,31 +709,32 @@ function ownerStageElapsed(event){
   return minutes>=1?` · ขั้นนี้ ${minutes} นาที`:'';
 }
 function ownerProgressMessage(item,event,waiting){
-  if(waiting)return 'พร้อมแล้ว · รอการยืนยันก่อนเริ่มขั้นติดตั้ง';
-  const state=String(item?.taskState||event?.state||'').toUpperCase();
-  const progress=Math.max(0,Math.min(100,Number(event?.progress??item?.progress??localOperation?.progress??0)));
+  if(waiting)return 'รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติจากงานเดิม';
+  if(item?.dispatcherState==='RECOVERING')return 'ตัวควบคุมการอัปเดตขาด heartbeat ชั่วคราว · กำลังกู้และจะทำต่องานเดิมอัตโนมัติ';
+  const state=String(event?.state||item?.taskState||'').toUpperCase();
   const raw=String(event?.message||'').trim();
   const elapsed=ownerStageElapsed(event);
   if(raw&&!/worker|release controller|authority|lease|mutation|candidate|source sha|exact[- ]sha/i.test(raw))return raw+elapsed;
-  if(state==='RUNNING'){
-    if(progress<23)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'+elapsed;
-    if(progress<55)return 'กำลังตรวจความพร้อมและ QA ก่อนติดตั้ง'+elapsed;
-    if(progress<60)return 'สำรองข้อมูลพร้อมแล้ว · กำลังเริ่มติดตั้ง'+elapsed;
-    if(progress<74)return 'กำลังเตรียมส่วนประกอบของระบบสำหรับรุ่นใหม่'+elapsed;
-    if(progress<88)return 'กำลังเปิดใช้บริการและหน้าเว็บรุ่นใหม่'+elapsed;
-    if(progress<99)return 'กำลังตรวจการทำงานของรุ่นใหม่รอบสุดท้าย'+elapsed;
-    return 'ตรวจรอบสุดท้ายผ่านแล้ว · กำลังปิดงานอัปเดต'+elapsed;
-  }
-  const mapped={QUEUED:'รับคำสั่งแล้ว · กำลังเข้าคิว',WAITING_FOR_WORKER:'รับคำสั่งแล้ว · อยู่ในคิวอัปเดต',PREPARING:'กำลังตรวจความพร้อมและเตรียมการ',QA:'กำลังทดสอบความพร้อมก่อนติดตั้ง',VERIFYING:'กำลังตรวจการทำงานของรุ่นใหม่และยืนยันผล',RECOVERING:'กำลังทำต่อจากจุดที่ปลอดภัย'}[state];
-  return mapped||localOperation?.message||'กำลังดำเนินการและตรวจผล';
+  const mapped={
+    QUEUED:'รับคำสั่งแล้ว · กำลังเข้าคิว',
+    WAITING_FOR_WORKER:'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติ',
+    PREPARING:'กำลังตรวจความพร้อมและเตรียมการ',
+    QA:'กำลังทดสอบความพร้อมก่อนติดตั้ง',
+    RUNNING:'กำลังดำเนินการตามขั้นตอนที่บันทึกไว้',
+    DEPLOYING:'กำลังติดตั้งรุ่นที่อนุมัติ',
+    UPDATING:'กำลังอัปเดตจากงานเดิม',
+    VERIFYING:'กำลังตรวจการทำงานของรุ่นใหม่และยืนยันผล',
+    RECOVERING:'กำลังกู้และทำต่อจาก checkpoint เดิม'
+  }[state];
+  return (mapped||localOperation?.message||'กำลังดำเนินการจากสถานะจริงของระบบ')+elapsed;
 }
 function reconcileTargetFeedback(item){
   if(!item?.key||!targetFeedback.has(item.key))return;
   if(item.state==='UPDATE_AVAILABLE'&&item.actionable===true&&!item.taskId&&!item.approvalId){targetFeedback.delete(item.key);return;}
   if(item.state==='CURRENT')targetFeedback.set(item.key,{text:'อัปเดตสำเร็จ · เป็นรุ่นล่าสุด',tone:'good'});
-  else if(itemQueued(item))targetFeedback.set(item.key,{text:'รับคำสั่งแล้ว · รอคิวอัปเดต'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
+  else if(itemQueued(item))targetFeedback.set(item.key,{text:item?.dispatcherState==='RECOVERING'?ownerProgressMessage(item,item.progressEvent,false):('รับคำสั่งแล้ว · รอคิวอัปเดต'+(item.canCancel===true?' · ยกเลิกได้':'')),tone:item?.dispatcherState==='RECOVERING'?'warn':'info'});
   else if(item.state==='UPDATING')targetFeedback.set(item.key,{text:ownerProgressMessage(item,item.progressEvent,false)+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
-  else if(item.state==='WAITING_FOR_APPROVAL')targetFeedback.set(item.key,{text:'พบงานอัปเดตเดิมที่พร้อมทำต่อ · ใช้งานรายการเดิมได้ทันที'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
+  else if(item.state==='WAITING_FOR_APPROVAL')targetFeedback.set(item.key,{text:'รอการอนุมัติ · เมื่ออนุมัติแล้วระบบจะทำต่ออัตโนมัติจากงานเดิม'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
 }
 async function cancelUpdate(item){
   if(!item?.taskId||item.canCancel!==true)throw Object.assign(new Error('งานเริ่มขั้นที่หยุดไม่ได้แล้ว'),{code:'TASK_NOT_CANCELLABLE'});
@@ -1140,6 +1149,17 @@ function syncLiveStream(){
   else{stopLiveStream();stopLiveWatchdog();}
 }
 
+// Only display persisted, server-reported milestones. Do not turn local
+// optimistic values, an absent/null progress, queued work or an unconfirmed
+// terminal 100 into a percentage. Backend progress is not elapsed time.
+function serverMilestoneProgress(item,event,waiting,queuedOnly){
+  if(!item||item.state!=='UPDATING'||waiting||queuedOnly)return null;
+  const raw=item.progress??event?.progress;
+  if(typeof raw!=='number'&&(typeof raw!=='string'||raw.trim()===''))return null;
+  const progress=Number(raw);
+  return Number.isInteger(progress)&&progress>=0&&progress<100?progress:null;
+}
+
 function renderProgress(){
   const active=(center?.items||[]).filter((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
   const queuedPins=queuedPinnedOperations();
@@ -1156,15 +1176,32 @@ function renderProgress(){
   const queuedOnly=item?itemQueued(item):(!localOperation&&queuedPins.length>0);
   const queuedPin=queuedOnly&&!item?queuedPins[0]:null;
   const localForItem=!item||localOperation?.key===item?.key?localOperation:null;
-  const progress=queuedOnly?0:Math.max(0,Math.min(100,Number(item?.progressEvent?.progress??item?.progress??(waiting?5:localForItem?.progress??15))));
   const operationName=item?.name||localForItem?.name||queuedPin?.name||'ระบบ';
-  $('operation-progress-title').textContent=waiting?'รอยืนยันก่อนติดตั้ง':queuedOnly?('รอคิวอัปเดต '+operationName):('กำลังอัปเดต '+operationName);
-  $('operation-progress-percent').textContent=queuedOnly?'รอคิว':Math.round(progress)+'%';
-  $('operation-progress-bar').style.width=progress+'%';
-  const meter=$('operation-progress-meter');
-  if(queuedOnly){meter.removeAttribute('aria-valuenow');meter.setAttribute('aria-valuetext','รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ');}
-  else{meter.setAttribute('aria-valuenow',String(Math.round(progress)));meter.setAttribute('aria-valuetext',Math.round(progress)+' เปอร์เซ็นต์');}
   const event=item?.progressEvent||null;
+  const truthState=queuedOnly?'QUEUED':waiting?'WAITING_FOR_APPROVAL':String(event?.state||item?.taskState||'RUNNING').toUpperCase();
+  const truthLabel={
+    QUEUED:'อยู่ในคิว',
+    WAITING_FOR_WORKER:'รอ executor',
+    WAITING_FOR_APPROVAL:'รออนุมัติ',
+    PREPARING:'กำลังเตรียม',
+    QA:'กำลังทดสอบ',
+    RUNNING:'กำลังทำ',
+    DEPLOYING:'กำลังติดตั้ง',
+    UPDATING:'กำลังอัปเดต',
+    VERIFYING:'กำลังตรวจ',
+    RECOVERING:'กำลังกู้ต่อ'
+  }[truthState]||'กำลังทำ';
+  $('operation-progress-title').textContent=waiting?'รออนุมัติก่อนติดตั้ง':queuedOnly?('รอคิวอัปเดต '+operationName):('กำลังอัปเดต '+operationName);
+  const percent=serverMilestoneProgress(item,event,waiting,queuedOnly);
+  $('operation-progress-percent').textContent=percent===null?truthLabel:percent+'%';
+  $('operation-progress-percent').title=percent===null?'สถานะที่ระบบยืนยัน':'ความคืบหน้าตามขั้นตอน Release Engine ไม่ใช่เวลาคงเหลือ';
+  $('operation-progress-bar').style.width=percent===null?'0%':percent+'%';
+  const meter=$('operation-progress-meter');
+  if(percent===null)meter.removeAttribute('aria-valuenow');
+  else meter.setAttribute('aria-valuenow',String(percent));
+  meter.setAttribute('aria-valuetext',percent===null
+    ?(queuedOnly?'รอคิว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':truthLabel)
+    :'ความคืบหน้าตามขั้นตอน '+percent+'% · '+truthLabel);
   const signalFresh=liveSignalFresh();
   const eventFresh=signalFresh&&progressEventFresh(event);
   $('operation-progress-message').textContent=queuedOnly?'รับคำสั่งแล้ว · จะเริ่มอัตโนมัติเมื่อรายการก่อนหน้าจบ':ownerProgressMessage(item,event,waiting);
@@ -1176,16 +1213,15 @@ function renderProgress(){
     queueHost.hidden=names.length===0;
     queueHost.textContent=names.length===0?'':'รอคิว '+names.length+' ระบบ · '+names.join(' · ');
   }
-  host.dataset.active=!waiting&&!queuedOnly&&progress<100?'true':'false';
+  host.dataset.active=!waiting&&!queuedOnly&&!['COMPLETED','FAILED','CANCELLED'].includes(truthState)?'true':'false';
   host.dataset.live=eventFresh?'true':'false';
-  const thresholds=[22,54,84,98,100];
+  const explicitStage={PREPARING:0,QA:0,DEPLOYING:2,VERIFYING:3}[truthState];
   [...$('operation-steps').children].forEach((step,index)=>{
-    const previous=index===0?0:thresholds[index-1];
-    const status=queuedOnly?'pending':progress>=thresholds[index]?'done':(progress>=previous?'active':'pending');
+    const status=Number.isInteger(explicitStage)?(index<explicitStage?'done':index===explicitStage?'active':'pending'):'pending';
     step.dataset.status=status;
     if(status==='active')step.setAttribute('aria-current','step');else step.removeAttribute('aria-current');
     const label=String(step.textContent||'ขั้นตอน');
-    step.setAttribute('aria-label',label+' · '+(status==='done'?'เสร็จแล้ว':status==='active'?'กำลังทำ':'รอดำเนินการ'));
+    step.setAttribute('aria-label',label+' · '+(status==='done'?'เสร็จแล้ว':status==='active'?'กำลังทำ':'ยังไม่มีหลักฐานยืนยันขั้นนี้'));
   });
 }
 

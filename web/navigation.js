@@ -40,6 +40,50 @@ function syncOverlayState() {
   }
 }
 
+function syncDialogVisualViewport() {
+  if (!hasDom()) return;
+  const viewport = window.visualViewport;
+  const height = Math.max(320, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
+  const top = Math.max(0, Math.round(viewport?.offsetTop || 0));
+  document.documentElement.style.setProperty('--awh-visual-viewport-height', `${height}px`);
+  document.documentElement.style.setProperty('--awh-visual-viewport-top', `${top}px`);
+
+  const dialogs = visibleDialogs();
+  const dialog = dialogs[dialogs.length - 1];
+  const active = document.activeElement;
+  if (!dialog || !isElement(active) || !dialog.contains(active)) return;
+  if (!active.matches('input:not([type="button"]):not([type="submit"]):not([type="file"]), textarea, select, [contenteditable="true"]')) return;
+  const card = active.closest('.sheet-card, .awh-tool-dialog-card, .awh-search-card, .awh-automation-panel');
+  if (!isElement(card)) return;
+
+  const rect = active.getBoundingClientRect();
+  const safeTop = top + 16;
+  const safeBottom = top + height - 20;
+  if (rect.bottom > safeBottom) card.scrollTop += Math.ceil(rect.bottom - safeBottom);
+  else if (rect.top < safeTop) card.scrollTop -= Math.ceil(safeTop - rect.top);
+}
+
+function stabilizeDialogVisualViewport() {
+  syncDialogVisualViewport();
+  window.requestAnimationFrame?.(() => syncDialogVisualViewport());
+  window.setTimeout(syncDialogVisualViewport, 80);
+  window.setTimeout(syncDialogVisualViewport, 240);
+}
+
+function revealFocusedDialogControl(event) {
+  if (!hasDom()) return;
+  const target = isElement(event?.target) ? event.target : document.activeElement;
+  if (!isElement(target)) return;
+  if (!target.matches('input:not([type="button"]):not([type="submit"]):not([type="file"]), textarea, select, [contenteditable="true"]')) return;
+  if (!target.closest('[data-awh-dialog-open="1"], .sheet, .awh-tool-dialog, .awh-search-dialog, .awh-automation-sheet')) return;
+  stabilizeDialogVisualViewport();
+  if (window.matchMedia?.('(max-width: 680px)').matches !== true) return;
+  window.requestAnimationFrame?.(() => {
+    target.scrollIntoView?.({ block: 'center', inline: 'nearest', behavior: 'auto' });
+    syncDialogVisualViewport();
+  });
+}
+
 function focusable(dialog) {
   if (!isElement(dialog)) return [];
   return [...dialog.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
@@ -58,6 +102,7 @@ export function openAwhDialog(dialog, options = {}) {
   dialog.hidden = false;
   dialog.dataset.awhDialogOpen = '1';
   syncOverlayState();
+  stabilizeDialogVisualViewport();
 
   if (options.history !== false && dialog.id && historyState().awhDialogId !== dialog.id) {
     const current = { ...historyState(), awhScrollY: Math.max(0, window.scrollY || overlayScrollY || 0) };
@@ -162,24 +207,15 @@ function handleDialogKeyboard(event) {
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
 
-function revealFocusedDialogControl(event) {
-  const target = event.target;
-  if (!isElement(target) || !target.matches('input:not([type="button"]):not([type="submit"]):not([type="file"]), textarea, select, [contenteditable="true"]')) return;
-  const dialog = target.closest('[data-awh-dialog-open="1"]:not([hidden])');
-  if (!isElement(dialog) || !window.matchMedia?.('(max-width: 680px)').matches) return;
-  const reveal = () => {
-    if (!target.isConnected || dialog.hidden || dialog.dataset.awhDialogOpen !== '1') return;
-    target.scrollIntoView?.({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-  };
-  window.requestAnimationFrame(reveal);
-  window.setTimeout(reveal, 90);
-  window.setTimeout(reveal, 240);
-}
-
 if (hasDom()) {
   window.addEventListener('popstate', handlePopState);
-  document.addEventListener('keydown', handleDialogKeyboard);
+  window.addEventListener('resize', stabilizeDialogVisualViewport, { passive: true });
+  window.visualViewport?.addEventListener('resize', stabilizeDialogVisualViewport, { passive: true });
+  window.visualViewport?.addEventListener('scroll', stabilizeDialogVisualViewport, { passive: true });
   document.addEventListener('focusin', revealFocusedDialogControl, { passive: true });
+  document.addEventListener('focusout', () => window.setTimeout(syncDialogVisualViewport, 0), { passive: true });
+  document.addEventListener('keydown', handleDialogKeyboard);
+  syncDialogVisualViewport();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => installAwhBackNavigation(), { once: true });
   else installAwhBackNavigation();
 }

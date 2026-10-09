@@ -62,3 +62,7 @@ Verification evidence is stored under the existing AWH Hub data root (`/var/lib/
 Operator clients follow the canonical `config/execution-policy.json` blocker contract. The same failing path is attempted at most twice; clients never wait silently or weaken a privilege/storage boundary to make progress. Self-healing authorities run first. If a short Owner action is materially faster, Owner Assist Fast Lane reports the blocker, fastest Owner action, expected Owner time and exact resume action immediately.
 
 `OPERATOR_STORAGE_CRITICAL` is a storage-safety signal, not permission to lower the reserve. The canonical storage guard and project-aware temp janitor must reclaim safe transient capacity first. A recurring operator blocker is not closed until root cause, prevention, regression, recovery and observability evidence exist.
+
+## Release-track bootstrap note
+
+The VPS Platform classifier may be advanced in one bounded platform-scoped step before runtime parity projection changes. This preserves typed source authority while allowing HubInfrastructureService and web/panel.js to become explicitly owned by the VPS Platform release track before those files are promoted.

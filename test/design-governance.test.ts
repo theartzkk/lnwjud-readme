@@ -43,6 +43,7 @@ test('KRUART design governance files and overlays are complete', async () => {
     'design/qa/accessibility-policy.md',
     'design/qa/experience-policy.md',
     'design/qa/ECOSYSTEM-ADOPTION.md',
+    'design/qa/component-state-matrix.json',
     'config/kruart-experience-contract.json',
     'design/overlays/awh.md',
     'design/overlays/bay-excuse-x.md',
@@ -144,6 +145,18 @@ test('KRUART experience contract prevents navigation and portal drift', async ()
   for (const flag of ['requireExactRevisionEvidence','requireRenderedScreenshots','rejectHorizontalOverflow','requireKeyboardAndTouchEvidence','requireAccessibilityEvidence','blockMissingEvidence','blockOnP0','ownerReviewForMaterialRedesign']) {
     assert.equal(contract.visualAcceptance[flag], true, flag + ' must remain enforced');
   }
+  assert.equal(contract.interaction.mobileInputMinFontPx, 16);
+  assert.equal(contract.interaction.visualViewportRequired, true);
+  assert.equal(contract.interaction.focusedControlMustRemainVisible, true);
+  assert.equal(contract.interaction.keyboardDismissRestoresLayout, true);
+  assert.equal(contract.interaction.dynamicViewportUnitRequired, true);
+  assert.equal(contract.interaction.minimumViewportPx, 320);
+  assert.deepEqual(contract.interaction.keyboardReferenceViewportsPx, [390, 430]);
+  assert.equal(contract.experienceGate.rejectHorizontalOverflow, true);
+  assert.equal(contract.experienceGate.rejectFocusedControlOcclusion, true);
+  assert.equal(contract.experienceGate.rejectSoftwareKeyboardOverlay, true);
+  assert.equal(contract.experienceGate.rejectMobileInputZoom, true);
+  assert.equal(contract.experienceGate.requireKeyboardDismissRecovery, true);
 
   const index = await read('web/index.html');
   const ownerNav = index.match(/<nav id="owner-global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
@@ -164,4 +177,8 @@ test('KRUART experience contract prevents navigation and portal drift', async ()
   const feedback = await read('web/interaction-feedback.js');
   assert.match(feedback, /kruart-ui-pressed/);
   assert.match(feedback, /1800/);
+  const stateMatrix = await json('design/qa/component-state-matrix.json');
+  assert.deepEqual(stateMatrix.requiredStates, contract.interaction.minimumStates);
+  assert.equal(stateMatrix.mode, 'REAL_SURFACE_FIXTURE');
+  assert.equal(stateMatrix.storybookPolicy, 'DEFER_UNTIL_SHARED_COMPONENT_PACKAGE_EXISTS');
 });

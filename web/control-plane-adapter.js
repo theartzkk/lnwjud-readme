@@ -317,7 +317,7 @@ export async function updateProviderProjectRouting(projectId, routingMode) { if 
 export async function loadProjectSourceAuthority(projectId) {
   if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
   const value = await controlRequest(`/api/v1/control/projects/${projectId}/source`);
-  if (value.schemaVersion !== 1 || value.projectId !== projectId || !['NOT_CONFIGURED','UNRESOLVED','CURRENT','REMOTE_AHEAD_OR_DIFFERENT'].includes(value.state)) throw new Error('AWH ไม่สามารถยืนยัน Source ของโปรเจกต์นี้ได้');
+  if (![1, 2].includes(value.schemaVersion) || value.projectId !== projectId || !['NOT_CONFIGURED','UNRESOLVED','CURRENT','REMOTE_AHEAD_OR_DIFFERENT'].includes(value.state)) throw new Error('AWH ไม่สามารถยืนยัน Source ของโปรเจกต์นี้ได้');
   return value;
 }
 export async function updateProjectSourceAuthority({ projectId, action, repository = null, ref = null }) {

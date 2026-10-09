@@ -32,7 +32,7 @@ test('P1 Tasks surface remains touch-safe and avoids exposing raw artifact URLs'
   assert.match(dashboard, /safeArtifactDownloadUrl/);
   assert.match(dashboard, /artifact\.downloadUrl/);
   assert.match(css, /\.awh-task-layout/);
-  assert.match(css, /\.awh-task-filter\{min-height:40px/);
+  assert.match(css, /\.awh-task-filter\{min-height:44px/);
   assert.match(css, /@media\(max-width:760px\)/);
   assert.match(css, /grid-template-columns:1fr/);
 });

@@ -365,7 +365,8 @@ final class HubCapabilityRegistryService
             $checkpointJson=is_string($metaRow['checkpoint_json']??null)?(string)$metaRow['checkpoint_json']:null;
             $resource=self::mutationResourceForExecution($capability,(string)$metaRow['executor_kind'],$checkpointJson);
             $maintenanceReleaseTrack=$this->maintenanceReleaseTrack($capability,$checkpointJson);
-            if($resource!=='READ'&&$capability!=='operator.project_mission'&&!$this->projectSourceReady($project)){
+            $allowPendingCandidates=in_array($resource,['CANDIDATE','WORKSPACE'],true);
+            if($resource!=='READ'&&$capability!=='operator.project_mission'&&!$this->projectSourceReady($project,$allowPendingCandidates)){
                 $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','CONFLICT','ACTIVE')")->execute(['at'=>$at,'execution'=>$executionId]);
                 if($ownTransaction)$this->pdo->exec('COMMIT');
                 throw new HubCapabilityRegistryException('Project mutation requires a verified canonical source authority','PROJECT_SOURCE_NOT_READY');
@@ -567,7 +568,7 @@ final class HubCapabilityRegistryService
         return ['envelopeId'=>(string)$row['envelope_id'],'executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'conversationId'=>$row['conversation_id'],'baseRevisionId'=>$row['base_revision_id'],'sessionKey'=>(string)$row['session_key'],'mutationScope'=>(string)$row['mutation_scope'],'state'=>(string)$row['state'],'providerId'=>$row['provider_id'],'leaseExpiresAt'=>$row['lease_expires_at'],'createdAt'=>(string)$row['created_at'],'updatedAt'=>(string)$row['updated_at']];
     }
 
-    private function projectSourceReady(string $projectId): bool
+    private function projectSourceReady(string $projectId, bool $allowPendingCandidates = false): bool
     {
         if(!self::tablePresent($this->pdo,'projects'))return false;
         $columns=[];
@@ -589,7 +590,8 @@ final class HubCapabilityRegistryService
         $vault=$this->pdo->prepare('SELECT active_revision_id,sync_state FROM control_project_vaults WHERE project_id=:project');
         $vault->execute(['project'=>$projectId]);$state=$vault->fetch();
         $active=is_array($state)&&is_string($state['active_revision_id']??null)?strtolower(trim((string)$state['active_revision_id'])):'';
-        return is_array($state)&&($state['sync_state']??null)==='SYNCED'&&hash_equals($canonical,$active);
+        $sync=is_array($state)&&is_string($state['sync_state']??null)?strtoupper(trim((string)$state['sync_state'])):'';
+        return is_array($state)&&hash_equals($canonical,$active)&&($sync==='SYNCED'||($allowPendingCandidates&&$sync==='STALE'));
     }
 
     private function assertReady(): void

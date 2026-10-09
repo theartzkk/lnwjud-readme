@@ -39,9 +39,17 @@ chain_assert($same->invoke(null, ' Inspect   source ', 'inspect source') === tru
 $control = file_get_contents(dirname(__DIR__) . '/src/HubControlPlaneService.php');
 $durable = file_get_contents(dirname(__DIR__) . '/src/HubDurableExecutionService.php');
 $executor = file_get_contents(dirname(__DIR__) . '/bin/awh-native-executor.php');
+$policyRaw = file_get_contents(dirname(__DIR__, 2) . '/config/execution-policy.json');
+$policy = is_string($policyRaw) ? json_decode($policyRaw, true) : null;
+chain_assert(is_array($policy) && (($policy['integrity']['executeToBoundary'] ?? false) === true), 'execution policy must require execute-to-boundary');
+chain_assert(($policy['integrity']['progressIsTerminal'] ?? true) === false && ($policy['integrity']['followNonTerminalTasks'] ?? false) === true, 'progress must be non-terminal and followed automatically');
+chain_assert(($policy['integrity']['resumeExistingExecution'] ?? false) === true && ($policy['integrity']['duplicateExecutionAllowed'] ?? true) === false, 'continuation must resume existing execution without duplicates');
 chain_assert(is_string($control) && str_contains($control, "a.status='PENDING'"), 'continuation materialization must pause on pending approval');
 chain_assert(str_contains($control, "fetchColumn() !== 'COMPLETED'"), 'only a completed canonical parent may materialize continuation');
 chain_assert(is_string($durable) && str_contains($durable, '$maxSteps > 8'), 'continuous chain must have a hard step bound');
+chain_assert(str_contains($durable, 'recoverInterruptedContinuations') && str_contains($durable, 'continuationOrphansRecovered'), 'service tick must recover completed parents whose continuation outcome was never persisted');
+chain_assert(str_contains($durable, '$continuationOrphansRecovered=$this->recoverInterruptedContinuations($at);') && str_contains($durable, '$continuationRecovered=$this->recoverFailedContinuations($at);'), 'service tick must run interrupted recovery and failed-continuation retry');
+chain_assert(str_contains($durable, 'publishAfterContinuation') && str_contains($durable, "'PROGRESS'"), 'continuation progress must remain non-terminal until the chain stops');
 chain_assert(str_contains($durable, 'sourceTruth') && str_contains($durable, "TASKS.md"), 'planner must consult bounded project source of truth');
 chain_assert(is_string($executor) && str_contains($executor, 'materializeContinuationSubmission'), 'native executor must route follow-up creation through canonical control plane');
 chain_assert(is_string($control) && str_contains($control, 'checkpoint_json') && str_contains($control, 'executionContinuation'), 'worker task projection must expose validated continuation lineage from the canonical execution checkpoint');

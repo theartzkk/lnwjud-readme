@@ -131,6 +131,16 @@ try{
     cr_assert(!array_key_exists('command',$checkpoint)&&!array_key_exists('path',$checkpoint)&&!array_key_exists('script',$checkpoint),'browser checkpoint cannot inject command or path');
     cr_assert(is_array($approvalRow)&&$approvalRow['action']==='deployment.approve'&&$approvalRow['status']==='APPROVED'&&is_string($approvalRow['decided_at']),'canonical deployment approval is recorded automatically as Owner audit evidence');
 
+    // A stale dispatcher heartbeat is recoverable: preserve the exact approved
+    // queue item so the next healthy systemd timer tick can claim it.
+    $reconcile=new ReflectionMethod(HubCoreReleaseService::class,'reconcileOrphanedRelease');$reconcile->setAccessible(true);
+    $reconcile->invoke($service,'2026-09-23T01:10:00+00:00');
+    cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetchColumn()==='QUEUED'
+        &&$pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','dispatcher heartbeat loss preserves the approved execution for automatic resume');
+    $recoveringStatus=$service->status($session['sessionToken']);
+    $recoveringRow=null;foreach((array)($recoveringStatus['releases']??[]) as $candidateRow)if(($candidateRow['executionId']??null)===$execution){$recoveringRow=$candidateRow;break;}
+    cr_assert(is_array($recoveringRow)&&($recoveringRow['dispatcherState']??null)==='RECOVERING'&&(int)($recoveringRow['dispatcherWaitSeconds']??0)>0,'owner status exposes recoverable dispatcher loss without terminalizing the release');
+
     $pdo->prepare("UPDATE control_tasks SET state='WAITING_FOR_APPROVAL',updated_at=:at WHERE task_id=:task")->execute(['at'=>$now,'task'=>$task]);
     $pdo->prepare("UPDATE control_approvals SET status='PENDING',decided_at=NULL,expires_at=:expires WHERE approval_id=:approval")->execute(['expires'=>'2026-09-23T01:20:00+00:00','approval'=>$approval]);
     $duplicate=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$sha,'cleanupTopology'=>false],$now);
@@ -220,6 +230,10 @@ try{
     $deployedAnchorStatus=$platformService->status($session['sessionToken']);
     cr_assert(($deployedAnchorStatus['sourcePromotion']['sha']??null)===$platformDependencySha&&($deployedAnchorStatus['sourcePromotion']['platformAnchorSha']??null)===$platformSha&&($deployedAnchorStatus['sourcePromotion']['authority']??null)==='CANONICAL_SOURCE_CHAIN_VERIFIED','deployed VPS Platform anchor continues to follow trusted shared-source successors without requiring a second Platform promotion edge');
     cr_assert(($deployedAnchorStatus['sourcePromotion']['sourceChainSegmentCount']??0)===1&&($deployedAnchorStatus['releaseDetailsReady']??null)===true&&($deployedAnchorStatus['releaseBlocker']??null)===null,'deployed anchor keeps one shared successor release-ready instead of failing closed on an empty Platform subchain');
+    file_put_contents($canonicalGit.'/refs/heads/platform/production',$platformDependencySha."\n");
+    $convergedSharedStatus=$platformService->status($session['sessionToken']);
+    cr_assert(($convergedSharedStatus['sourcePromotion']['sha']??null)===$platformDependencySha&&($convergedSharedStatus['sourcePromotion']['platformAnchorSha']??null)===$platformSha&&($convergedSharedStatus['sourcePromotion']['authority']??null)==='CANONICAL_SOURCE_CHAIN_VERIFIED','Platform status remains release-ready when a trusted shared successor has already converged platform/production to canonical main');
+    cr_assert(($convergedSharedStatus['sourcePromotion']['sourceChainSegmentCount']??0)===1&&($convergedSharedStatus['releaseDetailsReady']??null)===true&&($convergedSharedStatus['releaseBlocker']??null)===null,'converged shared runtime does not regress to Release details chain is incomplete');
     $queuedB=$platformService->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$platformDependencySha,'cleanupTopology'=>false],'2026-09-23T01:00:02+00:00');
     cr_assert(($queuedB['state']??null)==='WAITING_FOR_WORKER','B request is admitted while A is RUNNING');
     $queuedBExecution=(string)$queuedB['executionId'];$queuedBTask=(string)$queuedB['taskId'];
