@@ -69,7 +69,7 @@ try{
    &&($manifestFirst['contentSha256']??null)===$vaultFixture['contentSha256']
    &&($manifestFirst['fileCount']??0)===2&&($manifestFirst['nextOffset']??null)===1
    &&count($manifestFirst['files']??[])===1&&count($manifestSecond['files']??[])===1
-   &&($manifestSecond['nextOffset']??false)===null
+   &&array_key_exists('nextOffset',$manifestSecond)&&$manifestSecond['nextOffset']===null
    &&($manifestFirst['files'][0]['path']??null)==='VERSION'
    &&($manifestSecond['files'][0]['path']??null)==='assets/example.css'
    &&($manifestFirst['files'][0]['sha256']??null)===hash('sha256',"fixture-version\n"),

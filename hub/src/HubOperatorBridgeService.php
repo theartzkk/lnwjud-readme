@@ -265,20 +265,23 @@ final class HubOperatorBridgeService
         if(!self::uuidValid($projectId)||($source['authority']??null)!=='AWH_VAULT'||($source['syncState']??null)!=='SYNCED'
             ||!hash_equals($revision,(string)($source['canonicalVaultRevisionId']??''))||!hash_equals($expected,$revision))
             throw new HubOperatorBridgeException('Active Vault revision changed; retry after reinspection','OPERATOR_VAULT_BASE_MOVED');
-        $stmt=$this->pdo->prepare("SELECT content_sha256,manifest_json,file_count,state FROM control_project_vault_revisions WHERE revision_id=:revision AND project_id=:project LIMIT 1");
+        $stmt=$this->pdo->prepare("SELECT content_sha256,file_count,state FROM control_project_vault_revisions WHERE revision_id=:revision AND project_id=:project LIMIT 1");
         $stmt->execute(['revision'=>$revision,'project'=>$projectId]);$row=$stmt->fetch();
         if(!is_array($row)||($row['state']??null)!=='ACTIVE')
             throw new HubOperatorBridgeException('Active Vault manifest is unavailable','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
-        $json=$row['manifest_json']??null;
         $sha=strtolower((string)($row['content_sha256']??''));
-        if(!is_string($json)||preg_match('/^[a-f0-9]{64}$/',$sha)!==1||!hash_equals($sha,hash('sha256',$json)))
-            throw new HubOperatorBridgeException('Stored Vault manifest checksum is invalid','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
-        try{$document=json_decode($json,true,16,JSON_THROW_ON_ERROR);}
-        catch(JsonException){throw new HubOperatorBridgeException('Stored Vault manifest cannot be decoded','OPERATOR_VAULT_EXPORT_UNAVAILABLE');}
-        $files=is_array($document)&&isset($document['files'])&&is_array($document['files'])&&array_is_list($document['files'])?$document['files']:null;
         $total=(int)($row['file_count']??-1);
-        if(!is_array($files)||$total<1||$total>HubProjectVault::MAX_FILES||count($files)!==$total)
-            throw new HubOperatorBridgeException('Stored Vault manifest file count is inconsistent','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        if(preg_match('/^[a-f0-9]{64}$/',$sha)!==1||$total<1||$total>HubProjectVault::MAX_FILES)
+            throw new HubOperatorBridgeException('Active Vault manifest identity is invalid','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        // Rehash actual immutable Vault file bytes instead of trusting a stored
+        // JSON manifest alone. This also works with older Vault SQL fixtures.
+        try{$files=HubProjectVault::fromEnvironment()->manifest($projectId,$revision);}
+        catch(HubProjectVaultException){throw new HubOperatorBridgeException('Active Vault files are unreadable or unsafe','OPERATOR_VAULT_EXPORT_UNAVAILABLE');}
+        if(count($files)!==$total)
+            throw new HubOperatorBridgeException('Active Vault file count does not match its revision','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        $manifestJson=json_encode(['schemaVersion'=>1,'files'=>$files],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+        if(!hash_equals($sha,hash('sha256',$manifestJson)))
+            throw new HubOperatorBridgeException('Active Vault filesystem digest differs from the recorded revision','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
         $subset=array_slice($files,$offset,$limit);
         foreach($subset as $file){
             if(!is_array($file)||!is_string($file['path']??null)||!is_string($file['sha256']??null)
