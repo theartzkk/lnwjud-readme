@@ -21,7 +21,7 @@ function report() {
       tests:[{projectName:viewport,status:'expected',results:[{status:'passed',attachments:[
         {name:'owner-panel-render.png',body:png(width)},
         {name:'owner-panel-metrics.json',body:Buffer.from(JSON.stringify({
-          viewport,metrics:{clientWidth:width,documentWidth:width,csp:[]},exceptions:[],csp:[]
+          viewport,metrics:{clientWidth:width,documentWidth:width,ownerDataReady:true,csp:[]},exceptions:[],csp:[]
         })).toString('base64')}
       ]}]}]
     });
@@ -52,9 +52,18 @@ test('wrong revision, skipped test, missing image and CSP error fail closed', as
   const c=report();c.suites[0].specs[0].tests[0].results[0].attachments.shift();
   await assert.rejects(verifyReport(c,SHA),/missing attachment/);
   const d=report();const a0=d.suites[0].specs[0].tests[0].results[0].attachments[1];
-  a0.body=Buffer.from(JSON.stringify({viewport:'iphone-390',metrics:{clientWidth:390,documentWidth:395,csp:[]},exceptions:[],csp:[]})).toString('base64');
+  a0.body=Buffer.from(JSON.stringify({viewport:'iphone-390',metrics:{clientWidth:390,documentWidth:395,ownerDataReady:true,csp:[]},exceptions:[],csp:[]})).toString('base64');
   await assert.rejects(verifyReport(d,SHA),/horizontal overflow/);
 });
+test('a screenshot captured before Owner data settles cannot release', async () => {
+  const pending=report();
+  const metrics=pending.suites[0].specs[0].tests[0].results[0].attachments.find(a=>a.name==='owner-panel-metrics.json');
+  const body=JSON.parse(Buffer.from(metrics.body,'base64').toString('utf8'));
+  body.metrics.ownerDataReady=false;
+  metrics.body=Buffer.from(JSON.stringify(body)).toString('base64');
+  await assert.rejects(verifyReport(pending,SHA),/Owner data still loading or incomplete/);
+});
+
 test('unknown screenshot viewport and accessibility violations fail closed', async () => {
   const a=report(); a.suites[0].specs[0].tests[0].results[0].attachments[0].body=png(820);
   await assert.rejects(verifyReport(a,SHA),/screenshot width/);

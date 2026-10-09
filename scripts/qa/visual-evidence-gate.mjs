@@ -57,6 +57,7 @@ export async function verifyReport(report, revision, { artifactsDir, expectedVie
       if (name === 'owner-panel-metrics.json') {
         const evidence = JSON.parse(bytes.toString('utf8'));
         insist(evidence.viewport === project, 'viewport metric identifier mismatch');
+        insist(evidence.metrics?.ownerDataReady === true, project + ': Owner data still loading or incomplete');
         insist(evidence.metrics?.documentWidth <= evidence.metrics?.clientWidth + 1, project + ': horizontal overflow');
         insist(Array.isArray(evidence.metrics.csp) && evidence.metrics.csp.length === 0 &&
           Array.isArray(evidence.exceptions) && evidence.exceptions.length === 0 &&

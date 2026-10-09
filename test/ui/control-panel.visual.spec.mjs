@@ -13,6 +13,11 @@ async function openOwnerPanel(page) {
   await page.goto('/panel.html', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.cp-command-grid')).toBeVisible();
   await expect(page.locator('#cp-menu')).toHaveAttribute('aria-expanded', 'false');
+  // A screenshot or axe PASS while Owner data still says “loading” is not acceptance.
+  await expect(page.locator('#cp-updated')).toContainText('ตรวจข้อมูลแล้ว', { timeout: 15_000 });
+  await expect(page.locator('#cp-people-summary')).toHaveText('1 บัญชี · 0 คำขอรอ', { timeout: 15_000 });
+  await expect(page.locator('#cp-ai')).toHaveText('AI พร้อมใช้งาน', { timeout: 15_000 });
+  await expect(page.locator('#cp-provider-list')).toContainText('ผู้ให้บริการจำลองสำหรับทดสอบ', { timeout: 15_000 });
 }
 
 test('Control Panel: responsive layout, mobile navigation and visual evidence', async ({ page }, testInfo) => {
@@ -56,6 +61,10 @@ test('Control Panel: responsive layout, mobile navigation and visual evidence', 
     documentWidth:document.documentElement.scrollWidth,
     clientWidth:document.documentElement.clientWidth,
     mainWidth:document.querySelector('.cp-main')?.getBoundingClientRect().width,
+    ownerDataReady: document.querySelector('#cp-updated')?.textContent?.includes('ตรวจข้อมูลแล้ว') === true
+      && document.querySelector('#cp-people-summary')?.textContent?.includes('1 บัญชี') === true
+      && document.querySelector('#cp-ai')?.textContent?.includes('AI พร้อมใช้งาน') === true
+      && document.querySelector('#cp-provider-list')?.textContent?.includes('ผู้ให้บริการจำลองสำหรับทดสอบ') === true,
     csp: window.__awhCspViolations || [],
   }));
   const image = await page.screenshot({ fullPage: true, animations:'disabled' });

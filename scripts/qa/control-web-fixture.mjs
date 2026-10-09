@@ -90,6 +90,9 @@ const server = createServer(async (request, response) => {
       return send(response, 200, { schemaVersion: 1, authenticated: false });
     }
     if (url.pathname === '/api/v1/auth/session') return session(request) ? send(response, 200, { schemaVersion: 1, authenticated: true, expiresAt: '2026-12-31T00:00:00.000Z', remembered: true, csrfToken: csrf, userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', username: 'fixture', role: sessionRole }) : send(response, 401, { code: 'SESSION_INVALID' });
+    // Synthetic Owner data for deterministic settled-state UI screenshots; no real accounts are fetched.
+    if (url.pathname === '/api/v1/auth/people' && request.method === 'GET') return session(request) ? send(response, 200, { people: [{ userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', username: 'reviewer', displayName: 'บัญชีทดสอบ UI', role: 'OWNER', status: 'ACTIVE' }] }) : send(response, 401, { code: 'SESSION_INVALID' });
+    if (url.pathname === '/api/v1/auth/requests' && request.method === 'GET') return session(request) ? send(response, 200, { requests: [] }) : send(response, 401, { code: 'SESSION_INVALID' });
     if (url.pathname === '/api/v1/auth/step-up' && request.method === 'POST') {
       if (!session(request) || !requireCsrf(request, response)) return;
       const value = await readJson(request); if (value.schemaVersion !== 1 || typeof value.password !== 'string' || !value.password) return send(response, 401, { code: 'STEP_UP_FAILED' });
@@ -131,6 +134,11 @@ const server = createServer(async (request, response) => {
     if (!session(request)) return send(response, 401, { code: 'SESSION_INVALID' });
     if (url.pathname === '/api/v1/control/session') return send(response, 200, { csrfToken: csrf, expiresAt: '2026-12-31T00:00:00.000Z', role: sessionRole });
     if (url.pathname === '/api/v1/control/projects') return send(response, 200, { projects: [project] });
+    // UI-only deterministic API responses; these simulate a settled screen, never Production data.
+    if (url.pathname === '/api/v1/control/provider' && request.method === 'GET') return send(response, 200, { provider: { state: 'READY', enabled: true, routingStrategy: 'BALANCED', budget: { monthlyMicrounits: 0, warningMicrounits: 0, usedMicrounits: 0 } } });
+    if (url.pathname === '/api/v1/control/provider-hub' && request.method === 'GET') return send(response, 200, { hub: { providers: [{ providerId:'fixture', displayName:'ผู้ให้บริการจำลองสำหรับทดสอบ', costClass:'included', models:[] }] }, statuses: { fixture: { keyConfigured: false, available: false } } });
+    if (url.pathname === '/api/v1/control/hosting/sites' && request.method === 'GET') return send(response, 200, { sites: [] });
+    if (url.pathname === '/api/v1/control/hatchet' && request.method === 'GET') return send(response, 200, { state: 'NOT_CONFIGURED', credentialConfigured: false });
     if (url.pathname === '/api/v1/control/tasks') return send(response, 200, { tasks });
     if (url.pathname === '/api/v1/control/workers') return send(response, 200, { workers: [{ deviceId: '66666666-6666-4666-8666-666666666666', displayName: 'AWH Agent ตัวอย่าง', platform: 'darwin', arch: 'arm64', state: 'READY', lastSeenAt: now, boundProjectCount: 1, capabilities: ['project:context'] }] });
     if (url.pathname === '/api/v1/control/results') return send(response, 200, { results: tasks.filter((task) => task.state === 'COMPLETED') });
