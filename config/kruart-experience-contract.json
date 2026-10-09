@@ -239,6 +239,18 @@
     "rejectBottomNavigationOverlap": true,
     "requireVisualVerificationForVisualChanges": true
   },
+  "visualAcceptance": {
+    "minimumSupportedWidthPx": 320,
+    "requiredViewportsPx": [390, 430, 820, 1366, 1440],
+    "requireExactRevisionEvidence": true,
+    "requireRenderedScreenshots": true,
+    "rejectHorizontalOverflow": true,
+    "requireKeyboardAndTouchEvidence": true,
+    "requireAccessibilityEvidence": true,
+    "blockMissingEvidence": true,
+    "blockOnP0": true,
+    "ownerReviewForMaterialRedesign": true
+  },
   "releaseGroups": {
     "line-oa": {
       "targets": [

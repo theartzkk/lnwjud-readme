@@ -89,7 +89,7 @@ if (evidenceDir !== null) {
   const manifestPath = join(evidenceDir, 'VISUAL_EVIDENCE.json');
   if (!existsSync(manifestPath)) throw new Error('visual evidence manifest is missing');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  if (manifest?.schemaVersion !== 1 || manifest?.commit !== commit || manifest?.dirty !== false) throw new Error('visual evidence does not match the clean committed revision');
+  if (manifest?.schemaVersion !== 2 || manifest?.commit !== commit || manifest?.dirty !== false) throw new Error('visual evidence does not match schema v2 and the clean committed revision');
   const copyEvidence = (directory, prefix = '') => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const source = join(directory, entry.name); const relative = prefix ? `${prefix}/${entry.name}` : entry.name;

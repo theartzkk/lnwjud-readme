@@ -7,6 +7,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <title>AWH Control Panel · KRUART</title>
   <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./responsive-layout.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./panel.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./panel-live-ui.css?release=__AWH_WEB_RELEASE_ID__" />
@@ -15,12 +16,14 @@
 </head>
 <body>
   <div class="cp-shell">
+    <button id="cp-menu-scrim" class="cp-menu-scrim" type="button" aria-label="ปิดเมนู" hidden></button>
     <aside class="cp-sidebar" id="cp-sidebar">
       <a class="cp-brand" href="./panel.html">
         <img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" />
         <div><strong>AWH Control Panel</strong><small>KRUART · Owner</small></div>
       </a>
-      <label class="cp-search"><span>⌕</span><input id="cp-search" type="search" placeholder="ค้นหาการควบคุม…  ⌘K" autocomplete="off" /></label>
+      <label class="cp-search"><span>⌕</span><input id="cp-search" type="search" placeholder="พิมพ์สิ่งที่ต้องการทำ…  ⌘K" autocomplete="off" aria-controls="cp-search-results" /></label>
+      <div id="cp-search-results" class="cp-search-results" hidden aria-live="polite"></div>
       <nav class="cp-nav" aria-label="AWH Control Panel">
         <a class="is-active" href="#overview" data-cp-keywords="overview command center ภาพรวม ควบคุม"><span>⌂</span>ศูนย์ควบคุม</a>
         <p>ควบคุม</p>
@@ -50,7 +53,7 @@
 
     <main class="cp-main">
       <header class="cp-topbar">
-        <button id="cp-menu" class="cp-menu" type="button" aria-label="เปิดเมนู">☰</button>
+        <button id="cp-menu" class="cp-menu" type="button" aria-label="เปิดเมนู" aria-expanded="false" aria-controls="cp-sidebar">☰</button>
         <div><span>OWNER CONTROL</span><strong>AWH Control Panel</strong></div>
         <div class="cp-top-actions"><span id="cp-updated">กำลังตรวจระบบ…</span><button id="cp-refresh" type="button">รีเฟรช</button></div>
       </header>
@@ -70,7 +73,7 @@
             <small>สถานะระบบ</small>
             <div id="cp-overall" class="cp-overall">กำลังตรวจ</div>
             <strong id="cp-command-summary">กำลังโหลด…</strong>
-            <span>ตรวจจาก Control Plane เดิมแบบสด</span>
+            <span>ตรวจจากสถานะระบบจริงแบบสด</span>
           </div>
         </section>
 
@@ -108,12 +111,12 @@
         <div id="cp-live-react-root" aria-label="AWH Live Control"></div>
         <section id="live-controls" class="cp-control-surface cp-live-controls">
           <div class="cp-command-section-head">
-            <div><span>LIVE CONTROLS</span><h2>ควบคุมระบบจริง</h2><p>ปุ่มในส่วนนี้เรียก authority เดิมของ AWH โดยตรง ไม่ใช่ปุ่มตัวอย่างหรือหน้าสรุป</p></div>
+            <div><span>LIVE CONTROLS</span><h2>ควบคุมระบบจริง</h2><p>ปุ่มในส่วนนี้สั่งงานระบบจริงโดยตรง ไม่ใช่ปุ่มตัวอย่างหรือหน้าสรุป</p></div>
             <small id="cp-control-message" role="status">พร้อมรับคำสั่ง</small>
           </div>
           <div class="cp-live-grid">
             <article class="cp-live-panel">
-              <div class="cp-live-panel-head"><strong>งานที่กำลังทำ</strong><small>ยกเลิกได้เฉพาะงานที่ backend ระบุว่าปลอดภัย</small></div>
+              <div class="cp-live-panel-head"><strong>งานที่กำลังทำ</strong><small>ยกเลิกได้เฉพาะงานที่ระบบระบุว่าปลอดภัย</small></div>
               <div id="cp-live-tasks" class="cp-list"><div class="cp-empty">กำลังโหลดงาน…</div></div>
             </article>
             <article class="cp-live-panel">
@@ -121,7 +124,7 @@
               <div id="cp-live-approvals" class="cp-list"><div class="cp-empty">กำลังโหลดรายการ…</div></div>
             </article>
             <article class="cp-live-panel">
-              <div class="cp-live-panel-head"><strong>เว็บไซต์ที่ดูแล</strong><small>Deploy, rollback หรือปิดเว็บไซต์ผ่าน Managed Hosting authority</small></div>
+              <div class="cp-live-panel-head"><strong>เว็บไซต์ที่ดูแล</strong><small>ปล่อยรุ่น ย้อนกลับ หรือปิดเว็บไซต์จากที่นี่</small></div>
               <div id="cp-live-sites" class="cp-list"><div class="cp-empty">กำลังโหลดเว็บไซต์…</div></div>
             </article>
             <article class="cp-live-panel">
@@ -139,7 +142,7 @@
               <a class="cp-section-action" href="./updates.html">Update Center →</a>
             </div>
           </div>
-          <p id="cp-core-release-state" class="cp-inline-message">กำลังตรวจ Production และ canonical source…</p>
+          <p id="cp-core-release-state" class="cp-inline-message">กำลังตรวจรุ่นที่ใช้งานจริงและรุ่นล่าสุด…</p>
           <div class="cp-operations-layout">
             <article class="cp-operation-focus">
               <small>สถานะรวม</small>
@@ -168,7 +171,7 @@
           </div>
           <div class="cp-agent-grid">
             <article class="cp-agent-panel">
-              <div class="cp-agent-panel-head"><div><strong>เครื่องที่เชื่อมกับ AWH</strong><small>สถานะสดจาก Control Plane</small></div></div>
+              <div class="cp-agent-panel-head"><div><strong>เครื่องที่เชื่อมกับ AWH</strong><small>สถานะล่าสุดจาก AWH</small></div></div>
               <div id="cp-agent-device-list" class="cp-list"></div>
             </article>
             <article class="cp-agent-panel">
@@ -199,13 +202,14 @@
             <small id="cp-ai-status">กำลังตรวจ AI…</small>
           </div>
           <div class="cp-setting-summary"><span>สถานะ AI</span><strong id="cp-ai">กำลังตรวจ…</strong></div>
-          <section class="cp-provider-hub" aria-labelledby="cp-provider-hub-title"><div class="cp-command-section-head cp-provider-head"><div><span>AI PROVIDERS</span><h3 id="cp-provider-hub-title">ผู้ให้บริการ AI</h3><p>เชื่อม API และตรวจความพร้อมจากจุดเดียว · Key จะไม่ถูกแสดงกลับ</p></div><small id="cp-provider-policy">Free-first · Cloud only</small></div><div id="cp-provider-list" class="cp-provider-grid" aria-live="polite"><p class="cp-inline-message">กำลังโหลด AI Providers…</p></div></section>
+          <div class="cp-ai-budget-overview" aria-label="สรุปงบ AI"><span><small>ใช้แล้วเดือนนี้</small><strong id="cp-ai-used">—</strong></span><span><small>งบสูงสุด</small><strong id="cp-ai-limit">—</strong></span><span><small>เหลือ</small><strong id="cp-ai-remaining">—</strong></span><p id="cp-ai-budget-note">ผู้ให้บริการที่ระบบระบุว่าใช้ฟรีจะไม่เพิ่มค่า API ในงบนี้</p></div>
+          <section class="cp-provider-hub" aria-labelledby="cp-provider-hub-title"><div class="cp-command-section-head cp-provider-head"><div><span>AI PROVIDERS</span><h3 id="cp-provider-hub-title">ผู้ให้บริการ AI</h3><p>เชื่อมครั้งเดียว แล้ว AWH จะทดสอบและบอกสถานะให้ · Key จะไม่ถูกแสดงกลับ</p></div><small id="cp-provider-policy">ใช้ฟรีก่อน · ใช้ Cloud</small></div><div id="cp-provider-list" class="cp-provider-grid" aria-live="polite"><p class="cp-inline-message">กำลังโหลดผู้ให้บริการ AI…</p></div></section>
           <form id="cp-ai-form" class="cp-admin-form cp-ai-form">
             <label class="cp-toggle"><input id="cp-ai-enabled" type="checkbox" /><span>เปิดใช้ AI ของ AWH</span></label>
             <label>งบสูงสุดต่อเดือน (บาท)<input id="cp-ai-budget" type="number" min="0" step="0.01" inputmode="decimal" /></label>
             <label>เตือนเมื่อใช้ถึง (บาท)<input id="cp-ai-warning" type="number" min="0" step="0.01" inputmode="decimal" /></label>
             <label>รูปแบบการใช้ AI<select id="cp-ai-routing"><option value="SAVER">ประหยัด</option><option value="BALANCED">สมดุล</option><option value="QUALITY">เน้นคุณภาพ</option></select></label>
-            <button class="cp-bay-primary" type="submit"><span>✓</span><span><strong>บันทึกนโยบาย AI</strong><small>ใช้ Provider authority เดิมของ AWH</small></span></button>
+            <button class="cp-bay-primary" type="submit"><span>✓</span><span><strong>บันทึกนโยบาย AI</strong><small>ใช้การตั้งค่ากลางของ AWH</small></span></button>
             <p id="cp-ai-message" class="cp-inline-message" role="status"></p>
           </form>
         </section>

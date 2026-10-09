@@ -10,6 +10,7 @@
     "responsive-layout.css",
     "app.js",
     "navigation.js",
+    "owner-stepup.js",
     "dashboard.css",
     "chat-ui.css",
     "dashboard.js",

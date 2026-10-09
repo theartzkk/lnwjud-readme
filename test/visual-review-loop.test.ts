@@ -22,20 +22,25 @@ test('visual renderer binds evidence to a clean exact revision', async () => {
   assert.match(runner, /rev-parse/);
   assert.match(runner, /status.*--porcelain/);
   assert.match(runner, /local-contract-fixture/);
+  for (const viewport of ['390x844','430x932','820x1024','1366x768','1440x900']) assert.ok(runner.includes(viewport), viewport + ' viewport must be eligible');
+  assert.match(capture, /sourceId/);
   assert.match(capture, /390x844/);
   assert.match(capture, /horizontalOverflow/);
   assert.match(capture, /root-portfolio/);
   assert.match(capture, /runtimeErrors/);
   assert.match(capture, /question-identity/);
-  assert.match(capture, /profile-menu/);
-  assert.match(capture, /data-profile-section=.*people/);
+  assert.match(capture, /panel\.html/);
+  assert.match(capture, /#cp-people-list/);
+  assert.doesNotMatch(capture, /data-profile-section=.*people/);
 });
 test('review pack and findings validator preserve fail-closed evidence rules', async () => {
   const pack = await read('scripts/review/create-ai-review-pack.mjs');
   const validator = await read('scripts/review/validate-review-findings.mjs');
   const schema = JSON.parse(await read('scripts/review/review-findings.schema.json'));
   assert.match(pack, /AWH_AI_REVIEW_EVIDENCE_DIR/);
+  assert.match(pack, /manifest\?\.schemaVersion !== 2/);
   assert.match(pack, /manifest\?\.commit !== commit/);
+  assert.match(await read('scripts/review/render-ai-review-scenarios.mjs'), /schemaVersion: 2/);
   assert.match(pack, /manifest\?\.dirty !== false/);
   assert.match(pack, /NO_WORKING_TREE_CONTENT/);
   assert.match(pack, /FINDINGS_SCHEMA\.json/);

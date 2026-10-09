@@ -30,4 +30,11 @@ requirePattern(/matrix:\n\s+os: \[windows-latest, ubuntu-latest\]/, 'Cross-platf
 requirePattern(/if: runner\.os != 'Windows'\n\s+name: Verify production runtime dependency security\n\s+run: npm audit --omit=dev --audit-level=high/,
   'CI must fail closed on high or critical advisories in production runtime dependencies without conflating dev-only packaging debt');
 
-console.log('CI policy verified: PR packaging is path-aware; canonical/manual release gates stay full; cross-platform/runtime/security tests stay enabled.');
+if (!source.includes('ui: ${{ steps.classify.outputs.ui }}')) throw new Error('UI classifier output must be published');
+if (!source.includes('visual-ui-qa:') || !source.includes("if: needs.changes.outputs.ui == 'true'")) throw new Error('UI visual gate must execute on UI-changing PRs');
+requirePattern(/Install pinned Playwright Chromium/, 'UI gate requires actual browser installation');
+requirePattern(/npm run ui:visual/, 'UI gate must execute real responsive and accessibility browser tests');
+requirePattern(/npm run ui:evidence:verify/, 'UI gate must reject missing/stale rendered evidence');
+if (!source.includes('AWH_UI_REVISION: ${{ github.sha }}')) throw new Error('UI QA must bind to exact checkout revision');
+if (!source.includes('name: AWH-UI-VISUAL-${{ github.sha }}')) throw new Error('UI evidence must be retained with immutable source ID');
+console.log('CI policy verified: PR packaging path-aware; UI changes require exact-SHA rendered/axe evidence; runtime/security gates preserved.');

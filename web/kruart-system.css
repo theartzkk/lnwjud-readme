@@ -677,3 +677,35 @@ body.public-home-active .kruart-news{margin-top:16px!important}
   .owner-quick-row strong{font-size:14px!important}.owner-quick-row small{font-size:12px!important}
   .owner-featured-systems .ecosystem-project-body>small{font-size:12px!important}.owner-featured-systems .ecosystem-project-body>p{font-size:12px!important;-webkit-line-clamp:2!important}
 }
+
+/* Shared Owner confirmation authority — one interaction model for AWH surfaces. */
+.awh-owner-dialog-overlay{
+  position:fixed;z-index:2147483000;inset:0;display:grid;place-items:center;padding:18px;
+  max-height:var(--awh-owner-viewport-height,100dvh);overflow:auto;
+  background:rgba(20,32,51,.36);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)
+}
+.awh-owner-dialog-card{
+  display:grid;gap:12px;width:min(440px,100%);max-height:calc(var(--awh-owner-viewport-height,100dvh) - 36px);
+  overflow:auto;padding:20px;border:1px solid var(--k-line);border-radius:22px;background:var(--k-surface);
+  color:var(--k-text);box-shadow:0 24px 72px rgba(20,32,51,.22)
+}
+.awh-owner-dialog-eyebrow{color:var(--k-orange);font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.awh-owner-dialog-card h2{margin:0;color:var(--k-navy);font-size:21px;line-height:1.25}
+.awh-owner-dialog-copy,.awh-owner-dialog-message{margin:0;color:var(--k-muted);font-size:13px;line-height:1.55}
+.awh-owner-dialog-card label{display:grid;gap:7px;color:var(--k-text);font-size:13px;font-weight:800}
+.awh-owner-dialog-card input{min-height:48px;width:100%;border:1px solid var(--k-line-strong);border-radius:13px;background:#fff;padding:0 12px;color:var(--k-text);font-size:16px;outline:none}
+.awh-owner-dialog-card input:focus{border-color:var(--k-blue);box-shadow:0 0 0 3px rgba(23,109,229,.12)}
+.awh-owner-dialog-actions{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.awh-owner-dialog-actions button{min-height:46px;border-radius:13px;padding:9px 14px;font-size:13px;font-weight:850}
+.awh-owner-dialog-cancel{border:1px solid var(--k-line);background:#fff;color:var(--k-navy)}
+.awh-owner-dialog-confirm{border:0;background:var(--k-blue);color:#fff}
+.awh-owner-dialog-confirm[data-tone="danger"]{background:var(--k-bad)}
+@media(max-width:560px){
+  .awh-owner-dialog-overlay{align-items:end;padding:0}
+  .awh-owner-dialog-card{
+    width:100%;max-height:calc(var(--awh-owner-viewport-height,100dvh) - env(safe-area-inset-top,0px) - 8px);
+    padding:18px 14px calc(18px + env(safe-area-inset-bottom,0px));border-radius:22px 22px 0 0
+  }
+  .awh-owner-dialog-actions{display:grid;grid-template-columns:1fr 1fr}
+  .awh-owner-dialog-actions button{min-height:48px}
+}

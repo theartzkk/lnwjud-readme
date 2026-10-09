@@ -45,8 +45,8 @@ test("iPhone dictation is one-shot and self-recovers instead of remaining stuck"
 });
 
 test("Provider setup is discoverable, truthful, and high-risk confirmation happens in context", async () => {
-  const [app, html, adapter] = await Promise.all([
-    read("web/app.js"), read("web/index.html"), read("web/control-plane-adapter.js"),
+  const [app, html, adapter, ownerStepUp] = await Promise.all([
+    read("web/app.js"), read("web/index.html"), read("web/control-plane-adapter.js"), read("web/owner-stepup.js"),
   ]);
   assert.match(html, /data-profile-section="ai"/);
   assert.match(html, /<strong>AI Providers<\/strong>/);
@@ -57,9 +57,12 @@ test("Provider setup is discoverable, truthful, and high-risk confirmation happe
   assert.match(app, /function providerHubSummary/);
   assert.match(app, /status\.available === true && status\.credential\?\.lastTestStatus === 'PASS'/);
   assert.match(app, /พร้อมใช้งาน \$\{ready\.length\} Provider/);
-  assert.match(app, /function requestPrivilegedPassword/);
-  assert.match(app, /async function withOwnerStepUp/);
-  assert.match(app, /await stepUp\(password\)/);
+  assert.match(app, /withOwnerStepUp as runWithOwnerStepUp/);
+  assert.match(app, /runWithOwnerStepUp\(action, stepUp, label\)/);
+  assert.match(ownerStepUp, /export async function withOwnerStepUp/);
+  assert.match(ownerStepUp, /await stepUp\(password\)/);
+  assert.match(ownerStepUp, /ระบบจะทำรายการเดิมต่อให้อัตโนมัติ/);
+  assert.match(ownerStepUp, /visualViewport/);
   assert.match(app, /withOwnerStepUp\(\(\) => updateProviderHubCredential\(item\.providerId, 'SET', secret\)/);
   assert.match(adapter, /PROVIDER_AUTH_FAILED: 'AI Provider ปฏิเสธ API key นี้/);
   assert.match(adapter, /PROVIDER_RATE_LIMITED: 'AI Provider จำกัดการเรียกใช้ชั่วคราว/);

@@ -9,6 +9,17 @@
   --awh-live-red:#a13b3b;
 }
 #cp-live-react-root{display:grid;gap:12px}
+/* Status messages use authored CSS only, preserving strict style-src 'self'. */
+.awh-live-feedback{position:fixed;z-index:95;top:calc(82px + env(safe-area-inset-top,0px));right:16px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;width:min(380px,calc(100vw - 32px));padding:12px 14px;border:1px solid #cbddeb;border-radius:14px;background:#fff;color:var(--awh-live-ink);box-shadow:0 14px 38px rgba(20,61,117,.17)}
+.awh-live-feedback>div{display:grid;gap:4px;min-width:0}
+.awh-live-feedback strong{font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.awh-live-feedback small{font-size:12px;line-height:1.5;color:var(--awh-live-muted);overflow-wrap:anywhere}
+.awh-live-feedback.is-info{border-color:#b7d3ec}
+.awh-live-feedback.is-success{border-color:#a6d9bf}
+.awh-live-feedback.is-error{border-color:#e8b3b3}
+.awh-live-feedback button{min-width:44px;min-height:44px;display:grid;place-items:center;border:1px solid var(--awh-live-line);border-radius:10px;background:#fff;color:var(--awh-live-ink);font-size:22px;cursor:pointer}
+.awh-live-feedback button:focus-visible{outline:3px solid #176de5;outline-offset:2px}
+@media(max-width:560px){.awh-live-feedback{top:calc(68px + env(safe-area-inset-top,0px));right:10px;width:calc(100vw - 20px)}}
 .panel-live-ready #live-controls{display:none}
 .awh-live-toolbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:2px 0 8px}
 .awh-live-toolbar>div:first-child{display:grid;gap:2px}
@@ -97,4 +108,15 @@
 }
 @media(prefers-reduced-motion:reduce){
   .is-spinning{animation:none}
+}
+/* Shared accessible secondary ink for Panel live widgets; no inline styles/CSP exceptions. */
+#cp-live-react-root{--awh-live-muted:#41556d}
+#cp-live-react-root :is(.awh-live-toolbar span,.awh-live-release-copy small,.awh-live-row small,
+  .awh-live-empty,.awh-live-toolbar kbd,.awh-live-steps span,.awh-live-proof span,
+  [cmdk-group-heading],[cmdk-item] small,[cmdk-empty],.awh-command-shell footer){color:#41556d}
+#cp-live-react-root :is(.awh-live-pill.good){color:#17613e}
+#cp-live-react-root :is(.awh-live-pill.warn){color:#785000}
+#cp-live-react-root :is(.awh-live-pill.bad){color:#982f34}
+@media(max-width:840px){
+  #cp-live-react-root :is(.awh-live-action,.awh-live-toolbar button){min-height:44px;font-size:12px}
 }

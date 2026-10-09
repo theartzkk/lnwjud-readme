@@ -20,7 +20,7 @@ Never treat a screenshot, old branch, generated mockup, reference-only asset or 
 - Resolve live remote HEAD, active branch/worktree, production revision and relevant runtime state.
 - Identify the shared component/layout/state owner of the defect before creating page-specific CSS.
 - Search the BAY ecosystem for an existing component/identity/API/asset/queue capability before building another one.
-- Read the affected product overlay and UX acceptance contract.
+- Read the affected product overlay, UX acceptance contract and `design/qa/ECOSYSTEM-ADOPTION.md`; verify the product's own real QA adapter exists before treating shared governance as release proof.
 - For visual assets, resolve a semantic slot before touching pixels.
 
 ## During editing

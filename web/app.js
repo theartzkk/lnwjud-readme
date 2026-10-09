@@ -1,6 +1,7 @@
 import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
 import { closeAwhDialog, openAwhDialog } from './navigation.js?release=__AWH_WEB_RELEASE_ID__';
+import { withOwnerStepUp as runWithOwnerStepUp } from './owner-stepup.js?release=__AWH_WEB_RELEASE_ID__';
 import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   bindSchoolIdentity, exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadBayCommunicationStatus, loadControlData, loadConversation, loadConversationHistory,
@@ -205,52 +206,10 @@ import {
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
   function safeText(value, fallback = '') { return typeof value === 'string' && value.trim() ? value.trim() : fallback; }
   function date(value) { const time = Date.parse(value || ''); return Number.isFinite(time) ? new Date(time).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''; }
-  let privilegedPromptPromise = null;
-  function requestPrivilegedPassword(label = 'รายการนี้') {
-    if (privilegedPromptPromise) return privilegedPromptPromise;
-    privilegedPromptPromise = new Promise((resolve) => {
-      const overlay = document.createElement('div');
-      overlay.className = 'awh-stepup-overlay';
-      overlay.setAttribute('role', 'dialog');
-      overlay.setAttribute('aria-modal', 'true');
-      overlay.setAttribute('aria-labelledby', 'awh-stepup-title');
-      const card = document.createElement('form');
-      card.className = 'awh-stepup-card';
-      card.innerHTML = '<span class="eyebrow">SECURITY</span><h2 id="awh-stepup-title">ยืนยันก่อนทำรายการสำคัญ</h2><p class="muted"></p><label for="awh-stepup-password">รหัสผ่าน AWH ปัจจุบัน</label><input id="awh-stepup-password" type="password" autocomplete="current-password" required /><p class="form-message" role="status"></p><div class="form-actions"><button class="secondary-button" type="button" data-stepup-cancel>ยกเลิก</button><button class="primary-button" type="submit">ยืนยันและทำต่อ</button></div>';
-      card.querySelector('.muted').textContent = `${label} เป็นรายการที่ต้องยืนยันตัวตนอีกครั้งเพื่อป้องกันการเปลี่ยนแปลงที่มีความเสี่ยงสูง`;
-      const input = card.querySelector('#awh-stepup-password');
-      const finish = (value) => {
-        overlay.remove();
-        resolve(value);
-      };
-      card.querySelector('[data-stepup-cancel]').addEventListener('click', () => finish(null));
-      overlay.addEventListener('click', (event) => { if (event.target === overlay) finish(null); });
-      card.addEventListener('submit', (event) => {
-        event.preventDefault();
-        const value = input.value;
-        if (!value) return;
-        input.value = '';
-        finish(value);
-      });
-      overlay.append(card);
-      document.body.append(overlay);
-      window.setTimeout(() => input.focus(), 0);
-    }).finally(() => { privilegedPromptPromise = null; });
-    return privilegedPromptPromise;
-  }
   // Kept as the compatibility path for actions that do not need an in-context
-  // challenge. Privileged Owner actions use withOwnerStepUp below.
+  // challenge. Privileged Owner actions reuse the shared Owner confirmation flow.
   async function withPrivilegedRetry(action) { return action(); }
-  async function withOwnerStepUp(action, label = 'รายการนี้') {
-    try { return await action(); }
-    catch (error) {
-      if (error?.code !== 'STEP_UP_REQUIRED') throw error;
-      const password = await requestPrivilegedPassword(label);
-      if (!password) throw new Error('ยกเลิกการยืนยันแล้ว');
-      await stepUp(password);
-      return action();
-    }
-  }
+  const withOwnerStepUp = (action, label = 'รายการนี้') => runWithOwnerStepUp(action, stepUp, label);
   function selectedProject() { return state.control?.projects?.find((project) => project.projectId === state.selectedProjectId) || null; }
   function preferredProjectId(projects) {
     const available = new Set(projects.map((project) => project.projectId));

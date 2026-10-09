@@ -52,7 +52,14 @@ fixture.stderr.on('data', (chunk) => { fixtureError += String(chunk).slice(0, 81
 try {
   await waitForFixture(fixture);
   const runs = [];
-  for (const viewport of ['390x844', '1440x900']) runs.push(await runCapture(viewport));
+  const standardViewports = ['390x844','430x932','820x1024','1366x768','1440x900'];
+  const requestedViewports = process.env.AWH_VISUAL_QA_VIEWPORTS
+    ? process.env.AWH_VISUAL_QA_VIEWPORTS.split(',').map((s)=>s.trim()).filter(Boolean)
+    : standardViewports;
+  if (!requestedViewports.length || requestedViewports.some((v)=>!standardViewports.includes(v)) || new Set(requestedViewports).size !== requestedViewports.length) {
+    throw new Error('visual review viewport selection must be unique and drawn from the canonical five viewports');
+  }
+  for (const viewport of requestedViewports) runs.push(await runCapture(viewport));
   const expectedScenarios = 10;
   const pngs = readdirSync(output).filter((name) => name.endsWith('.png'));
   const evidenceFiles = runs.map((run) => join(output, `evidence-${run.viewport}.json`));

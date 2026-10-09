@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       desktop: ${{ steps.classify.outputs.desktop }}
+      ui: ${{ steps.classify.outputs.ui }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,10 +33,17 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "desktop=true" >> "$GITHUB_OUTPUT"
+            echo "ui=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > "$RUNNER_TEMP/changed-files.txt"
           cat "$RUNNER_TEMP/changed-files.txt"
+          # UI-only QA runs on UI-affecting PRs; main/manual always run the release gate.
+          if grep -Eq '^(web/|design/|test/ui/|scripts/review/|playwright\\.ui\\.config\\.mjs$|scripts/qa/visual-evidence-gate\\.mjs$|scripts/build-web-preview\\.ts$|config/kruart-experience-contract\\.json$|package(-lock)?\\.json$|\\.github/workflows/(ci|awh-cloud-review)\\.yml$)' "$RUNNER_TEMP/changed-files.txt"; then
+            echo "ui=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ui=false" >> "$GITHUB_OUTPUT"
+          fi
           if grep -Eq '^(src/|desktop/|assets/|logo-256x256\.png$|forge\.config\.cjs$|package\.json$|package-lock\.json$|ART_AI_WORKING_PROTOCOL\.md$|\.github/scripts/verify-packaged-mcp\.ps1$|scripts/package-|scripts/qa/verify-packaged-bundle\.mjs$)' "$RUNNER_TEMP/changed-files.txt"; then
             echo "desktop=true" >> "$GITHUB_OUTPUT"
           else
@@ -76,11 +84,59 @@ jobs:
       - if: runner.os != 'Windows'
         run: npm test
       - if: runner.os != 'Windows'
+        name: Enforce KRUART ecosystem UX and visual acceptance contract
+        run: npm run experience:check
+      - if: runner.os != 'Windows'
         name: Verify final mobile shell and typed deploy contracts
         run: node --import tsx --test test/final-uat-shell.test.ts
       - if: runner.os != 'Windows'
         run: npm run hub:test
       - run: npm run build
+
+  # Real visual/axe evidence: an independent CI check, only for UI-affecting PRs.
+  # On main/manual it runs unconditionally. Release authority must require this
+  # check for any UI change; the contract-only test above is not sufficient.
+  visual-ui-qa:
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify exact checkout source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify visual evidence validator rejects missing/bad evidence
+        run: node --test test/visual-evidence-gate.test.mjs
+      - name: Install pinned Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build exact-revision isolated web preview
+        env:
+          AWH_WEB_RELEASE_ID: ${{ github.sha }}
+        run: npm run web:build:control
+      - name: Render and verify five viewports including WCAG/CSP
+        env:
+          AWH_UI_BROWSER: chromium
+          AWH_UI_REVISION: ${{ github.sha }}
+        run: npm run ui:visual
+      - name: Fail closed on missing, stale or incomplete exact-SHA proof
+        run: npm run ui:evidence:verify -- .awh-local/review/playwright/pilot-results.json "$GITHUB_SHA" .awh-local/review/playwright/visual-release-evidence.json
+      - name: Upload actual review evidence (including on failure)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: AWH-UI-VISUAL-${{ github.sha }}
+          path: |
+            .awh-local/review/playwright/pilot-results.json
+            .awh-local/review/playwright/visual-release-evidence.json
+            .awh-local/review/playwright/artifacts/
+          if-no-files-found: warn
+          retention-days: 14
 
   desktop-runtime-linux:
     runs-on: ubuntu-latest

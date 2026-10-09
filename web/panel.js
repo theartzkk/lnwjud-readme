@@ -1,11 +1,21 @@
-import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, loadControlData, listManagedSites, loadProviderStatus, loadProviderHub, updateProviderHubCredential, testProviderHubConnection, updateProviderPolicy, loadHatchetStatus, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, updatePersonAccess, cancelTask, decideApproval, revokeDevice, managedSiteAction, loadCoreReleaseStatus, requestCoreRelease } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, loadControlData, listManagedSites, loadProviderStatus, loadProviderHub, updateProviderHubCredential, testProviderHubConnection, updateProviderPolicy, loadHatchetStatus, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, updatePersonAccess, cancelTask, decideApproval, revokeDevice, managedSiteAction, loadCoreReleaseStatus, requestCoreRelease, stepUp } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { withOwnerStepUp as runWithOwnerStepUp, confirmOwnerAction } from './owner-stepup.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
+const withOwnerStepUp=(action,label='รายการนี้')=>runWithOwnerStepUp(action,stepUp,label);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
 const percent=(value)=>Number.isFinite(Number(value))?Number(value).toFixed(Number(value)%1?1:0)+'%':'—';
 const date=(value)=>{const t=Date.parse(value||'');return Number.isFinite(t)?new Date(t).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):'—';};
 const good=(state)=>['ACTIVE','READY','HEALTHY','VERIFIED','AVAILABLE','PASS','PRODUCTION','ONLINE'].includes(String(state||'').toUpperCase());
 const bad=(state)=>['FAILED','CRITICAL','INVALID','UNAVAILABLE','DOWN','ERROR'].includes(String(state||'').toUpperCase());
+const shortDeviceId=(worker)=>typeof worker?.deviceId==='string'?worker.deviceId.trim().slice(-8):'';
+function deviceFriendlyName(worker){
+  const name=String(worker?.displayName||'AWH Agent').trim()||'AWH Agent';
+  const platform=String(worker?.platform||'').toLowerCase();
+  const arch=String(worker?.arch||'').toLowerCase();
+  const family=platform==='darwin'?(arch==='arm64'?'Mac Apple Silicon':['x64','x86_64'].includes(arch)?'Mac Intel':'Mac'):platform.startsWith('win')?'Windows':'';
+  return family?name+' · '+family:name;
+}
 
 function row(title,detail,label,state=''){
   const item=document.createElement('div');item.className='cp-row';
@@ -20,19 +30,23 @@ function syncCommandAttention(){
   const count=document.querySelectorAll('#cp-attention .cp-row').length;
   if($('cp-command-attention-count'))$('cp-command-attention-count').textContent=String(count);
   if($('cp-command-attention-note'))$('cp-command-attention-note').textContent=count?'เปิดดูแล้วทำต่อได้ทันที':'ไม่มีเรื่องเร่งด่วน';
-  if($('cp-command-summary'))$('cp-command-summary').textContent=count?count+' เรื่องควรจัดการ':'ระบบพร้อมใช้งาน';
+  const health=$('cp-overall');
+  const hasHealth=Boolean(health?.classList.contains('good')||health?.classList.contains('warn')||health?.classList.contains('bad'));
+  const needsHealthReview=Boolean(health?.classList.contains('warn')||health?.classList.contains('bad'));
+  if($('cp-command-summary'))$('cp-command-summary').textContent=count?count+' เรื่องควรจัดการ':needsHealthReview?'มีสถานะระบบที่ควรตรวจ':hasHealth?'ระบบหลักพร้อมใช้งาน':'กำลังตรวจความพร้อม';
   const primary=$('cp-command-primary');
-  if(primary instanceof HTMLAnchorElement){primary.href=count?'#cp-attention-wrap':'./';primary.textContent=count?'ดูสิ่งที่ต้องทำ':'กลับ AWH';}
+  if(primary instanceof HTMLAnchorElement){primary.href=count?'#cp-attention-wrap':needsHealthReview?'#system-health':'#operations';primary.textContent=count?'ดูสิ่งที่ต้องทำ':needsHealthReview?'ดูสถานะระบบ':'ดูงานและอัปเดต';}
 }
 function attention(title,detail,state='WARNING',action=null){
   const wrap=$('cp-attention-wrap'),host=$('cp-attention');if(!wrap||!host)return;
   wrap.hidden=false;
-  const label=bad(state)?'ต้องแก้':'ต้องดู';
-  const item=row(title,detail,label,state);
+  const label=bad(state)?'ต้องแก้':'ต้องทำ';
+  const item=row(title,detail,label,state);item.dataset.attentionKey=String(title||'attention');
   if(action?.href&&action?.label){
     const link=document.createElement('a');link.className='cp-row-action';link.href=action.href;link.textContent=action.label;item.append(link);
   }
-  host.append(item);syncCommandAttention();
+  const existing=[...host.querySelectorAll('.cp-row[data-attention-key]')].find((node)=>node.dataset.attentionKey===item.dataset.attentionKey);
+  if(existing)existing.replaceWith(item);else host.append(item);syncCommandAttention();
 }
 function healthTone(state){
   const value=String(state||'UNKNOWN').toUpperCase();
@@ -84,6 +98,12 @@ function renderHealthMatrix(data){
   const warnCount=rows.filter(item=>item.classList.contains('warn')).length;
   const summary=$('cp-health-summary');
   if(summary)summary.textContent=badCount?badCount+' รายการผิดปกติ · '+warnCount+' รายการควรดู':warnCount?warnCount+' รายการควรดู · ที่เหลือปกติ':'ระบบหลักปกติทั้งหมด';
+  const overall=$('cp-overall');
+  if(overall&&(badCount||warnCount)&&overall.classList.contains('good')){
+    overall.className='cp-overall '+(badCount?'bad':'warn');
+    overall.textContent=badCount?badCount+' จุดผิดปกติ':warnCount+' จุดควรตรวจ';
+  }
+  syncCommandAttention();
 }
 function renderCommandCenter(data){
   const server=data?.telemetry?.server||{},storage=data?.storage||server?.storage||{},deployment=data?.deployment||{},queue=data?.queue||{};
@@ -182,6 +202,7 @@ function renderServer(data){
   if(data?.telemetry?.state&&data.telemetry.state!=='READY')warnings.push('Telemetry');
   overall.className='cp-overall '+(warnings.length?(String(storage.state)==='CRITICAL'?'bad':'warn'):'good');
   overall.textContent=warnings.length?warnings.length+' รายการต้องดู':'ระบบหลักปกติ';
+  syncCommandAttention();
   if(db.state&&db.state!=='HEALTHY')attention('Database ต้องตรวจสอบ','Schema '+(db.schemaVersion??'—')+' · '+db.state,'WARNING',{label:'เปิด Database Studio',href:'./database.html'});
   if(backup.state&&backup.state!=='VERIFIED')attention('Backup ยังไม่ Verified',backup.state,'WARNING',{label:'ดูการกู้คืน',href:'#backup'});
   if(backup.freshness?.state==='STALE')attention('Backup ล่าสุดเก่าเกินกำหนด','ตรวจ scheduler และพื้นที่ดิสก์','WARNING',{label:'ดูการกู้คืน',href:'#backup'});
@@ -250,7 +271,7 @@ function renderAgentControl(data){
   if($('cp-agent-queue'))$('cp-agent-queue').textContent=String(Number(queue.activeTaskCount||0));
   if($('cp-agent-queue-note'))$('cp-agent-queue-note').textContent=Number(queue.waitingCapabilityCount||0)+' งานรอ capability';
   if($('cp-agent-summary'))$('cp-agent-summary').textContent=readyWorkers.length+' พร้อม · '+workingWorkers.length+' กำลังทำงาน · '+workers.length+' เครื่องทั้งหมด';
-  if($('cp-agent-tools'))$('cp-agent-tools').textContent=readyWorkers.length+'/'+workers.length+' เครื่องพร้อม · '+readyCapabilityCount+' capabilities';
+  if($('cp-agent-tools'))$('cp-agent-tools').textContent=readyWorkers.length+'/'+workers.length+' เครื่องพร้อม · '+readyCapabilityCount+' ความสามารถ';
 
   const deviceState=$('cp-agent-device-state');
   if(deviceState){deviceState.className='cp-chip '+(workers.length&&readyWorkers.length===workers.length?'good':readyWorkers.length?'warn':'bad');deviceState.textContent=workers.length?readyWorkers.length+'/'+workers.length+' พร้อม':'ไม่มี Agent';}
@@ -262,11 +283,12 @@ function renderAgentControl(data){
       const platform=[worker.platform,worker.arch].filter(Boolean).join(' · ');
       const version=worker.appVersion?'Agent '+worker.appVersion:'';
       const toolText=tools.length?tools.slice(0,6).join(' · '):'ยังไม่รายงานเครื่องมือ';
-      const detail=[platform,version,toolText,worker.lastSeenAt?('ล่าสุด '+date(worker.lastSeenAt)):''].filter(Boolean).join(' · ');
-      const label=worker.state==='WORKING'?'กำลังทำงาน':worker.state==='READY'?'พร้อม':worker.state==='STALE'?'ขาด heartbeat':'ออฟไลน์';
-      deviceHost.append(row(worker.displayName||'AWH Agent',detail,label,worker.state||'UNKNOWN'));
+      const identity=shortDeviceId(worker);
+      const detail=[platform,identity?('รหัสเครื่อง '+identity):'',version,toolText,worker.lastSeenAt?('ล่าสุด '+date(worker.lastSeenAt)):''].filter(Boolean).join(' · ');
+      const label=worker.state==='WORKING'?'กำลังทำงาน':worker.state==='READY'?'พร้อม':worker.state==='STALE'?'สัญญาณขาด':'ออฟไลน์';
+      deviceHost.append(row(deviceFriendlyName(worker),detail,label,worker.state||'UNKNOWN'));
     }
-    if(!workers.length)empty(deviceHost,'ยังไม่มี AWH Agent ที่ลงทะเบียนกับ Control Plane');
+    if(!workers.length)empty(deviceHost,'ยังไม่มี AWH Agent ที่เชื่อมกับระบบ');
   }
 
   const capabilityState=$('cp-agent-capability-state');
@@ -299,12 +321,15 @@ function setControlMessage(text,tone=''){
   const node=$('cp-control-message');if(!node)return;
   node.className=tone?'is-'+tone:'';node.textContent=text;
 }
-function makeControlButton(label,run,{tone='',confirmText=null,busyLabel='กำลังทำ…'}={}){
+function makeControlButton(label,run,{tone='',confirmText=null,busyLabel='กำลังทำ…',ownerLabel=label}={}){
   const button=document.createElement('button');button.type='button';button.className='cp-control-action'+(tone?' '+tone:'');button.textContent=label;
   button.addEventListener('click',async()=>{
-    if(confirmText&&!confirm(confirmText))return;
+    if(confirmText){
+      const confirmed=await confirmOwnerAction({title:label,detail:confirmText,confirmLabel:label,danger:tone==='danger'});
+      if(!confirmed)return;
+    }
     const before=button.textContent;button.disabled=true;button.textContent=busyLabel;setControlMessage(busyLabel,'warn');
-    try{await run();setControlMessage('ดำเนินการแล้ว กำลังอัปเดตสถานะ','good');await load();}
+    try{await withOwnerStepUp(run,ownerLabel);setControlMessage('ดำเนินการแล้ว กำลังอัปเดตสถานะ','good');await load();}
     catch(error){setControlMessage(error instanceof Error?error.message:'ดำเนินการไม่สำเร็จ','bad');button.disabled=false;button.textContent=before;}
   });
   return button;
@@ -359,7 +384,7 @@ function renderLiveSites(sitesData){
   const host=$('cp-live-sites');if(!host)return;
   const sites=Array.isArray(sitesData?.sites)?sitesData.sites:[];
   host.replaceChildren();
-  if(!sites.length){empty(host,'ยังไม่มี Managed Site');return;}
+  if(!sites.length){empty(host,'ยังไม่มีเว็บไซต์ที่ระบบดูแล');return;}
   for(const site of sites.slice(0,8)){
     const detail=[site.url||site.domainHost,site.taskState?('งาน '+taskStateLabel(site.taskState)):null].filter(Boolean).join(' · ')||'Managed Hosting';
     const item=row(site.name||site.slug,detail,site.state||'UNKNOWN',site.state);
@@ -376,11 +401,13 @@ function renderLiveDevices(control){
   host.replaceChildren();
   if(!workers.length){empty(host,'ยังไม่มีอุปกรณ์ที่เชื่อมกับ AWH');return;}
   for(const worker of workers.slice(0,10)){
-    const detail=[worker.platform,worker.appVersion?('Agent '+worker.appVersion):null,worker.lastSeenAt?('ล่าสุด '+date(worker.lastSeenAt)):null].filter(Boolean).join(' · ');
-    const item=row(worker.displayName||'AWH Agent',detail,worker.state==='WORKING'?'กำลังทำงาน':worker.state==='READY'?'พร้อม':worker.state||'OFFLINE',worker.state);
-    if(worker.state!=='WORKING'){
+    const identity=shortDeviceId(worker);
+    const detail=[worker.platform,worker.arch,identity?('รหัสเครื่อง '+identity):null,worker.appVersion?('Agent '+worker.appVersion):null,worker.lastSeenAt?('ล่าสุด '+date(worker.lastSeenAt)):null].filter(Boolean).join(' · ');
+    const title=deviceFriendlyName(worker);
+    const item=row(title,detail,worker.state==='WORKING'?'กำลังทำงาน':worker.state==='READY'?'พร้อม':worker.state||'OFFLINE',worker.state);
+    if(worker.state!=='WORKING'&&worker.deviceId){
       const actions=document.createElement('span');actions.className='cp-control-actions';
-      actions.append(makeControlButton('ยกเลิกการเชื่อมต่อ',()=>revokeDevice(worker.deviceId),{tone:'danger',confirmText:'ยกเลิกการเชื่อมต่อ “'+String(worker.displayName||'อุปกรณ์นี้')+'” ใช่หรือไม่? ต้องเชื่อมใหม่ก่อนใช้งานครั้งถัดไป',busyLabel:'กำลังยกเลิก…'}));
+      actions.append(makeControlButton('ยกเลิกการเชื่อมต่อ',()=>revokeDevice(worker.deviceId),{tone:'danger',confirmText:'ยกเลิกการเชื่อมต่อ “'+title+'”'+(identity?' (รหัสเครื่อง '+identity+')':'')+' ใช่หรือไม่? ต้องเชื่อมใหม่ก่อนใช้งานครั้งถัดไป',busyLabel:'กำลังยกเลิก…'}));
       item.append(actions);
     }
     host.append(item);
@@ -396,31 +423,36 @@ function renderCoreReleaseControl(status){
   button.disabled=true;button.dataset.releaseSha='';
   if(active){
     button.textContent='AWH กำลังอัปเดต '+Math.max(0,Math.min(100,Number(active.progress||0)))+'%';
-    message.textContent=active.resultSummary||'Release controller กำลังทำงาน';return;
+    message.textContent=active.resultSummary||'AWH กำลังอัปเดตและตรวจสอบผล';return;
   }
-  if(!target){button.textContent='ยังไม่มีรุ่นพร้อมอัปเดต';message.textContent=status?.releaseBlocker||'ยังไม่พบ canonical release target';return;}
-  if(runtime&&target===runtime){button.textContent='AWH เป็นรุ่นล่าสุด';message.textContent='ระบบที่ใช้งานอยู่ตรงกับรุ่นล่าสุด';return;}
-  if(status?.releaseDetailsReady===false){button.textContent='รุ่นนี้ยังปล่อยไม่ได้';message.textContent=status?.releaseBlocker||'Release details ยังไม่พร้อม';return;}
+  if(!target){button.textContent='ยังไม่มีรุ่นพร้อมอัปเดต';message.textContent=status?.releaseBlocker||'ยังไม่พบรุ่นที่พร้อมอัปเดต';return;}
+  if(runtime&&target===runtime){button.textContent='AWH เป็นรุ่นล่าสุด';message.textContent='AWH ใช้รุ่นล่าสุดแล้ว · '+shortSha(runtime);return;}
+  if(status?.releaseDetailsReady===false){button.textContent='รุ่นนี้ยังไม่พร้อมอัปเดต';message.textContent=status?.releaseBlocker||'AWH ยังเตรียมข้อมูลการอัปเดตไม่ครบ';return;}
   button.disabled=false;button.dataset.releaseSha=target;button.textContent='อัปเดต AWH → '+shortSha(target);
   message.textContent='มี AWH รุ่นใหม่พร้อม · ระบบจะใช้ขั้นตอนอัปเดตที่ปลอดภัยเดิม';
 }
 
 function renderSites(sitesData){
   const sites=Array.isArray(sitesData?.sites)?sitesData.sites:[],ready=sites.filter(s=>s.state==='READY').length;
-  $('cp-sites').textContent=sites.length?ready+'/'+sites.length+' เว็บไซต์พร้อม':'ยังไม่มี Managed Site';
+  $('cp-sites').textContent=sites.length?ready+'/'+sites.length+' เว็บไซต์พร้อม':'ยังไม่มีเว็บไซต์ที่ระบบดูแล';
   if($('cp-command-sites'))$('cp-command-sites').textContent=sites.length?ready+'/'+sites.length:'0';
 }
 let cpProvider=null;
 const MICRO_BAHT=1000000;
+const bahtMicros=(value)=>Number.isFinite(Number(value))?'฿'+(Number(value)/MICRO_BAHT).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
 function renderProvider(providerData){
   const provider=providerData?.provider||providerData||{};cpProvider=provider;
-  $('cp-ai').textContent=provider.state==='READY'?'AI พร้อม · Auto routing':provider.state||'ยังไม่พร้อม';
+  $('cp-ai').textContent=provider.state==='READY'?'AI พร้อมใช้งาน':provider.enabled===false?'AI ปิดอยู่':provider.state||'กำลังตรวจ';
   const budget=provider.budget||{};
   if($('cp-ai-enabled'))$('cp-ai-enabled').checked=provider.enabled===true;
   if($('cp-ai-budget'))$('cp-ai-budget').value=(Number.isInteger(budget.monthlyMicrounits)?budget.monthlyMicrounits/MICRO_BAHT:0).toFixed(2);
   if($('cp-ai-warning'))$('cp-ai-warning').value=(Number.isInteger(budget.warningMicrounits)?budget.warningMicrounits/MICRO_BAHT:0).toFixed(2);
   if($('cp-ai-routing'))$('cp-ai-routing').value=['SAVER','BALANCED','QUALITY'].includes(provider.routingStrategy)?provider.routingStrategy:'BALANCED';
-  if($('cp-ai-status'))$('cp-ai-status').textContent=provider.available===true?'พร้อมใช้งาน':provider.keyConfigured===true?'เชื่อม API แล้ว':'ยังไม่ได้เชื่อม API';
+  if($('cp-ai-status'))$('cp-ai-status').textContent=provider.available===true?'พร้อมใช้งาน':provider.keyConfigured===true?'เชื่อมแล้ว · กำลังตรวจ':'ยังไม่ได้เชื่อมผู้ให้บริการหลัก';
+  if($('cp-ai-used'))$('cp-ai-used').textContent=bahtMicros(budget.usedMicrounits||0);
+  if($('cp-ai-limit'))$('cp-ai-limit').textContent=bahtMicros(budget.monthlyMicrounits||0);
+  const remaining=Number.isFinite(Number(budget.remainingMicrounits))?Number(budget.remainingMicrounits):Math.max(0,Number(budget.monthlyMicrounits||0)-Number(budget.usedMicrounits||0));
+  if($('cp-ai-remaining'))$('cp-ai-remaining').textContent=bahtMicros(remaining);
 }
 function moneyMicros(id){
   const value=Number.parseFloat($(id)?.value||'0');
@@ -440,9 +472,9 @@ async function loadPeopleAccess(){
       const role=document.createElement('select');role.className='cp-role-select';role.setAttribute('aria-label','บทบาทของ '+(person.displayName||person.username));
       for(const value of ['ADMIN','STAFF','VIEWER']){const option=document.createElement('option');option.value=value;option.textContent=personRoleLabel(value);option.selected=value===person.role;role.append(option);}
       const save=document.createElement('button');save.type='button';save.className='cp-mini-action';save.textContent='บันทึกสิทธิ์';
-      save.addEventListener('click',async()=>{save.disabled=role.disabled=true;try{await updatePersonAccess(person.userId,role.value,Array.isArray(person.projectIds)?person.projectIds:[]);$('cp-person-message').textContent='เปลี่ยนสิทธิ์แล้ว ผู้ใช้นี้ต้องเข้าสู่ระบบใหม่';await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังเปลี่ยนสิทธิ์ไม่ได้';save.disabled=role.disabled=false;}});
+      save.addEventListener('click',async()=>{save.disabled=role.disabled=true;try{await withOwnerStepUp(()=>updatePersonAccess(person.userId,role.value,Array.isArray(person.projectIds)?person.projectIds:[]),'การเปลี่ยนสิทธิ์ '+(person.displayName||person.username));$('cp-person-message').textContent='เปลี่ยนสิทธิ์แล้ว ผู้ใช้นี้ต้องเข้าสู่ระบบใหม่';await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังเปลี่ยนสิทธิ์ไม่ได้';save.disabled=role.disabled=false;}});
       const button=document.createElement('button');button.type='button';button.className='cp-mini-action';button.textContent='ปิดบัญชี';
-      button.addEventListener('click',async()=>{if(!confirm('ปิดบัญชี “'+(person.displayName||person.username)+'” ใช่หรือไม่?'))return;button.disabled=role.disabled=save.disabled=true;try{await revokePerson(person.userId);await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังปิดบัญชีไม่ได้';button.disabled=role.disabled=save.disabled=false;}});
+      button.addEventListener('click',async()=>{const confirmed=await confirmOwnerAction({title:'ปิดบัญชี '+(person.displayName||person.username),detail:'ผู้ใช้นี้จะต้องติดต่อผู้ดูแลก่อนกลับมาใช้งานอีกครั้ง',confirmLabel:'ยืนยันปิดบัญชี',danger:true});if(!confirmed)return;button.disabled=role.disabled=save.disabled=true;try{await withOwnerStepUp(()=>revokePerson(person.userId),'การปิดบัญชี '+(person.displayName||person.username));await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังปิดบัญชีไม่ได้';button.disabled=role.disabled=save.disabled=false;}});
       actions.append(role,save,button);item.append(actions);
     }
     peopleHost.append(item);
@@ -453,7 +485,7 @@ async function loadPeopleAccess(){
     const actions=document.createElement('div');actions.className='cp-inline-actions';
     const approve=document.createElement('button');approve.type='button';approve.className='cp-mini-action';approve.textContent='อนุมัติ';
     const reject=document.createElement('button');reject.type='button';reject.className='cp-mini-action';reject.textContent='ไม่อนุมัติ';
-    approve.addEventListener('click',async()=>{approve.disabled=reject.disabled=true;try{await reviewAccountRequest(request.requestId,'APPROVE','STAFF',[]);await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังอนุมัติไม่ได้';approve.disabled=reject.disabled=false;}});
+    approve.addEventListener('click',async()=>{approve.disabled=reject.disabled=true;try{await withOwnerStepUp(()=>reviewAccountRequest(request.requestId,'APPROVE','STAFF',[]),'การอนุมัติบัญชี '+(request.displayName||request.username));await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังอนุมัติไม่ได้';approve.disabled=reject.disabled=false;}});
     reject.addEventListener('click',async()=>{approve.disabled=reject.disabled=true;try{await reviewAccountRequest(request.requestId,'REJECT','VIEWER',[]);await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังปฏิเสธคำขอไม่ได้';approve.disabled=reject.disabled=false;}});
     actions.append(approve,reject);item.append(actions);requestHost.append(item);
   }if(!requests.length)empty(requestHost,'ไม่มีคำขอค้าง');}
@@ -475,21 +507,29 @@ async function renderExternalCapabilities(){
     if(!data.entries.length)empty(host,'ยังไม่มี external capability ที่ลงทะเบียน');
   }catch(error){empty(host,error instanceof Error?error.message:'โหลด external capabilities ไม่สำเร็จ');}
 }
+function providerDraftInProgress(){
+ const host=$('cp-provider-list');if(!host)return false;
+ return [...host.querySelectorAll('.cp-provider-form')].some(form=>
+  form.dataset.submitting==='true'||form.contains(document.activeElement)||
+  [...form.querySelectorAll('input[type="password"]')].some(input=>input.value.length>0));
+}
 function renderProviderHub(data){
  const host=$('cp-provider-list');if(!host)return;host.replaceChildren();const hub=data?.hub,statuses=data?.statuses||{};
  if(!hub||!Array.isArray(hub.providers)){empty(host,'ยังโหลด AI Providers ไม่ได้');return;}
- $('cp-provider-policy').textContent='Free-first · Cloud only · Paid ต้อง Owner อนุมัติ';
+ $('cp-provider-policy').textContent='ใช้ฟรีก่อน · ใช้ Cloud · บริการที่มีค่าใช้จ่ายต้องได้รับอนุมัติ';
+ const recommended=hub.providers.find((item)=>item.costClass==='included'&&statuses[item.providerId]?.keyConfigured!==true);
+ if(recommended)attention('เชื่อม '+(recommended.displayName||recommended.providerId),'ใช้ฟรี · เชื่อมครั้งเดียวแล้ว AWH จะทดสอบให้','WARNING',{label:'เชื่อมตอนนี้',href:'#ai'});
  for(const provider of hub.providers){const status=statuses[provider.providerId]||{},credential=status.credential||{},ready=status.available===true&&credential.lastTestStatus==='PASS';
   const card=document.createElement('article');card.className='cp-provider-card';
   const head=document.createElement('div');head.className='cp-provider-card-head';const copy=document.createElement('span'),title=document.createElement('strong'),detail=document.createElement('small'),chip=document.createElement('span');
-  title.textContent=provider.displayName||provider.providerId;detail.textContent=ready?'พร้อมใช้งาน':status.keyConfigured?(credential.lastTestStatus==='FAILED'?'เชื่อมแล้ว · ทดสอบไม่ผ่าน':'เชื่อมแล้ว · รอทดสอบ'):'ยังไม่ได้เชื่อม API key';chip.className='cp-chip '+(ready?'good':status.keyConfigured?'warn':'');chip.textContent=ready?'READY':status.keyConfigured?'CONNECTED':'KEY REQUIRED';copy.append(title,detail);head.append(copy,chip);
-  const models=document.createElement('p');models.className='cp-provider-models';const prod=(provider.models||[]).filter(m=>m.lifecycle==='production').map(m=>m.displayName||m.modelId);models.textContent=(provider.costClass==='included'?'Free/Included · ':'')+(prod.length?prod.join(' · '):'รอ qualification');
-  const form=document.createElement('form');form.className='cp-provider-form';const input=document.createElement('input');input.type='password';input.maxLength=4096;input.autocomplete='off';input.spellcheck=false;input.placeholder=(provider.displayName||provider.providerId)+' API key';
-  const connect=document.createElement('button');connect.type='submit';connect.className='cp-mini-action';connect.textContent=status.keyConfigured?'แทนที่ key':'เชื่อม';const test=document.createElement('button');test.type='button';test.className='cp-mini-action';test.textContent='ทดสอบ';test.disabled=!status.keyConfigured;const remove=document.createElement('button');remove.type='button';remove.className='cp-mini-action';remove.textContent='ยกเลิก';remove.disabled=!status.keyConfigured;const msg=document.createElement('p');msg.className='cp-inline-message';msg.setAttribute('role','status');form.append(input,connect,test,remove,msg);card.append(head,models,form);host.append(card);
+  title.textContent=provider.displayName||provider.providerId;detail.textContent=ready?'พร้อมใช้งาน':status.keyConfigured?(credential.lastTestStatus==='FAILED'?'เชื่อมแล้ว · ทดสอบไม่ผ่าน':'เชื่อมแล้ว · กำลังตรวจ'):'ยังไม่ได้เชื่อม';chip.className='cp-chip '+(ready?'good':status.keyConfigured?'warn':'');chip.textContent=ready?'พร้อมใช้':status.keyConfigured?'เชื่อมแล้ว':'ต้องเชื่อม';copy.append(title,detail);head.append(copy,chip);
+  const models=document.createElement('p');models.className='cp-provider-models';const prod=(provider.models||[]).filter(m=>m.lifecycle==='production').map(m=>m.displayName||m.modelId);models.textContent=(provider.costClass==='included'?'ใช้ฟรี · ':'')+(prod.length?prod.join(' · '):'กำลังตรวจรุ่นที่ใช้ได้');
+  const form=document.createElement('form');form.className='cp-provider-form';const input=document.createElement('input');input.type='password';input.maxLength=4096;input.autocomplete='off';input.spellcheck=false;input.placeholder=status.keyConfigured?'ใส่ API key ใหม่เมื่อต้องการเปลี่ยน':'วาง '+(provider.displayName||provider.providerId)+' API key';input.setAttribute('aria-label',(status.keyConfigured?'API key ใหม่สำหรับ ':'API key สำหรับ ')+(provider.displayName||provider.providerId));
+  const connect=document.createElement('button');connect.type='submit';connect.className='cp-mini-action cp-provider-primary';connect.textContent=status.keyConfigured?'เปลี่ยน API key':'เชื่อมและทดสอบ';const test=document.createElement('button');test.type='button';test.className='cp-mini-action';test.textContent='ทดสอบอีกครั้ง';test.disabled=!status.keyConfigured;const remove=document.createElement('button');remove.type='button';remove.className='cp-mini-action cp-provider-remove';remove.textContent='ลบการเชื่อมต่อ';remove.disabled=!status.keyConfigured;const msg=document.createElement('p');msg.className='cp-inline-message';msg.setAttribute('role','status');form.append(input,connect,test,remove,msg);card.append(head,models,form);host.append(card);
   const reload=async()=>renderProviderHub(await loadProviderHub());
-  form.addEventListener('submit',async e=>{e.preventDefault();const secret=input.value.trim();if(!secret){msg.textContent='วาง API key ก่อน';return;}connect.disabled=true;msg.textContent='กำลังเชื่อม…';try{await updateProviderHubCredential(provider.providerId,'SET',secret);input.value='';await testProviderHubConnection(provider.providerId);await reload();}catch(error){input.value='';msg.textContent=error instanceof Error?error.message:'ยังเชื่อมไม่ได้';}finally{connect.disabled=false;}});
-  test.addEventListener('click',async()=>{test.disabled=true;msg.textContent='กำลังทดสอบ…';try{await testProviderHubConnection(provider.providerId);await reload();}catch(error){msg.textContent=error instanceof Error?error.message:'ทดสอบไม่ผ่าน';}finally{test.disabled=false;}});
-  remove.addEventListener('click',async()=>{remove.disabled=true;msg.textContent='กำลังยกเลิก…';try{await updateProviderHubCredential(provider.providerId,'REMOVE',null);await reload();}catch(error){msg.textContent=error instanceof Error?error.message:'ยังยกเลิกไม่ได้';}finally{remove.disabled=false;}});
+  form.addEventListener('submit',async e=>{e.preventDefault();const secret=input.value.trim();if(!secret){msg.textContent='วาง API key ก่อน';input.focus();return;}form.dataset.submitting='true';connect.disabled=true;msg.textContent='กำลังเชื่อม…';try{await withOwnerStepUp(()=>updateProviderHubCredential(provider.providerId,'SET',secret),'การเชื่อม '+(provider.displayName||provider.providerId));input.value='';msg.textContent='บันทึกแล้ว · กำลังทดสอบ…';try{await withOwnerStepUp(()=>testProviderHubConnection(provider.providerId),'การทดสอบ '+(provider.displayName||provider.providerId));await reload();}catch(testError){test.disabled=false;remove.disabled=false;msg.textContent='บันทึก key แล้ว แต่ทดสอบยังไม่ผ่าน · '+(testError instanceof Error?testError.message:'ลองทดสอบอีกครั้ง');}}catch(error){msg.textContent=error instanceof Error?error.message:'ยังเชื่อมไม่ได้';}finally{delete form.dataset.submitting;connect.disabled=false;}});
+  test.addEventListener('click',async()=>{form.dataset.submitting='true';test.disabled=true;msg.textContent='กำลังทดสอบ…';try{await withOwnerStepUp(()=>testProviderHubConnection(provider.providerId),'การทดสอบ '+(provider.displayName||provider.providerId));await reload();}catch(error){msg.textContent=error instanceof Error?error.message:'ทดสอบไม่ผ่าน';}finally{delete form.dataset.submitting;test.disabled=false;}});
+  remove.addEventListener('click',async()=>{const confirmed=await confirmOwnerAction({title:'ยกเลิกการเชื่อมต่อ '+(provider.displayName||provider.providerId),detail:'AWH จะหยุดใช้ key นี้จนกว่าจะเชื่อมใหม่',confirmLabel:'ยืนยันยกเลิกการเชื่อมต่อ',danger:true});if(!confirmed)return;form.dataset.submitting='true';remove.disabled=true;msg.textContent='กำลังยกเลิกการเชื่อมต่อ…';try{await withOwnerStepUp(()=>updateProviderHubCredential(provider.providerId,'REMOVE',null),'การยกเลิกการเชื่อมต่อ '+(provider.displayName||provider.providerId));await reload();}catch(error){msg.textContent=error instanceof Error?error.message:'ยังยกเลิกการเชื่อมต่อไม่ได้';}finally{delete form.dataset.submitting;remove.disabled=false;}});
  }}
 function renderHatchetOwnerStatus(data){
   const configured=data?.hatchet?.credentialConfigured===true;
@@ -497,8 +537,33 @@ function renderHatchetOwnerStatus(data){
   if(status)status.textContent=configured?'พร้อมใช้งาน · credential ถูกเก็บแบบไม่แสดงกลับ':'ยังไม่เชื่อม · กดเชื่อมได้จาก AWH โดยตรง';
   if(!configured)attention('เชื่อม Hatchet Cloud','เหลือเชื่อม token เพื่อให้งานที่ใช้ Cloud worker พร้อมทำงาน','WARNING',{label:'เชื่อมตอนนี้',href:'./?awh-settings=hatchet'});
 }
+const ownerActionIndex=[
+  {label:'เชื่อมผู้ให้บริการ AI',detail:'Groq, OpenAI และผู้ให้บริการที่ AWH รองรับ',href:'#ai',keywords:'ai groq openai provider api key เชื่อม เอไอ'},
+  {label:'อัปเดต AWH และระบบต่าง ๆ',detail:'ดูรุ่นที่พร้อม งานที่กำลังทำ และรายการที่ติด',href:'#operations',keywords:'update release deploy อัปเดต รุ่น ติดตั้ง'},
+  {label:'จัดการผู้ใช้และสิทธิ์',detail:'อนุมัติบัญชี เปลี่ยนบทบาท และจัดการการเข้าถึง',href:'#users',keywords:'user people role permission access ผู้ใช้ สิทธิ์ ครู อนุมัติ'},
+  {label:'ดูอุปกรณ์ AWH',detail:'เครื่องที่ออนไลน์ ความสามารถ และงานที่กำลังวิ่ง',href:'#awh-agent',keywords:'device agent mac windows m5 intel อุปกรณ์ เครื่อง'},
+  {label:'เว็บไซต์และช่องทาง',detail:'Hosting, เว็บไซต์ และบริการที่เปิดใช้งาน',href:'./hosting.html',keywords:'hosting website web line เว็บไซต์ ช่องทาง'},
+  {label:'ฐานข้อมูล',detail:'เปิด Database Studio แบบอ่านอย่างเดียวเป็นค่าเริ่มต้น',href:'./database.html',keywords:'database db sql ฐานข้อมูล'},
+  {label:'สำรองและกู้คืน',detail:'ดูสถานะ Backup และการกู้คืน',href:'#backup',keywords:'backup restore recovery สำรอง กู้คืน'},
+  {label:'ความปลอดภัยและหลักฐาน',detail:'เปิด Trust Center',href:'./trust.html',keywords:'security trust audit ความปลอดภัย หลักฐาน'},
+  {label:'ไฟล์และพื้นที่',detail:'เปิด File Center',href:'./?awh-surface=files',keywords:'files storage disk ไฟล์ พื้นที่'}
+];
+function renderOwnerSearchResults(query){
+  const host=$('cp-search-results');if(!host)return;
+  const q=String(query||'').trim().toLowerCase();host.replaceChildren();
+  if(!q){host.hidden=true;return;}
+  const matches=ownerActionIndex.filter((item)=>(item.label+' '+item.detail+' '+item.keywords).toLowerCase().includes(q)).slice(0,6);
+  for(const item of matches){
+    const link=document.createElement('a');link.href=item.href;link.className='cp-search-result';
+    const copy=document.createElement('span');const strong=document.createElement('strong');strong.textContent=item.label;
+    const small=document.createElement('small');small.textContent=item.detail;copy.append(strong,small);
+    const arrow=document.createElement('b');arrow.textContent='ไป →';link.append(copy,arrow);host.append(link);
+  }
+  if(!matches.length){const emptyResult=document.createElement('p');emptyResult.className='cp-search-empty-state';emptyResult.textContent='ยังไม่พบเมนูตรงคำนี้ · ลอง “เชื่อม Groq” หรือ “สำรองข้อมูล”';host.append(emptyResult);}
+  host.hidden=false;
+}
 function filterMenus(query){
-  const q=String(query||'').trim().toLowerCase();
+  const q=String(query||'').trim().toLowerCase();renderOwnerSearchResults(q);
   for(const node of document.querySelectorAll('[data-cp-keywords]')){
     const text=(node.textContent+' '+(node.dataset.cpKeywords||'')).toLowerCase();node.hidden=Boolean(q)&&!text.includes(q);
   }
@@ -513,25 +578,49 @@ function revealHashTarget(hash){
 function installUi(){
   const search=$('cp-search');search?.addEventListener('input',()=>filterMenus(search.value));
   window.addEventListener('keydown',(event)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();search?.focus();search?.select();}});
-  $('cp-menu')?.addEventListener('click',()=>document.body.classList.toggle('cp-menu-open'));
+  const menu=$('cp-menu'),scrim=$('cp-menu-scrim');
+  function setMobileMenu(open,{restoreFocus=false}={}){
+    const shouldOpen=Boolean(open&&window.innerWidth<=840);
+    document.body.classList.toggle('cp-menu-open',shouldOpen);
+    if(scrim)scrim.hidden=!shouldOpen;
+    const sidebar=$('cp-sidebar');if(sidebar)sidebar.inert=window.innerWidth<=840&&!shouldOpen;
+    if(menu){menu.setAttribute('aria-expanded',String(shouldOpen));menu.setAttribute('aria-label',shouldOpen?'ปิดเมนู':'เปิดเมนู');}
+    if(shouldOpen){$('cp-sidebar')?.querySelector('a[href]')?.focus();}
+    else if(restoreFocus)menu?.focus();
+  }
+  menu?.addEventListener('click',()=>setMobileMenu(!document.body.classList.contains('cp-menu-open')));
+  scrim?.addEventListener('click',()=>setMobileMenu(false,{restoreFocus:true}));
+  window.addEventListener('keydown',(event)=>{
+    if(!document.body.classList.contains('cp-menu-open'))return;
+    if(event.key==='Escape'){event.preventDefault();setMobileMenu(false,{restoreFocus:true});return;}
+    if(event.key==='Tab'){
+      const links=[...($('cp-sidebar')?.querySelectorAll('a[href],input,summary,button')||[])].filter(node=>!node.hidden&&node.getClientRects().length>0);
+      if(!links.length)return;
+      const first=links[0],last=links[links.length-1];
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+    }
+  });
+  window.addEventListener('resize',()=>setMobileMenu(window.innerWidth<=840&&document.body.classList.contains('cp-menu-open')));
   document.addEventListener('click',(event)=>{
     const anchor=event.target instanceof Element?event.target.closest('a[href^="#"]'):null;
     if(anchor instanceof HTMLAnchorElement) revealHashTarget(anchor.getAttribute('href')||'');
-    if(window.innerWidth<=840&&document.body.classList.contains('cp-menu-open')&&event.target instanceof HTMLAnchorElement)document.body.classList.remove('cp-menu-open');
+    if(window.innerWidth<=840&&document.body.classList.contains('cp-menu-open')&&event.target instanceof Element&&event.target.closest('#cp-sidebar a[href]'))setMobileMenu(false);
   });
   window.addEventListener('hashchange',()=>revealHashTarget(window.location.hash));
   if(window.location.hash)queueMicrotask(()=>revealHashTarget(window.location.hash));
+  setMobileMenu(false);
   $('cp-refresh')?.addEventListener('click',()=>void load());
   $('cp-core-release-button')?.addEventListener('click',async(event)=>{
     const button=event.currentTarget;
     const sha=button instanceof HTMLButtonElement?button.dataset.releaseSha||'':'';
     if(!/^[0-9a-f]{40}$/i.test(sha))return;
-    if(!confirm('อัปเดต AWH Production เป็น '+shortSha(sha)+' ตอนนี้ใช่หรือไม่?'))return;
+    if(!(await confirmOwnerAction({title:'อัปเดต AWH เป็น '+shortSha(sha),detail:'AWH จะส่งงานเข้าขั้นตอนอัปเดตและตรวจสอบตามลำดับเดิม',confirmLabel:'เริ่มอัปเดต'})))return;
     button.disabled=true;const before=button.textContent;button.textContent='กำลังส่งคำขออัปเดต…';
     try{
       const result=await requestCoreRelease(sha,false);
       setControlMessage('ส่งคำขออัปเดต AWH แล้ว','good');
-      if($('cp-core-release-state'))$('cp-core-release-state').textContent='Release controller รับงานแล้ว · '+taskStateLabel(result.state);
+      if($('cp-core-release-state'))$('cp-core-release-state').textContent='AWH รับงานอัปเดตแล้ว · '+taskStateLabel(result.state);
       await load();
     }catch(error){
       const message=error instanceof Error?error.message:'ยังเริ่มอัปเดต AWH ไม่ได้';
@@ -551,6 +640,23 @@ function installUi(){
   });
 
 }
+let ownerRefreshTimer=null;
+async function refreshOwnerSignals(){
+  if(document.hidden)return;
+  const results=await Promise.allSettled([loadProviderStatus(),loadProviderHub(),loadUpdateCenter(),loadControlData(),loadCoreReleaseStatus(),listManagedSites()]);
+  if(results[0].status==='fulfilled')renderProvider(results[0].value);
+  if(results[1].status==='fulfilled'&&!providerDraftInProgress())renderProviderHub(results[1].value);
+  if(results[2].status==='fulfilled')renderUpdateSummary(results[2].value);
+  if(results[3].status==='fulfilled'){renderLiveTasks(results[3].value);renderLiveApprovals(results[3].value);renderLiveDevices(results[3].value);}
+  if(results[4].status==='fulfilled')renderCoreReleaseControl(results[4].value);
+  if(results[5].status==='fulfilled'){renderSites(results[5].value);renderLiveSites(results[5].value);}
+  if($('cp-updated'))$('cp-updated').textContent='ข้อมูลสด · '+new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+function startOwnerFreshness(){
+  if(ownerRefreshTimer)return;
+  ownerRefreshTimer=window.setInterval(()=>void refreshOwnerSignals(),20000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshOwnerSignals();});
+}
 async function load(){
   const refresh=$('cp-refresh');if(refresh)refresh.disabled=true;
   $('cp-attention')?.replaceChildren();if($('cp-attention-wrap'))$('cp-attention-wrap').hidden=true;
@@ -567,16 +673,16 @@ async function load(){
 
     Promise.allSettled([listManagedSites(),loadProviderStatus(),loadPeopleAccess(),loadControlData(),loadCoreReleaseStatus(),loadProviderHub(),loadHatchetStatus()]).then((secondary)=>{
       if(secondary[0].status==='fulfilled'){renderSites(secondary[0].value);renderLiveSites(secondary[0].value);}
-      else if($('cp-live-sites'))empty($('cp-live-sites'),'ยังโหลด Managed Sites ไม่สำเร็จ');
+      else if($('cp-live-sites'))empty($('cp-live-sites'),'ยังโหลดเว็บไซต์ที่ดูแลไม่สำเร็จ');
       if(secondary[1].status==='fulfilled')renderProvider(secondary[1].value);
       if(secondary[3].status==='fulfilled'){renderLiveTasks(secondary[3].value);renderLiveApprovals(secondary[3].value);renderLiveDevices(secondary[3].value);}
       else{
-        for(const id of ['cp-live-tasks','cp-live-approvals','cp-live-devices'])if($(id))empty($(id),'ยังโหลด Control Plane ไม่สำเร็จ');
+        for(const id of ['cp-live-tasks','cp-live-approvals','cp-live-devices'])if($(id))empty($(id),'ยังโหลดสถานะระบบไม่สำเร็จ');
       }
       if(secondary[4].status==='fulfilled')renderCoreReleaseControl(secondary[4].value);
       else if($('cp-core-release-state'))$('cp-core-release-state').textContent='ยังโหลดสถานะ Core Release ไม่สำเร็จ';
-      if(secondary[5].status==='fulfilled')renderProviderHub(secondary[5].value);
-      else if($('cp-provider-list'))empty($('cp-provider-list'),'ยังโหลด AI Providers ไม่สำเร็จ');
+      if(secondary[5].status==='fulfilled'){if(!providerDraftInProgress())renderProviderHub(secondary[5].value);}
+      else if(!providerDraftInProgress()&&$('cp-provider-list'))empty($('cp-provider-list'),'ยังโหลด AI Providers ไม่สำเร็จ');
       if(secondary[6].status==='fulfilled')renderHatchetOwnerStatus(secondary[6].value);
       else if($('cp-hatchet-status'))$('cp-hatchet-status').textContent='ยังตรวจสถานะ Hatchet ไม่สำเร็จ';
     });
@@ -585,4 +691,4 @@ async function load(){
     attention('ยังโหลดศูนย์ดูแลระบบไม่ครบ',error instanceof Error?error.message:'Unknown error','CRITICAL');$('cp-updated').textContent='โหลดข้อมูลไม่สำเร็จ';
   }finally{if(refresh)refresh.disabled=false;}
 }
-installUi();void load();
+installUi();startOwnerFreshness();void load();

@@ -51,6 +51,14 @@ if (contract.interaction?.touchTargetPx !== 44) fail('touch target drift');
 if (contract.interaction?.safeAreaRequired !== true) fail('safe-area contract disabled');
 if (contract.experienceGate?.rejectDuplicatePortalRoots !== true) fail('duplicate-portal gate disabled');
 if (contract.experienceGate?.rejectPublicInternalTerminology !== true) fail('public terminology gate disabled');
+if (contract.experienceGate?.requireVisualVerificationForVisualChanges !== true) fail('mandatory visual verification disabled');
+const visual = contract.visualAcceptance ?? {};
+const expectedViewports = [390, 430, 820, 1366, 1440];
+if (visual.minimumSupportedWidthPx !== 320) fail('minimum supported width must remain 320px');
+if (JSON.stringify(visual.requiredViewportsPx) !== JSON.stringify(expectedViewports)) fail('mobile/tablet/desktop viewport evidence must include 390/430/820/1366/1440');
+for (const key of ['requireExactRevisionEvidence','requireRenderedScreenshots','rejectHorizontalOverflow','requireKeyboardAndTouchEvidence','requireAccessibilityEvidence','blockMissingEvidence','blockOnP0','ownerReviewForMaterialRedesign']) {
+  if (visual[key] !== true) fail('visual acceptance rule missing or disabled: ' + key);
+}
 
 const index = await read('web/index.html');
 const ownerNav = index.match(/<nav id="owner-global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';

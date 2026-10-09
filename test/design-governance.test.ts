@@ -42,6 +42,7 @@ test('KRUART design governance files and overlays are complete', async () => {
     'design/qa/regression-policy.md',
     'design/qa/accessibility-policy.md',
     'design/qa/experience-policy.md',
+    'design/qa/ECOSYSTEM-ADOPTION.md',
     'config/kruart-experience-contract.json',
     'design/overlays/awh.md',
     'design/overlays/bay-excuse-x.md',
@@ -137,6 +138,12 @@ test('KRUART experience contract prevents navigation and portal drift', async ()
   assert.deepEqual([...contract.releaseGroups['line-oa'].targets].sort(), ['awh-line-gateway','line-oa']);
   assert.equal(contract.interaction.touchTargetPx, 44);
   assert.equal(contract.interaction.safeAreaRequired, true);
+  assert.equal(contract.experienceGate.requireVisualVerificationForVisualChanges, true);
+  assert.equal(contract.visualAcceptance.minimumSupportedWidthPx, 320);
+  assert.deepEqual(contract.visualAcceptance.requiredViewportsPx, [390,430,820,1366,1440]);
+  for (const flag of ['requireExactRevisionEvidence','requireRenderedScreenshots','rejectHorizontalOverflow','requireKeyboardAndTouchEvidence','requireAccessibilityEvidence','blockMissingEvidence','blockOnP0','ownerReviewForMaterialRedesign']) {
+    assert.equal(contract.visualAcceptance[flag], true, flag + ' must remain enforced');
+  }
 
   const index = await read('web/index.html');
   const ownerNav = index.match(/<nav id="owner-global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';

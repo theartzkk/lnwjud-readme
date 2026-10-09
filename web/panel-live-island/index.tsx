@@ -3,8 +3,6 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMachine } from "@xstate/react";
 import { Command } from "cmdk";
-import { AnimatePresence, motion } from "motion/react";
-import { Toaster, toast } from "sonner";
 import { Activity, ChevronRight, Clock3, Command as CommandIcon, Globe2, Laptop, RefreshCw, RotateCcw, Server, ShieldCheck } from "lucide-react";
 import { operationMachine, stateEvent, workflowLabels } from "./workflow";
 import "./styles.css";
@@ -83,8 +81,7 @@ function WorkflowRail({ state, tracked, task }: { state: string; tracked: Tracke
   const activeIndex = Math.max(0, steps.indexOf(state));
   if (state === "idle" && !tracked) return null;
   return (
-    <motion.section className={"awh-live-progress " + (state === "failed" ? "is-failed" : "")}
-      initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+    <section className={"awh-live-progress " + (state === "failed" ? "is-failed" : "")}>
       <div className="awh-live-progress-head">
         <span className="awh-live-pulse"><Activity size={16} /></span>
         <div><strong>{tracked?.label ?? "กำลังดำเนินการ"}</strong><small>{tracked?.queue ?? "AWH Control Plane"}</small></div>
@@ -98,7 +95,7 @@ function WorkflowRail({ state, tracked, task }: { state: string; tracked: Tracke
         <span>{Number.isFinite(Number(task.progress)) ? Math.round(Number(task.progress)) + "%" : "กำลังยืนยันสถานะ"}</span>
         {task.lastEvent?.message && <span>{task.lastEvent.message}</span>}
       </div>}
-    </motion.section>
+    </section>
   );
 }
 function LiveControlApp() {
@@ -107,7 +104,12 @@ function LiveControlApp() {
   const workflowState = String(workflow.value);
   const [tracked, setTracked] = React.useState<TrackedOperation | null>(null);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
-  const toastId = React.useRef<string | number | null>(null);
+  const [notice,setNotice] = React.useState<{tone:"info"|"success"|"error";title:string;detail?:string}|null>(null);
+  React.useEffect(()=>{
+    if(!notice||notice.tone!=="success")return;
+    const timer=window.setTimeout(()=>setNotice(null),6000);
+    return ()=>window.clearTimeout(timer);
+  },[notice]);
 
   const control = useQuery<any>({ queryKey: ["awh", "control-live"], queryFn: loadControlData, refetchInterval: liveInterval });
   const sites = useQuery<any>({ queryKey: ["awh", "managed-sites"], queryFn: listManagedSites, refetchInterval: 8000 });
@@ -119,7 +121,7 @@ function LiveControlApp() {
       qc.invalidateQueries({ queryKey: ["awh", "managed-sites"] }),
       qc.invalidateQueries({ queryKey: ["awh", "core-release"] }),
     ]);
-    toast.success("อัปเดตสถานะล่าสุดแล้ว");
+    setNotice({tone:"success",title:"อัปเดตสถานะล่าสุดแล้ว"});
   }, [qc]);
 
   const mutation = useMutation({
@@ -133,7 +135,7 @@ function LiveControlApp() {
     },
     onMutate: (action) => {
       send({ type: "START" } as any);
-      toastId.current = toast.loading("กำลังตรวจคำสั่ง…", { description: action.label });
+      setNotice({tone:"info",title:"กำลังตรวจคำสั่ง…",detail:action.label});
     },
     onSuccess: (result: any, action) => {
       const taskId = typeof result?.taskId === "string" ? result.taskId : null;
@@ -142,14 +144,14 @@ function LiveControlApp() {
       else send({ type: "COMPLETE" } as any);
       if (taskId) {
         setTracked({ taskId, label: action.label, queue: action.queue, startedAt: Date.now() });
-        toast.message("รับคำสั่งแล้ว · เข้าคิว", { id: toastId.current ?? undefined, description: action.queue, duration: Infinity });
+        setNotice({tone:"info",title:"รับคำสั่งแล้ว · เข้าคิว",detail:action.queue});
       } else {
-        toast.success("ดำเนินการสำเร็จ", { id: toastId.current ?? undefined, description: action.label });
+        setNotice({tone:"success",title:"ดำเนินการสำเร็จ",detail:action.label});
       }
     },
     onError: (error: any, action) => {
       send({ type: "FAIL" } as any);
-      toast.error("ดำเนินการไม่สำเร็จ", { id: toastId.current ?? undefined, description: error?.message ?? action.label });
+      setNotice({tone:"error",title:"ดำเนินการไม่สำเร็จ",detail:error?.message ?? action.label});
     },
     onSettled: async () => {
       await Promise.all([
@@ -178,10 +180,10 @@ function LiveControlApp() {
     if (!event) return;
     send({ type: event } as any);
     if (event === "COMPLETE") {
-      toast.success("งานเสร็จและยืนยันผลแล้ว", { id: toastId.current ?? undefined, description: tracked.label });
+      setNotice({tone:"success",title:"งานเสร็จและยืนยันผลแล้ว",detail:tracked.label});
       setTracked(null);
     } else if (event === "FAIL") {
-      toast.error("งานจบด้วยสถานะที่ต้องตรวจ", { id: toastId.current ?? undefined, description: trackedTask.resultSummary ?? tracked.label });
+      setNotice({tone:"error",title:"งานจบด้วยสถานะที่ต้องตรวจ",detail:trackedTask.resultSummary ?? tracked.label});
       setTracked(null);
     }
   }, [tracked, trackedTask?.state, trackedTask?.progress, send]);
@@ -227,7 +229,10 @@ function LiveControlApp() {
   const queryError = control.error || sites.error || releases.error;
 
   return <>
-    <Toaster position="top-right" richColors closeButton />
+    {notice && <div className={"awh-live-feedback is-"+notice.tone} role={notice.tone==="error"?"alert":"status"} aria-live={notice.tone==="error"?"assertive":"polite"}>
+      <div><strong>{notice.title}</strong>{notice.detail && <small>{notice.detail}</small>}</div>
+      <button type="button" onClick={()=>setNotice(null)} aria-label="ปิดข้อความแจ้งสถานะ">×</button>
+    </div>}
     <div className="awh-live-toolbar">
       <div><span>ควบคุมงานจริง</span><strong>สั่งงาน → เห็นคิว → ติดตาม → ตรวจผล</strong>
         <small>{loading ? "กำลังเชื่อม Control Plane…" : queryError ? "บางสถานะยังโหลดไม่ครบ" : "ข้อมูลสด · " + activeTasks.length + " งานกำลังทำ"}</small></div>
@@ -239,7 +244,7 @@ function LiveControlApp() {
       </div>
     </div>
 
-    <AnimatePresence mode="wait"><WorkflowRail key={workflowState + (tracked?.taskId ?? "")} state={workflowState} tracked={tracked} task={trackedTask} /></AnimatePresence>
+    <WorkflowRail state={workflowState} tracked={tracked} task={trackedTask} />
 
     <section className="awh-live-release">
       <div className="awh-live-release-icon"><Server size={20} /></div>
@@ -254,42 +259,42 @@ function LiveControlApp() {
       {activeRelease && <StatusPill state={activeRelease.taskState} />}
     </section>
     <div className="awh-live-grid">
-      <motion.article className="awh-live-panel" layout>
+      <article className="awh-live-panel">
         <header><span><Clock3 size={16} />งานและคิว</span><b>{activeTasks.length}</b></header>
         <div className="awh-live-list">
           {activeTasks.length === 0 && <div className="awh-live-empty">ไม่มีงานค้าง ระบบพร้อมรับคำสั่งใหม่</div>}
-          {activeTasks.map((task: any) => <motion.div className="awh-live-row" key={task.taskId} layout>
+          {activeTasks.map((task: any) => <div className="awh-live-row" key={task.taskId} >
             <div><strong>{task.goal || "งาน AWH"}</strong><small>{queueLabel(task.execution?.requiredCapability)} · Task {compactId(task.taskId)}</small></div>
             <StatusPill state={task.state} />
             {task.canCancel === true && <ActionButton tone="warn" disabled={mutation.isPending} onClick={() => runAction({
               kind: "cancel-task", label: "ยกเลิก " + (task.goal || "งาน AWH"), queue: queueLabel(task.execution?.requiredCapability),
               taskId: task.taskId, confirmText: "ยกเลิกงาน “" + (task.goal || "งานนี้") + "” ใช่หรือไม่?"
             })}>ยกเลิก</ActionButton>}
-          </motion.div>)}
+          </div>)}
         </div>
-      </motion.article>
+      </article>
 
-      <motion.article className="awh-live-panel" layout>
+      <article className="awh-live-panel">
         <header><span><ShieldCheck size={16} />รอการตัดสินใจ</span><b>{approvals.length}</b></header>
         <div className="awh-live-list">
           {approvals.length === 0 && <div className="awh-live-empty">ไม่มีรายการรออนุมัติ</div>}
           {approvals.slice(0, 8).map((approval: any) => {
             const task = tasks.find((item: any) => item.taskId === approval.taskId);
-            return <motion.div className="awh-live-row" key={approval.approvalId} layout>
+            return <div className="awh-live-row" key={approval.approvalId} >
               <div><strong>{task?.goal || "การดำเนินการของ AWH"}</strong><small>Approval {compactId(approval.approvalId)}</small></div>
               <div className="awh-live-row-actions">
                 <ActionButton disabled={mutation.isPending} onClick={() => runAction({ kind: "approval", label: "อนุมัติการดำเนินการ", queue: "Approval Queue", approvalId: approval.approvalId, decision: "approve", confirmText: "อนุมัติรายการนี้ใช่หรือไม่?" })}>อนุมัติ</ActionButton>
                 <ActionButton tone="danger" disabled={mutation.isPending} onClick={() => runAction({ kind: "approval", label: "ไม่อนุมัติการดำเนินการ", queue: "Approval Queue", approvalId: approval.approvalId, decision: "reject", confirmText: "ปฏิเสธรายการนี้ใช่หรือไม่?" })}>ไม่อนุมัติ</ActionButton>
               </div>
-            </motion.div>;
+            </div>;
           })}
         </div>
-      </motion.article>
-      <motion.article className="awh-live-panel" layout>
+      </article>
+      <article className="awh-live-panel">
         <header><span><Globe2 size={16} />เว็บไซต์</span><b>{managedSites.length}</b></header>
         <div className="awh-live-list">
           {managedSites.length === 0 && <div className="awh-live-empty">ยังไม่มี Managed Site</div>}
-          {managedSites.slice(0, 8).map((site: any) => <motion.div className="awh-live-row" key={site.siteId} layout>
+          {managedSites.slice(0, 8).map((site: any) => <div className="awh-live-row" key={site.siteId} >
             <div><strong>{site.name || site.slug}</strong><small>{site.url || site.domainHost || "Managed Hosting"}{site.taskState ? " · " + taskLabel(site.taskState) : ""}</small></div>
             <StatusPill state={site.state} />
             <div className="awh-live-row-actions">
@@ -306,23 +311,23 @@ function LiveControlApp() {
                 confirmText: "ปิดเว็บไซต์ “" + (site.name || site.slug) + "” ใช่หรือไม่?"
               })}>ปิด</ActionButton>}
             </div>
-          </motion.div>)}
+          </div>)}
         </div>
-      </motion.article>
-      <motion.article className="awh-live-panel" layout>
+      </article>
+      <article className="awh-live-panel">
         <header><span><Laptop size={16} />อุปกรณ์ AWH</span><b>{workers.length}</b></header>
         <div className="awh-live-list">
           {workers.length === 0 && <div className="awh-live-empty">ยังไม่มีอุปกรณ์ที่เชื่อมกับ AWH</div>}
-          {workers.slice(0, 10).map((worker: any) => <motion.div className="awh-live-row" key={worker.deviceId} layout>
+          {workers.slice(0, 10).map((worker: any) => <div className="awh-live-row" key={worker.deviceId} >
             <div><strong>{worker.displayName || "AWH Agent"}</strong><small>{worker.platform || "device"} · {worker.appVersion ? "Agent " + worker.appVersion : "version —"}</small></div>
             <StatusPill state={worker.state} />
             {worker.state !== "WORKING" && <ActionButton tone="danger" disabled={mutation.isPending} onClick={() => runAction({
               kind: "device", label: "ยกเลิกการเชื่อมต่อ " + (worker.displayName || "อุปกรณ์"), queue: "Device Authority", deviceId: worker.deviceId,
               confirmText: "ยกเลิกการเชื่อมต่อ “" + (worker.displayName || "อุปกรณ์นี้") + "” ใช่หรือไม่?"
             })}>ยกเลิกการเชื่อมต่อ</ActionButton>}
-          </motion.div>)}
+          </div>)}
         </div>
-      </motion.article>
+      </article>
     </div>
 
     <Command.Dialog open={paletteOpen} onOpenChange={setPaletteOpen} label="AWH Command Palette">

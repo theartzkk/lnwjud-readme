@@ -25,6 +25,20 @@ async function shot(win, id, expected, action) {
   if (typeof win.webContents.invalidate === 'function') win.webContents.invalidate();
   await sleep(100);
   const metrics = await win.webContents.executeJavaScript(`({innerWidth,clientWidth:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth,bodyText:document.body.innerText.slice(0,4000),activeSettings:[...document.querySelectorAll('.settings-panel')].find((el)=>!el.hidden)?.id||null,hostingSummary:document.querySelector('#hosting-summary')?.textContent||null,siteCount:document.querySelector('#site-list')?.children.length??null})`, true);
+  if (id === 'owner-accounts') {
+    const cspStyles = await win.webContents.executeJavaScript(`(() => ({
+      inlineStyles: [...document.querySelectorAll('[style]')].slice(0,50).map((e)=>({
+        tag:e.tagName,cls:typeof e.className==='string'?e.className.slice(0,120):'',
+        style:(e.getAttribute('style')||'').slice(0,450),
+        parent: e.parentElement?.className?.toString().slice(0,100)||''
+      })),
+      styleTags:[...document.querySelectorAll('style')].slice(0,12).map((e)=>({
+        length:e.textContent.length, sample:e.textContent.slice(0,100),
+        parent:e.parentElement?.className?.toString().slice(0,100)||''
+      }))
+    }))()`,true);
+    fs.writeFileSync(path.join(outputDir, `csp-styles-${width}x${height}.json`),JSON.stringify(cspStyles,null,2)+'\\n',{mode:0o600});
+  }
   const png = await win.webContents.capturePage();
   fs.writeFileSync(path.join(outputDir, `${id}-${width}x${height}.png`), png.toPNG(), { mode: 0o600 });
   return { id, viewport: { width, height }, expected, action, horizontalOverflow: metrics.scrollWidth > metrics.clientWidth, activeSettings: metrics.activeSettings, hostingSummary: metrics.hostingSummary, siteCount: metrics.siteCount, capturedAt: new Date().toISOString() };
@@ -63,7 +77,7 @@ app.whenReady().then(async () => {
   const win = new BrowserWindow({ width, height, show: false, webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false } });
   const evidence = [];
   const runtimeErrors = [];
-  win.webContents.on('console-message', (...args) => { const details=args.at(-1); const level=typeof details==='object' && details ? details.level : args[1]; const message=typeof details==='object' && details ? details.message : args[2]; if (level === 'error' || level === 3) runtimeErrors.push(String(message || 'browser console error')); });
+  win.webContents.on('console-message', (...args) => { const details=args.at(-1); const level=typeof details==='object' && details ? details.level : args[1]; const message=typeof details==='object' && details ? details.message : args[2]; const source=typeof details==='object' && details ? (details.sourceId || 'unknown-source') : (args[3] || 'unknown-source'); const line=typeof details==='object' && details ? (details.lineNumber ?? '?') : (args[4] ?? '?'); if (level === 'error' || level === 3) runtimeErrors.push(String(message || 'browser console error')+' @ '+source+':'+line); });
   win.webContents.on('did-fail-load', (_event, code, description, validatedURL, isMainFrame) => { if (isMainFrame !== false) runtimeErrors.push(`did-fail-load ${code} ${description} ${validatedURL}`); });
   try {
     await win.loadURL(baseUrl);
@@ -77,15 +91,11 @@ app.whenReady().then(async () => {
     evidence.push(await shot(win, 'root-portfolio', 'authenticated root is the project portfolio hub and renders BAY registry cards without runtime errors', 'authenticated portfolio root'));
     await openAwhWorkspace(win);
     evidence.push(await shot(win, 'home-empty', 'AWH Workspace keeps its operational dashboard behind the portfolio root', 'open AWH Workspace'));
-    await win.webContents.executeJavaScript(`document.querySelector('#account-open').click()`, true);
-    await waitFor(win, `document.querySelector('#profile-menu') && !document.querySelector('#profile-menu').hidden && document.querySelector('[data-profile-section=\"people\"]') && !document.querySelector('[data-profile-section=\"people\"]').hidden`, 10000);
-    await win.webContents.executeJavaScript(`document.querySelector('[data-profile-section=\"people\"]').click()`, true);
-    await waitFor(win, `document.querySelector('#account-sheet') && !document.querySelector('#account-sheet').hidden && document.querySelector('[data-settings-tab=\"people\"]') && !document.querySelector('[data-settings-tab=\"people\"]').hidden`, 10000);
-    await waitFor(win, `document.querySelector('#account-request-list') && document.querySelector('#account-request-list').children.length > 0`, 10000);
-    await win.webContents.executeJavaScript(`document.querySelector('[data-settings-tab=\"people\"]').click()`, true);
-    await waitFor(win, `document.querySelector('#settings-panel-people') && !document.querySelector('#settings-panel-people').hidden && document.querySelector('#settings-panel-start').hidden`, 10000);
-    await win.webContents.executeJavaScript(`document.querySelector('#settings-panel-people').scrollIntoView({block:'start'})`, true);
-    evidence.push(await shot(win, 'owner-accounts', 'Owner can create people and review pending requests with role/project assignment in one bounded settings surface', 'open Owner people settings'));
+    // Profile people shortcut was retired; the canonical Owner surface is Control Panel.
+    await win.loadURL(baseUrl + 'panel.html');
+    await waitFor(win, `document.querySelector('#users') && document.querySelector('#cp-people-list') && document.querySelector('#cp-menu')`, 10000);
+    await win.webContents.executeJavaScript(`document.querySelector('#users').scrollIntoView({block:'start'})`, true);
+    evidence.push(await shot(win, 'owner-accounts', 'Owner accounts and approvals live in canonical Control Panel', 'inspect Control Panel people'));
     await login(win);
     await openAwhWorkspace(win);
     await submitHome(win, 'นายคือใคร');
