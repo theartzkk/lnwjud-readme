@@ -1,3 +1,5 @@
+/* KRUART CSS cascade cleanup: owner awh-page, no priority overrides. */
+@layer awh-page {
 :root{color-scheme:light;font-family:"Noto Sans Thai","Leelawadee UI",Tahoma,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--cp-bg:var(--awh-canvas,#f5f6f8);--cp-surface:var(--awh-surface,#fff);--cp-raised:var(--awh-surface-raised,#f8f9fb);--cp-line:var(--awh-line,#e6e8ec);--cp-text:var(--awh-text,#17191d);--cp-muted:var(--awh-muted,#6e7682);--cp-accent:var(--awh-accent,#ff7a1a);--cp-good:var(--awh-success,#2d9d68);--cp-warn:var(--awh-warning,#bc7b10);--cp-bad:var(--awh-danger,#ca4545)}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--cp-bg);color:var(--cp-text)}a{color:inherit;text-decoration:none}button,input{font:inherit}
 .cp-shell{min-height:100vh}.cp-sidebar{position:fixed;z-index:50;inset:0 auto 0 0;width:268px;display:flex;flex-direction:column;padding:18px 14px;background:#fff;color:#10284b;border-right:1px solid #d9e8f6;box-shadow:8px 0 30px rgba(25,65,108,.05)}
@@ -31,3 +33,4 @@
 @media(max-width:560px){.cp-bay-update{padding:18px;border-radius:22px}.cp-bay-title-row{display:grid}.cp-bay-title-row h2{font-size:27px}.cp-bay-state{justify-self:start}.cp-bay-version-card{gap:10px;padding:14px}.cp-bay-version-card strong{font-size:17px}.cp-bay-checks{grid-template-columns:repeat(2,minmax(0,1fr))}.cp-bay-actions{display:grid}.cp-bay-secondary{min-height:46px}.cp-bay-visual{min-height:160px}.cp-bay-visual img{max-height:150px}.cp-bay-badge{right:4px;bottom:2px}}
 
 .cp-bay-primary:disabled small{color:#43576e}.cp-bay-version-card>div,.cp-bay-primary>span{min-width:0}.cp-bay-version-card span,.cp-bay-primary strong,.cp-bay-state{overflow-wrap:anywhere}.cp-bay-primary:focus-visible,.cp-bay-secondary:focus-visible{outline:3px solid #246bb5;outline-offset:3px}.cp-bay-message{line-height:1.75}.cp-bay-check small{font-size:12px}
+}
