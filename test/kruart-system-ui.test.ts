@@ -15,6 +15,31 @@ test('KRUART system UI authority is loaded last on every web surface', async () 
   }
 });
 
+test('canonical AWH cascade has one owner per style layer and no priority overrides', async () => {
+  const names = ['styles.css','awh-design-system.css','awh-light-system.css','kruart-system.css',
+    'responsive-layout.css','dashboard.css','panel.css','hosting.css','infrastructure.css',
+    'database.css','trust.css','review.css','owner-center.css','automation-surface.css'];
+  const layers = new Set(['awh-base','awh-foundation','awh-responsive','awh-light','awh-page','awh-golden']);
+  for (const name of names) {
+    const css = await read('web/' + name);
+    assert.doesNotMatch(css, /!important/i, name + ' contains a priority override');
+    const found = css.match(/^@layer (awh-[a-z-]+) \{/m)?.[1];
+    assert.ok(found && layers.has(found), name + ' has no recognized owner layer');
+    assert.equal((css.match(/\{/g) || []).length, (css.match(/\}/g) || []).length, name + ' braces');
+  }
+  const shared = await read('web/awh-design-system.css');
+  assert.match(shared, /@layer awh-base, awh-foundation, awh-responsive, awh-light, awh-page, awh-golden, awh-accessibility;/);
+  const golden = await read('web/kruart-system.css');
+  assert.match(golden, /@layer awh-accessibility \{/);
+  assert.match(golden, /prefers-reduced-motion: reduce/);
+  for (const page of pages) {
+    const html = await read('web/' + page);
+    const foundation = html.indexOf('awh-design-system.css');
+    const firstStylesheet = html.indexOf('<link rel="stylesheet"');
+    assert.ok(foundation > firstStylesheet && foundation < html.indexOf('</head>'), page + ' must load shared design foundation first');
+  }
+});
+
 test('owner surfaces use final KRUART branding instead of legacy single-letter marks', async () => {
   const [database, infra, hosting, trust, panel, review] = await Promise.all([
     read('web/database.html'), read('web/infrastructure.html'), read('web/hosting.html'),
@@ -67,8 +92,8 @@ test('system UI is build, release, cache and deploy authoritative', async () => 
   assert.match(css, /kruart-role-student-final\.webp/);
   assert.match(css, /@media\(max-width:760px\)/);
   assert.match(css, /Mobile composition closure/);
-  assert.match(css, /grid-template-columns:118px minmax\(0,1fr\)!important/);
-  assert.match(css, /grid-template-columns:108px minmax\(0,1fr\)!important/);
+  assert.match(css, /grid-template-columns:118px minmax\(0,1fr\)/);
+  assert.match(css, /grid-template-columns:108px minmax\(0,1fr\)/);
   assert.match(css, /min-width:320px/);
   assert.doesNotMatch(css, /overflow-x:\s*visible/);
   const light = await read('web/awh-light-system.css');
@@ -115,7 +140,7 @@ test('KRUART visual asset slots are centralized and all deployed fallbacks exist
     }
   }
   assert.match(css, /--kruart-art-public-hero:url\("\.\/kruart-hero-final\.webp"\)/);
-  assert.match(css, /background-image:var\(--kruart-art-public-hero\)!important/);
+  assert.match(css, /background-image:var\(--kruart-art-public-hero\)/);
   assert.match(css, /--kruart-art-system-infrastructure/);
   assert.match(index, /data-kruart-art-slot="public\.account-avatar"[^>]*account-avatar\.webp/);
   assert.match(index, /data-kruart-art-slot="public\.today-message"[^>]*today-community\.webp/);
