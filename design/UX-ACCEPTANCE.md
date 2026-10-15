@@ -37,6 +37,9 @@ AWH authenticated composer changes also require a visual-viewport/keyboard check
 13. No first-paint session flash, stray component flash or unintended smooth-scroll/layout jump.
 14. Touch interactions use appropriate targets; primary touch targets are at least 44 px.
 15. Critical actions preserve recovery, provenance and data integrity.
+16. Shared motion uses 140/220/300/420 ms semantics with reduced-motion support; no delayed or obscured primary actions.
+17. CSS ownership remains singular: no new override-only stylesheet, blanket `!important`, duplicated shared tokens, or competing scroll/overlay/navigation handlers.
+18. On mobile, an opened keyboard does not cover composer/forms or trap page scrolling; modal scroll lock and focus are released on close.
 
 ## AWH-specific gates
 
@@ -65,6 +68,8 @@ AWH authenticated composer changes also require a visual-viewport/keyboard check
 - representative rendered screenshots or automated browser evidence
 - console/page-error result
 - overflow result
+- motion/reduced-motion and mobile keyboard/safe-area results when affected
+- CSS ownership/duplicate-override review when layout or styling changed
 - affected critical-flow result
 - asset/logo authority result when visuals changed
 - rollback/deployment path for Production mutation
