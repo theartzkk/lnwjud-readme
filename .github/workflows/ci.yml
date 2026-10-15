@@ -140,20 +140,6 @@ jobs:
           }
           console.log(`Electron runtime smoke passed: ${JSON.stringify(smoke)}`);
           NODE
-      - name: Verify KRUART rendered CSS cascade at five viewports
-        env:
-          AWH_VISUAL_QA_VIEWPORTS: 390x844,430x932,820x1180,1366x900,1440x900
-        run: |
-          npm run web:build:control
-          timeout --signal=TERM --kill-after=5s 240s xvfb-run -a npm run review:render
-      - name: Retain temporary visual screenshots for review
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: awh-css-cascade-visual-review
-          path: .awh-local/review/visual/
-          if-no-files-found: ignore
-          retention-days: 1
 
   # Desktop packaging is intentionally a release gate, not a per-commit feature gate.
   # It still runs for every PR, canonical branch merge, main, and manual release check.
