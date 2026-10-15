@@ -27,7 +27,6 @@ async function shot(win, id, expected, action) {
   const metrics = await win.webContents.executeJavaScript(`({innerWidth,clientWidth:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth,bodyText:document.body.innerText.slice(0,4000),activeSettings:[...document.querySelectorAll('.settings-panel')].find((el)=>!el.hidden)?.id||null,hostingSummary:document.querySelector('#hosting-summary')?.textContent||null,siteCount:document.querySelector('#site-list')?.children.length??null})`, true);
   const png = await win.webContents.capturePage();
   fs.writeFileSync(path.join(outputDir, `${id}-${width}x${height}.png`), png.toPNG(), { mode: 0o600 });
-  process.stdout.write(`[visual] captured ${id} at ${viewport}\n`);
   return { id, viewport: { width, height }, expected, action, horizontalOverflow: metrics.scrollWidth > metrics.clientWidth, activeSettings: metrics.activeSettings, hostingSummary: metrics.hostingSummary, siteCount: metrics.siteCount, capturedAt: new Date().toISOString() };
 }
 async function login(win) {
@@ -67,18 +66,14 @@ app.whenReady().then(async () => {
   win.webContents.on('console-message', (...args) => { const details=args.at(-1); const level=typeof details==='object' && details ? details.level : args[1]; const message=typeof details==='object' && details ? details.message : args[2]; if (level === 'error' || level === 3) runtimeErrors.push(String(message || 'browser console error')); });
   win.webContents.on('did-fail-load', (_event, code, description, validatedURL, isMainFrame) => { if (isMainFrame !== false) runtimeErrors.push(`did-fail-load ${code} ${description} ${validatedURL}`); });
   try {
-    process.stdout.write(`[visual] viewport ${viewport} loading public home\n`);
     await win.loadURL(baseUrl);
     await waitFor(win, `document.querySelector('#public-home-view') && !document.querySelector('#public-home-view').hidden`, 15000);
-    process.stdout.write(`[visual] viewport ${viewport} public home ready\n`);
     evidence.push(await shot(win, 'public-home', 'kruart.online public root preserves the Golden AWH visual hierarchy, readable Thai copy and bounded responsive layout', 'open canonical public AWH root'));
     await waitFor(win, `document.querySelector('#registration-open')`);
     await win.webContents.executeJavaScript(`document.querySelector('#registration-open').click()`, true);
     await waitFor(win, `document.querySelector('#registration-sheet') && !document.querySelector('#registration-sheet').hidden`);
     evidence.push(await shot(win, 'registration-request', 'self-service access request is readable and touch-safe; no privilege choice is exposed', 'open public account request form'));
-    process.stdout.write(`[visual] viewport ${viewport} starting fixture login\n`);
     await login(win);
-    process.stdout.write(`[visual] viewport ${viewport} authenticated root ready\n`);
     evidence.push(await shot(win, 'root-portfolio', 'authenticated root is the project portfolio hub and renders BAY registry cards without runtime errors', 'authenticated portfolio root'));
     await openAwhWorkspace(win);
     evidence.push(await shot(win, 'home-empty', 'AWH Workspace keeps its operational dashboard behind the portfolio root', 'open AWH Workspace'));
