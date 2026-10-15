@@ -139,6 +139,38 @@ Rounded geometry is deliberate and consistent: 12 / 16 / 22 / 28 px for small, m
 - **Dialog/sheet/popover:** deterministic stacking, one interaction owner, focus/recovery preserved.
 - **Navigation:** one owner per context; no duplicate mobile/top navigation.
 - **Operational tables/forms/logs:** no decorative character art.
+## CSS ownership and anti-overrides
+
+- **One rule, one owner.** Every shared visual value belongs in `design/foundations.json`; every component or layout behavior has one implementation owner in the affected product. Product overlays describe genuine contextual differences, never copied token tables or a second theme.
+- Modify the existing canonical selector/component and delete only proven-superseded declarations after regression verification. Do not fix a defect by stacking late stylesheets, appending increasingly specific selectors, blanket `!important`, duplicate media queries, inline overrides, or duplicate tokens.
+- Do not replace existing framework/routing/layout architecture or add a second CSS/UI framework to apply this policy. Prefer existing assets, components, CSS bundles, build and QA paths. No new design server, shared database, registry, runtime dependency, orchestration, release gate, or policy file.
+- Keep scoped product styling isolated; avoid broad global selectors that leak into unrelated modules. Preserve print/official form geometry, data behavior, existing authorization, and accessibility contracts.
+- New CSS must stay minimal and deterministic. A necessary exception belongs next to the owning rule, with its reason and tests—not in a new override file. Remove demonstrably dead rules without blanket cleanup of unverified code.
+- Tokens are **design authority**, not a demand to hot-link central CSS from all Production sites. Each product may compile or map them into its existing asset pipeline; never introduce a cross-site network dependency for normal rendering.
+
+## Motion and feedback
+
+- Shared durations: **fast 140 ms**, **standard 220 ms**, **detail 300 ms**, **emphasis 420 ms**. Use the existing `cubic-bezier(.2,.8,.2,1)` easing; treat these as limits/categories rather than animation quotas.
+- Fast: press/hover/focus microfeedback. Standard: panels, menus, drawers and state changes. Detail: purposeful section expansion or reveal. Emphasis: rare onboarding/hero transitions, never routine navigation.
+- Favor subtle opacity and transform changes (generally 8–16 px reveal distance), without large bounces, continuous motion, unnecessary page-wide animation, layout-shifting scroll effects, or animations that conceal loading failures. Preserve explicit focus and loading/error feedback.
+- Honor `prefers-reduced-motion: reduce`: suppress nonessential movement and smooth scrolling, without removing essential state indicators. Motion must not block interaction, intercept keyboard focus, or delay task completion.
+- Prefer composited opacity/transform where appropriate; avoid costly continuous layout/paint animation. Reuse the product's existing motion styles and remove obsolete conflicting declarations after QA.
+
+## Mobile viewport and interaction ownership
+
+- Document-level horizontal overflow is forbidden at widths down to 320 px. Fix the element that overflows; do not hide the symptom with broad `overflow-x:hidden` if it clips controls. Use deliberate scrolling only inside an appropriate table or region.
+- Keep iPhone safe areas and the visual viewport in mind for fixed/sticky headers, bottom bars, chat composers, sheets, dialogs, menus and mobile keyboards. Typing must leave the focused input and actions visible without layout jumps or accidental double scrolling.
+- Only a genuine modal interaction may lock background scrolling. Restore prior scroll position and focus on dismissal; never permanently lock page scrolling or introduce body-position hacks for ordinary content.
+- Exactly one owner controls each drawer, modal, focus trap, navigation bar, scroll lock and floating layer. Do not install competing listeners or layered z-index patches.
+- Use readable Thai copy and stable responsive layouts. At mobile sizes, input text should avoid iOS focus zoom; do not sacrifice accessibility or user-controlled text scaling.
+
+## Accessibility and deployment truth
+
+- For everyday text/interactive controls, meet WCAG AA contrast on actual backgrounds (including hover, disabled and focus states as applicable). Provide visible keyboard focus, appropriate labels, semantic controls and text alternatives for meaningful imagery.
+- Touch targets for primary actions must be at least 44 px, with spacing preventing accidental activation. Respect enlarged text, long Thai words/names, RTL-free Thai glyph rendering, empty/error/loading states and screen readers.
+- A source commit or successful build is **not** visual Production PASS. Test exact affected revision with the existing UX acceptance/QA path, then separately verify served CSS, assets, interaction and layout on actual Production after a product's own approved deploy.
+- The shared policy is common; product-specific accessibility needs can be stricter, not weaker. Never require a product redesign or Production deployment merely because the shared policy was clarified.
+
 ## Do's and Don'ts
 
 **Do**
