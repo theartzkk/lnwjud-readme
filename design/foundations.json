@@ -72,7 +72,9 @@
     "duration": {
       "$type": "duration",
       "fast": { "$value": { "value": 140, "unit": "ms" } },
-      "standard": { "$value": { "value": 220, "unit": "ms" } }
+      "standard": { "$value": { "value": 220, "unit": "ms" } },
+      "detail": { "$value": { "value": 300, "unit": "ms" } },
+      "emphasis": { "$value": { "value": 420, "unit": "ms" } }
     },
     "easing": {
       "$type": "cubicBezier",
