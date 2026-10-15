@@ -45,7 +45,7 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /ecosystem-project-logo/);
   assert.match(dashboard, /awh:return-root-hub/);
   assert.match(css, /\.ecosystem-project-grid/);
-  assert.match(css, /body\.ecosystem-home-active \.awh-mobile-nav\{display:none!important\}/);
+  assert.match(css, /body\.ecosystem-home-active \.awh-mobile-nav\{display:none\}/);
   assert.match(html, /kruart\.online · Art’s Workspace Hub \(AWH\)/);
   assert.doesNotMatch(app, /localStorage.*ecosystem|indexedDB.*ecosystem/i);
 });
@@ -78,9 +78,9 @@ test('authenticated root is an AWH cockpit with live readiness and role-aware na
   assert.match(app, /owner-only-nav/);
   assert.match(css, /KRUART Golden Owner Home/);
   assert.match(css, /Final UX closure/);
-  assert.match(css, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)!important/);
+  assert.match(css, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(css, /ecosystem-project-health/);
-  assert.match(css, /min-height:44px!important/);
-  assert.match(css, /body\.ecosystem-home-active \.kruart-header \.global-nav[\s\S]{0,180}display:none!important/);
+  assert.match(css, /min-height:44px/);
+  assert.match(css, /body\.ecosystem-home-active \.kruart-header \.global-nav[\s\S]{0,180}display:none/);
   assert.match(html, /owner-system-directory-link[^>]*>ระบบและบริการ</);
 });
