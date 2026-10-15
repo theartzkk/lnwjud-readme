@@ -708,6 +708,7 @@ button:not(:disabled){cursor:pointer}
 }
 
 @layer awh-accessibility {
+  [hidden] { display: none; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       scroll-behavior: auto;
