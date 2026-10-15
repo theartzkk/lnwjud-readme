@@ -42,7 +42,7 @@ function runCapture(viewport) {
     child.stdout.on('data', (chunk) => { stdout += String(chunk); });
     child.stderr.on('data', (chunk) => { stderr += String(chunk).slice(0, 8192); });
     child.once('error', reject);
-    child.once('exit', (code) => code === 0 ? resolveRun({ viewport, stdout }) : reject(new Error(`capture ${viewport} failed (${code}): ${stderr.trim()}`)));
+    child.once('exit', (code) => code === 0 ? resolveRun({ viewport, stdout }) : reject(new Error(`capture ${viewport} failed (${code}): ${stderr.trim()} | captured stdout: ${stdout.trim().slice(-4096)}`)));
   });
 }
 
