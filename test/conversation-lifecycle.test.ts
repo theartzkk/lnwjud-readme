@@ -68,7 +68,7 @@ test('conversation lifecycle is reversible and preserves canonical task/artifact
   assert.match(app, /state\.conversationAvailable = Boolean\(state\.selectedConversationId\)/);
   assert.match(app, /ลองโหลดใหม่/);
   assert.match(styles, /\.composer-count/);
-  assert.match(lightCss, /\.empty-work\{min-height:0!important/);
+  assert.match(lightCss, /\.empty-work\{min-height:0/);
 });
 
 test('long conversation projection keeps the newest messages and remains browser bounded', () => {
