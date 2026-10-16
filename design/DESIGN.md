@@ -90,9 +90,11 @@ components:
 
 KRUART is a light-first, Thai-first product family: calm blue structure, warm orange emphasis, generous white surfaces, exact approved illustration slots, and information-first operational screens. The live Golden baseline is the reviewed KRUART/AWH production family, not a generic AI-generated aesthetic.
 
-This contract governs presentation only. BAY EXCUSE X remains the school-data/identity Source of Truth; AWH remains the workspace/control-plane authority. No design decision may create a duplicate database, login, queue, notification system, or school-data authority.
+This contract governs presentation only. BAY EXCUSE is the current school-facing service; confirm live identity and school-data ownership against the existing BAY Host Contract before changing an integration. AWH remains the workspace/control-plane authority. No design decision may create a duplicate database, login, queue, notification system, or school-data authority.
 
 The implementation baseline reviewed for this contract is AWH production `3acbac97b12774ec973fcef86ba0271d208f656e`. Agents must still refresh current Git/Production truth before editing.
+Figma may be used as an **editable, non-authoritative UI review workspace** for an existing product screen. Git Source and the established Central Design Policy remain authoritative; a Figma or FigCraft design is not production code, an extra approval gate, a separate design system, or permission to add a new CSS owner. Only implement an approved design through the product's existing source and release path.
+
 ## Colors
 
 - **Primary / navy** structures navigation, titles, owner controls, and trusted product identity.
