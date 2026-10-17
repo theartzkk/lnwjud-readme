@@ -95,6 +95,16 @@ This contract governs presentation only. BAY EXCUSE is the current school-facing
 The implementation baseline reviewed for this contract is AWH production `3acbac97b12774ec973fcef86ba0271d208f656e`. Agents must still refresh current Git/Production truth before editing.
 Figma may be used as an **editable, non-authoritative UI review workspace** for an existing product screen. Git Source and the established Central Design Policy remain authoritative; a Figma or FigCraft design is not production code, an extra approval gate, a separate design system, or permission to add a new CSS owner. Only implement an approved design through the product's existing source and release path.
 
+## Practical design priorities
+
+KRUART consistency means **shared behavior and quality**, not identical pages. Reuse each product's existing components, shell and data architecture. An operational teacher screen may be denser than a student game, while a public parent page may be simpler than an Owner console.
+
+Before changing a screen, identify its intended user, their primary task and the one most useful next action. Prefer one clear page heading, one primary action per decision context, predictable secondary actions and progressive disclosure of advanced controls. Avoid card-within-card layouts, duplicate views/tabs for the same data, parallel navigation, decorative status chips, generic dashboard filler and jargon in user-facing UI.
+
+Use real authorized data, explicit empty states and honest loading/error/retry affordances. Never show fictitious student, teacher, activity, score, publication, release, news or system-health data as if it were live. Do not use “mockup”, “coming soon” or demo copy on an active production path unless it truthfully describes an intentionally unavailable feature.
+
+Choose the simplest interaction that completes the user task: direct edit rather than unnecessary modal layers; clear mobile form groups rather than tiny spreadsheet controls; scoped horizontal scrolling only where a real grid requires it. Prefer existing product patterns over imposing a universal table/card/tabs layout.
+
 ## Colors
 
 - **Primary / navy** structures navigation, titles, owner controls, and trusted product identity.
@@ -103,6 +113,17 @@ Figma may be used as an **editable, non-authoritative UI review workspace** for 
 - **Background/surface** stays light. Operational screens should not become decorative gradients or dark dashboards without an approved product-level change.
 - **Success / warning / danger** communicate state only; never use them as decoration.
 - Runtime source mapping: `web/kruart-system.css` and `web/awh-light-system.css`. New raw hex values require an explicit token decision or a documented product exception.
+
+### Contrast-safe color pairings
+
+Choose foreground **against its rendered background**, not by token name alone. Normal-sized text requires at least 4.5:1 contrast; large text at least 3:1; meaningful icon boundaries and focus/non-text UI components generally require at least 3:1 where WCAG 2.2 AA applies. Check active, hover, focus and selected combinations on actual rendered surfaces, not token swatches alone.
+
+Known baseline mismatches requiring remediation at the owning runtime component:
+- Brand orange `#FF7A00` + white `#FFFFFF` is approximately **2.61:1** (fails normal text). Preserve the orange brand but use a contrast-safe foreground, e.g. existing navy `#11325F` (approximately **4.88:1**), for normal text on orange where rendered evidence confirms it.
+- Existing muted `#657D99` + white is approximately **4.25:1** (not AA for normal text). Reserve this pair for appropriate large/decorative content or select a tested darker semantic text treatment through the existing token owner.
+- Existing runtime `--awh-accent-ink: #ffffff` is not proof that orange buttons have accessible text. Do not blanket-switch a legacy selector without inspecting its actual surface/state and downstream component usage.
+
+A corrected policy does **not** imply these Production styles have been fixed. Resolve the canonical product CSS owner, update the existing token mapping/component, run rendered contrast and critical-flow QA, then separately verify Production. No second theme, ad-hoc dark-orange palette or override stylesheet.
 
 ## Typography
 
@@ -157,6 +178,12 @@ Rounded geometry is deliberate and consistent: 12 / 16 / 22 / 28 px for small, m
 - Favor subtle opacity and transform changes (generally 8–16 px reveal distance), without large bounces, continuous motion, unnecessary page-wide animation, layout-shifting scroll effects, or animations that conceal loading failures. Preserve explicit focus and loading/error feedback.
 - Honor `prefers-reduced-motion: reduce`: suppress nonessential movement and smooth scrolling, without removing essential state indicators. Motion must not block interaction, intercept keyboard focus, or delay task completion.
 - Prefer composited opacity/transform where appropriate; avoid costly continuous layout/paint animation. Reuse the product's existing motion styles and remove obsolete conflicting declarations after QA.
+
+## Smoothness and perceived performance
+
+Visual polish must not make the product slower or harder to operate. Preserve the user's scroll position during ordinary state changes; avoid remounting the whole page when one region updates; prevent flicker from duplicate shells, competing animation definitions, hydration/loading swaps or late CSS injection. Verify that meaningful content and the primary action become usable without waiting for an entrance animation.
+
+Use native, predictable scrolling; avoid scroll listeners that force layout on each frame, expensive blur/backdrop effects on long content, animating layout properties during list scrolling, and unsolicited autoplay. Keep scrolling responsive on long tables, 25–30 student rosters, chat transcripts and content-heavy school pages. Favor repairing the shared component and minimizing DOM/CSS work over hiding jank with animation.
 
 ## Mobile viewport and interaction ownership
 
