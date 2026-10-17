@@ -20,6 +20,14 @@ Every material shared-UI change must be checked at:
 - 1440 px desktop
 
 AWH authenticated composer changes also require a visual-viewport/keyboard check at 390 and 430 px.
+## Human-centered quality checks
+
+For each materially affected surface, verify the **real primary task** with the intended role and real permitted data: entry → find information → act/edit/submit → success/recovery → return. A screen fails acceptance when the user cannot infer what to do next, when the same function appears as competing controls, or when an attractive layout obscures essential information.
+
+Check meaningful empty/loading/offline/permission-denied states without fabricated school information; accessible feedback for save/delete/publish; preservation of form values and scroll/focus state; and safe navigation after authentication. If no authorized data exists, show an honest empty state, not demo content.
+
+Compare actual normal-text/foreground-background contrast: at least 4.5:1 for standard text, 3:1 for large text, and relevant 3:1 non-text UI contrast. Existing brand orange on white text and muted gray-blue on white require an explicit fix or bounded finding; an axe scan or token declaration alone does not certify them.
+
 ## Universal gates
 
 1. Page/surface renders meaningful content; no blank/error overlay.
@@ -40,6 +48,14 @@ AWH authenticated composer changes also require a visual-viewport/keyboard check
 16. Shared motion uses 140/220/300/420 ms semantics with reduced-motion support; no delayed or obscured primary actions.
 17. CSS ownership remains singular: no new override-only stylesheet, blanket `!important`, duplicated shared tokens, or competing scroll/overlay/navigation handlers.
 18. On mobile, an opened keyboard does not cover composer/forms or trap page scrolling; modal scroll lock and focus are released on close.
+
+## Conditional interaction checks — reuse current QA, no new gate
+
+- On touch-screen forms, verify input font scaling, iOS software keyboard, safe-area placement, composer visibility and restore of prior scroll/focus after dismissing a real modal. For keyboard-affecting changes, inspect physical iPhone Safari or an approved real-device run; emulation is supporting evidence.
+- Smoke-test minimum document width 320 px for overflow without adding it as a duplicate full viewport matrix. For density-heavy pages, also inspect long lists and long Thai names at the affected viewport.
+- When animation, scrolling or conditional rendering changes, compare the same screen before and after for jank, duplicate flash/competing shells, late content shifts and whether interaction waits for motion. Respect reduced motion.
+- Preserve the correct experience for public visitor, teacher, student, parent and administrator roles. Do not assume one role's navigation or data preview is another role's real view.
+- Record any unverified physical-device, logged-in flow or Production contrast check as **not verified**, never PASS based solely on source/CI success.
 
 ## AWH-specific gates
 
