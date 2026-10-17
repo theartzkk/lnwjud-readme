@@ -84,7 +84,7 @@ test('sticky headers and project-media loading avoid paint-heavy continuous effe
   assert.match(stickyHeader, /background:#fff!important/);
   assert.match(stickyHeader, /backdrop-filter:none!important/);
   assert.doesNotMatch(stickyHeader, /blur\(/);
-  const loadingMedia = css.match(/\.ecosystem-project-media\{[^}]+\}/)?.[0] || '';
+  const loadingMedia = css.match(/\.ecosystem-project-media\{isolation:isolate;[^}]+\}/)?.[0] || '';
   assert.ok(loadingMedia, 'project media placeholder must exist');
   assert.match(loadingMedia, /animation:none/);
   assert.doesNotMatch(css, /@keyframes\s+kruart-media-pulse/);
