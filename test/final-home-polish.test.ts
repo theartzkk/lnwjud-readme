@@ -78,11 +78,14 @@ test('KRUART Golden Home ships the approved generated human artwork family and a
   assert.match(html, /kruart-brand-logo[^>]*brand-kruart-workspace\.webp/);
   assert.match(html, /kruart-login-avatar[^>]*><img[^>]*src="\.\/account-avatar\.webp/);
   assert.match(html, /kruart-signin-logo[^>]*brand-kruart-workspace\.webp/);
-  assert.match(publicHome, /today-community\.webp/);
+  assert.doesNotMatch(publicHome, /class="kruart-today"|kruart-role-progress|kruart-system-grid/);
+  assert.match(publicHome, /kruart-news-card news-school/);
+  assert.match(publicHome, /id="public-login-open"/);
   assert.match(css, /KRUART generated final artwork authority/);
   assert.match(css, /kruart-main-hero[^\n]*kruart-hero-final\.webp/);
   for (const role of ['student','teacher','parent','staff']) assert.match(css, new RegExp('kruart-role-card\\.'+role+'[\\s\\S]{0,180}kruart-role-'+role+'-final\\.webp'));
-  assert.match(css, /kruart-footer-banner[\s\S]{0,520}kruart-footer-final\.webp/);
+  assert.doesNotMatch(publicHome, /kruart-footer-banner/);
+  assert.match(css, /kruart-role-parent-final\.webp/);
   assert.match(pwaManifest, /"name": "KRUART · Art’s Workspace Hub"/);
   assert.match(pwaManifest, /kruart-app-icon-512\.png/);
   assert.match(css, /Approved-reference calibration — 1536×864 desktop frame/);
