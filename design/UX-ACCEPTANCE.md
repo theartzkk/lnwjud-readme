@@ -41,6 +41,16 @@ AWH authenticated composer changes also require a visual-viewport/keyboard check
 17. CSS ownership remains singular: no new override-only stylesheet, blanket `!important`, duplicated shared tokens, or competing scroll/overlay/navigation handlers.
 18. On mobile, an opened keyboard does not cover composer/forms or trap page scrolling; modal scroll lock and focus are released on close.
 
+## Distinctiveness and content quality (existing review only)
+
+These are qualitative review considerations; they are **not** an additional release gate, scoring system, mandatory tool or design authority:
+
+- Public pages have recognizable KRUART identity, deliberate content hierarchy and sections with different purposes; do not mechanically repeat generic hero/card compositions.
+- Product character matches the real audience: public school storytelling, calm AWH workspaces, engaging learning interfaces and precise operational tables/forms.
+- Displayed testimonials, metrics, news, activity, screenshots and profile imagery come from an authorized source or are clearly labeled non-live states; never present demonstration content as real.
+- Distinctiveness survives Thai text, small screens, keyboard interaction, reduced-motion preferences, accessibility and realistic network loading. Novelty cannot relax P0/P1 blockers.
+- Use existing exact-revision visual review notes to describe specific before/after improvements rather than claiming a rendered PASS from this document.
+
 ## AWH-specific gates
 
 - Root Portfolio remains distinct from signed-in AWH Workspace.
