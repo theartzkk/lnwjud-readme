@@ -36,8 +36,9 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /const preferredIds = \['bay-excuse-x','bay-learnlab','school-website','bay-computer-lab'\]/);
   assert.match(app, /!isAwhProduct\(item\)/);
   assert.match(html, /data-owner-destination="awh"[^>]*>[\s\S]{0,120}<span>ทำงาน<\/span>/);
-  assert.match(html, /พื้นที่ทำงาน AWH/);
-  assert.match(html, /ส่วนทำงานของ kruart\.online/);
+  assert.match(html, /id="ecosystem-open-awh"[^>]*class="owner-quick-row"/);
+  assert.match(html, /id="public-login-open"[^>]*data-open-login/);
+  assert.match(html, /class="owner-quick-list"/);
   for (const asset of ['project-bay-excuse-x.webp','project-learnlab.webp','project-awh.webp','project-school.webp','project-parent-connect.webp','project-computer-lab.webp']) assert.ok(app.includes(asset));
   for (const logo of ['logo-bay-excuse-x.webp','logo-bay-learnlab.webp','brand-awh.webp','logo-school.webp','logo-bay-computer-lab.webp']) assert.ok(app.includes(logo));
   assert.match(app, /ecosystem-project-media/);
