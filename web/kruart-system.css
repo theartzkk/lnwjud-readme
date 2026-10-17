@@ -33,8 +33,8 @@ button:not(:disabled){cursor:pointer}
 :where(.primary-button,.secondary-button,.infra-actions button,.hosting-actions a,.hosting-actions button,.review-ghost,.trust-header button):hover:not(:disabled){transform:translateY(-1px);box-shadow:0 9px 22px rgba(20,61,117,.10)!important}
 :where(.studio-header,.infra-header,.hosting-header,.trust-header,.review-header){
   position:sticky!important;top:0!important;z-index:40!important;min-height:70px!important;
-  border-bottom:1px solid rgba(199,220,236,.9)!important;background:rgba(255,255,255,.96)!important;
-  color:var(--k-text)!important;box-shadow:0 5px 18px rgba(20,61,117,.05)!important;backdrop-filter:blur(18px)!important}
+  border-bottom:1px solid rgba(199,220,236,.9)!important;background:#fff!important;
+  color:var(--k-text)!important;box-shadow:0 5px 18px rgba(20,61,117,.05)!important;backdrop-filter:none!important}
 :where(.brand,.infra-brand,.hosting-brand,.review-brand){display:flex!important;align-items:center!important;gap:11px!important;color:var(--k-text)!important;text-decoration:none!important}
 :where(.brand,.infra-brand,.hosting-brand,.review-brand) strong{color:var(--k-navy)!important;font-weight:850!important;letter-spacing:-.01em!important}
 :where(.brand,.infra-brand,.hosting-brand,.review-brand) small{color:var(--k-muted)!important}
@@ -472,12 +472,11 @@ button:not(:disabled){cursor:pointer}
 }
 
 /* Final UX closure — hierarchy, truthfulness, accessibility and runtime-image policy. */
-.ecosystem-project-media{isolation:isolate;background:linear-gradient(110deg,#edf7ff 25%,#f8fbff 40%,#edf7ff 58%);background-size:220% 100%;animation:kruart-media-pulse 1.25s ease-in-out infinite}
+.ecosystem-project-media{isolation:isolate;background:linear-gradient(110deg,#edf7ff 25%,#f8fbff 40%,#edf7ff 58%);background-size:220% 100%;animation:none}
 .ecosystem-project-media:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);opacity:.45;pointer-events:none;transition:opacity .18s ease}
 .ecosystem-project-media .ecosystem-project-banner{opacity:0;transition:opacity .2s ease}
 .ecosystem-project-media.is-loaded{animation:none;background:#edf7ff}.ecosystem-project-media.is-loaded:after{opacity:0}.ecosystem-project-media.is-loaded .ecosystem-project-banner{opacity:1}
 .ecosystem-project-media.is-error{animation:none;background:#f3f7fa}.ecosystem-project-media.is-error:after{display:none}
-@keyframes kruart-media-pulse{0%,100%{background-position:100% 0}50%{background-position:0 0}}
 @media(prefers-reduced-motion:reduce){.ecosystem-project-media{animation:none}.ecosystem-project-media .ecosystem-project-banner{transition:none}}
 
 .ecosystem-project-badges{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap;margin-left:auto}
