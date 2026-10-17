@@ -118,7 +118,11 @@ test('KRUART visual asset slots are centralized and all deployed fallbacks exist
   assert.match(css, /background-image:var\(--kruart-art-public-hero\)!important/);
   assert.match(css, /--kruart-art-system-infrastructure/);
   assert.match(index, /data-kruart-art-slot="public\.account-avatar"[^>]*account-avatar\.webp/);
-  assert.match(index, /data-kruart-art-slot="public\.today-message"[^>]*today-community\.webp/);
+  // Retain the approved asset in the canonical registry even when the
+  // duplicate, non-live 'today' panel is intentionally absent from the homepage.
+  assert.equal(manifest.slots.find((slot) => slot.id === 'public.today-message')?.fallback, 'today-community.webp');
+  assert.doesNotMatch(index, /data-kruart-art-slot="public\.today-message"/);
+  assert.match(index, /kruart-news-card news-school/);
   assert.match(index, /brand-kruart-workspace\.webp/);
   assert.match(panel, /data-kruart-art-slot="system\.control-panel"[^>]*system-control-panel\.webp/);
   const expectedReady = new Map([
