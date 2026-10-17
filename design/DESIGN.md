@@ -95,6 +95,41 @@ This contract governs presentation only. BAY EXCUSE is the current school-facing
 The implementation baseline reviewed for this contract is AWH production `3acbac97b12774ec973fcef86ba0271d208f656e`. Agents must still refresh current Git/Production truth before editing.
 Figma may be used as an **editable, non-authoritative UI review workspace** for an existing product screen. Git Source and the established Central Design Policy remain authoritative; a Figma or FigCraft design is not production code, an extra approval gate, a separate design system, or permission to add a new CSS owner. Only implement an approved design through the product's existing source and release path.
 
+## Signature Experience — distinctive by design, not by decoration
+
+**Goal:** KRUART/AWH/BAY should feel intentionally designed, recognizable, Thai-first, useful, and unlike an interchangeable AI site template. This **extends the Golden baseline** above; it does not add another design authority, token set, CSS owner, visual theme or release gate.
+
+### Shared product character
+
+- **Recognizable brand, varied composition.** Retain the approved light-first navy/action-blue/warm-orange palette, Thai typography and real assets. Vary section rhythm, emphasis and density by the job being done; do not vary foundational identity on a whim.
+- **Editorial clarity.** Give public/marketing pages a strong content-led opening, decisive typographic hierarchy, deliberate negative space and a believable real-product or real-school proof point. Allow asymmetry when it improves reading order; avoid symmetrical card grids for every section.
+- **Task-first interiors.** Signed-in tools, student/teacher services and operations prioritize the next action, useful state and recovery. They should not inherit decorative public-site hero blocks, marketing claims or scroll sequences.
+- **Authentic evidence only.** Never fabricate counters, testimonials, people, school records, prices, activity/news feeds, progress states or screenshots merely to fill a design. Use approved live/source-backed content or a clearly labeled empty/loading state.
+- **Purposeful interaction.** Prefer transitions that make navigation, state ownership and task completion legible. Reuse existing 140/220/300/420ms motion categories; avoid scroll hijacking, parallax dependence, always-moving gradients and effect-heavy layouts.
+
+### Anti-template review questions
+
+Before accepting a material redesign, answer in the **existing review** (no new review service or gate):
+
+1. Can a user identify which KRUART/BAY product this is from its content, hierarchy and real brand cues, even without the URL?
+2. Does each major section have a distinct job, or is it the same headline-plus-three-cards pattern repeated with new icons?
+3. Is the leading content grounded in a real workflow, system state, project asset or school story instead of generic AI copy or mock numbers?
+4. Does the interface reduce choices and clicks for its intended audience, particularly on a real iPhone with Thai copy and keyboard open?
+5. Are animation, ornaments and spatial treatment justified by comprehension and performance, or would removing them improve the experience?
+
+Typical **anti-patterns**: default purple/blue gradient hero, anonymous blob/orbit decorations, decorative AI-sparkle on every card, wall-to-wall boxed sections, identical six-card dashboards, glossy glass panels, fake analytics and trendy animation that slows the task. These are examples to challenge, not a ban on a component when its function is real.
+
+### Product expression — one family, multiple experiences
+
+- **AWH public entry:** editorial product narrative with a real route to the workspace and verified product/school destinations; one clear primary action, small relevant secondary actions.
+- **AWH signed-in workspace / hosting / control:** capable AI-native task surface. Intent -> transparent progress -> usable result -> natural continuation; progressive disclosure for advanced infrastructure rather than dense decoration.
+- **School Website:** warm school-community storytelling. Prioritize actual school identity, authentic activity photographs, news freshness, trusted parent actions and legible public information.
+- **BAY service hub / EXCUSE:** role and task discovery, truthful next actions and simple journeys over promo blocks.
+- **LearnLab / Computer Lab:** engaging educational interactions supported by classroom content and age-appropriate feedback, without obscuring teacher controls.
+- **ปพ. / Assessment / Cooperative:** precise, fast, credible operational tools with readable tables, forms and print fidelity; no ornamental editorials inside active work.
+
+Use the matching product overlay for the boundary; this section does not imply one shared page template. Apply existing accessibility, asset, anti-override and exact-revision QA rules unchanged.
+
 ## Colors
 
 - **Primary / navy** structures navigation, titles, owner controls, and trusted product identity.
