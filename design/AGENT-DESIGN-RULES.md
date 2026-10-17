@@ -22,6 +22,16 @@ Never treat a screenshot, old branch, generated mockup, reference-only asset or 
 - Read the affected product overlay and UX acceptance contract.
 - For visual assets, resolve a semantic slot before touching pixels.
 
+## Task-first acceptance
+
+Identify the primary user and complete user journey before proposing aesthetics. Fix the real task flow, content hierarchy and ownership of interactions before polishing surfaces. Favor one clearly named entry point and one primary action per context; use existing forms, tables, navigation, shells and design tokens unless they demonstrably fail the task.
+
+Before selecting foreground/background pairs, measure contrast using the rendered state. Known baseline warnings: orange `#FF7A00` with white text is about 2.61:1, and muted `#657D99` on white is about 4.25:1. Do not claim AA from token definitions or a test that never opened the affected view; preserve brand colors by correcting their foreground pair at the canonical runtime owner.
+
+AI must not invent live-looking school people, scores, news, activities, counts, statuses or sample records on Production. Make genuine empty/error/unavailable states usable and explicit. Avoid dashboard filler, decorative duplicate containers, nested scrolling, repeated cards for the same action, and animation that delays the task.
+
+For each material interface edit, examine initial render, one realistic long-content state, an interaction and its failure/recovery state. Report clearly whether physical mobile keyboard, role-authorized flows and served Production assets were actually checked. Do not convert an upstream GitHub/mirror edit into an assumed VPS-canonical source or deployed revision.
+
 ## During editing
 
 - Prefer the smallest shared/root-cause change that fixes all affected surfaces.
