@@ -42,7 +42,7 @@ function runCapture(viewport) {
     child.stdout.on('data', (chunk) => { stdout += String(chunk); });
     child.stderr.on('data', (chunk) => { stderr += String(chunk).slice(0, 8192); });
     child.once('error', reject);
-    child.once('exit', (code) => code === 0 ? resolveRun({ viewport, stdout }) : reject(new Error(`capture ${viewport} failed (${code}): ${stderr.trim()}`)));
+    child.once('exit', (code) => code === 0 ? resolveRun({ viewport, stdout }) : reject(new Error(`capture ${viewport} failed (${code}): ${stderr.trim()} | captured stdout: ${stdout.trim().slice(-4096)}`)));
   });
 }
 
@@ -52,7 +52,11 @@ fixture.stderr.on('data', (chunk) => { fixtureError += String(chunk).slice(0, 81
 try {
   await waitForFixture(fixture);
   const runs = [];
-  for (const viewport of ['390x844', '1440x900']) runs.push(await runCapture(viewport));
+  const viewports = process.env.AWH_VISUAL_QA_VIEWPORTS?.split(',').map((item) => item.trim()).filter(Boolean) || ['390x844', '1440x900'];
+  if (!viewports.length || viewports.length > 5 || new Set(viewports).size !== viewports.length || viewports.some((item) => !/^(390x844|430x932|820x1180|1366x900|1440x900)$/.test(item))) {
+    throw new Error('visual QA viewports must be a bounded set from the approved reference matrix');
+  }
+  for (const viewport of viewports) runs.push(await runCapture(viewport));
   const expectedScenarios = 10;
   const pngs = readdirSync(output).filter((name) => name.endsWith('.png'));
   const evidenceFiles = runs.map((run) => join(output, `evidence-${run.viewport}.json`));

@@ -1,3 +1,5 @@
+/* KRUART CSS cascade cleanup: owner awh-page, no priority overrides. */
+@layer awh-page {
 .awh-owner-center-launch {
   margin-left: auto;
   border: 1px solid rgba(255,255,255,.14);
@@ -39,7 +41,7 @@
 .awh-source-detail[data-tone="attention"] { border-color: rgba(255,186,73,.28); background: rgba(255,186,73,.055); }
 
 body.awh-teacher-preview #dashboard-owner-center,
-body.awh-teacher-preview #dashboard-owner-command-center { display: none !important; }
+body.awh-teacher-preview #dashboard-owner-command-center { display: none; }
 .awh-teacher-preview-bar {
   position: fixed;
   z-index: 90;
@@ -70,4 +72,5 @@ body.awh-teacher-preview #dashboard-owner-command-center { display: none !import
   .awh-owner-command-item { min-height: 76px; }
   .awh-teacher-preview-bar { align-items: stretch; gap: .65rem; padding: .75rem; }
   .awh-teacher-preview-bar .awh-command-send { align-self: center; }
+}
 }
