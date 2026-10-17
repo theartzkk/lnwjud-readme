@@ -77,6 +77,21 @@ test('system UI is build, release, cache and deploy authoritative', async () => 
   assert.doesNotMatch(light, /\.empty-work::?after/);
 });
 
+test('sticky headers and project-media loading avoid paint-heavy continuous effects', async () => {
+  const css = await read('web/kruart-system.css');
+  const stickyHeader = css.match(/:where\(\.studio-header,\.infra-header,\.hosting-header,\.trust-header,\.review-header\)\{[\s\S]*?\}/)?.[0] || '';
+  assert.ok(stickyHeader, 'owner sticky header CSS must exist');
+  assert.match(stickyHeader, /background:#fff!important/);
+  assert.match(stickyHeader, /backdrop-filter:none!important/);
+  assert.doesNotMatch(stickyHeader, /blur\(/);
+  const loadingMedia = css.match(/\.ecosystem-project-media\{[^}]+\}/)?.[0] || '';
+  assert.ok(loadingMedia, 'project media placeholder must exist');
+  assert.match(loadingMedia, /animation:none/);
+  assert.doesNotMatch(css, /@keyframes\s+kruart-media-pulse/);
+  assert.match(css, /\.ecosystem-project-media\.is-loaded.*\.ecosystem-project-banner\{opacity:1\}/);
+  assert.match(css, /prefers-reduced-motion:reduce/);
+});
+
 test('generated build reinserts KRUART system UI after legacy light authority', async () => {
   const build = await read('scripts/build-web-preview.ts');
   assert.match(build, /\(\?:awh-light-system\|kruart-system\)/);
