@@ -1,0 +1,56 @@
+name: Temporary audited dependency repair (GitHub mirror only)
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/temporary-dependency-repair.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: temporary-dependency-repair-main
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Re-resolve patched production dependencies and lockfile
+        run: |
+          npm install --save-exact --package-lock-only --ignore-scripts --no-audit --no-fund @modelcontextprotocol/server@2.4.0 zod@4.6.7
+          npm ci --ignore-scripts --no-audit --no-fund
+          node -e "const p=require('./package.json'); const l=require('./package-lock.json'); for(const [k,v] of Object.entries({'@modelcontextprotocol/server':'2.4.0',zod:'4.6.7'})){ if(p.dependencies[k]!==v || l.packages[''].dependencies[k]!==v || l.packages['node_modules/'+k]?.version!==v) process.exit(1); }"
+      - name: Retain production dependency security gate
+        run: npm audit --omit=dev --audit-level=high
+      - name: Compile and run regression tests before committing
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Commit exactly tested manifest and lock on current branch
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "main"
+          git diff --exit-code -- . ':(exclude)package.json' ':(exclude)package-lock.json'
+          git add -- package.json package-lock.json
+          git diff --cached --check
+          git diff --cached --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(security): repair MCP SDK and Zod lockfile in historical mirror"
+          git push origin HEAD:main
+      - name: Request existing CI against repaired exact source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/dispatches" -f ref=main
