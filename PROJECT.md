@@ -1,3 +1,5 @@
+> **ARCHIVED REFERENCE — NOT AN ACTIVE RULE OR SOURCE AUTHORITY (2026-10-26).** This document records historical decisions only. Current AWH/KRUART/BAY agent instructions live exclusively in the root `AGENTS.md` of the canonical AWH VPS Git repository. Live VPS Git/Production evidence and existing scoped release adapters supersede historical Vault, Main Orchestration Chat, Lane Registry, and Source Writer steps here. Do not treat this file as a required approval, policy, deploy, or routing gate.
+
 > **Current-state authority:** Read `CURRENT_STATE.md` first. Sections below are historical checkpoint/audit records; words such as “current”, “live”, or “Production remains” are scoped to their dated checkpoint unless freshly revalidated.
 
 # AWH final full-use UAT closure batch — 2026-08-30
