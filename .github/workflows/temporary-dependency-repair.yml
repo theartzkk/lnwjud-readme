@@ -33,22 +33,27 @@ jobs:
           node -e "const p=require('./package.json'); const l=require('./package-lock.json'); for(const [k,v] of Object.entries({'@modelcontextprotocol/server':'2.4.0',zod:'4.6.7'})){ if(p.dependencies[k]!==v || l.packages[''].dependencies[k]!==v || l.packages['node_modules/'+k]?.version!==v) process.exit(1); }"
       - name: Retain production dependency security gate
         run: npm audit --omit=dev --audit-level=high
-      - name: Compile and run regression tests before committing
-        run: |
-          npm run typecheck
-          npm test
-          npm run build
-      - name: Commit exactly tested manifest and lock on current branch
+      - name: Commit patched lock locally before source-locked regression checks
         run: |
           set -euo pipefail
           test "$(git branch --show-current)" = "main"
           git diff --exit-code -- . ':(exclude)package.json' ':(exclude)package-lock.json'
           git add -- package.json package-lock.json
           git diff --cached --check
-          git diff --cached --quiet && exit 0
+          git diff --cached --quiet && exit 1
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "fix(security): repair MCP SDK and Zod lockfile in historical mirror"
+          test -z "$(git status --porcelain)"
+      - name: Compile and run complete regression tests on committed source
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Publish verified, non-forced exact commit
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
           git push origin HEAD:main
       - name: Request existing CI against repaired exact source
         env:
