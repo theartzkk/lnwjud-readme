@@ -1,8 +1,8 @@
-# Agent Design Rules
+> **SUBORDINATE DESIGN CHECKLIST — NOT A POLICY ENTRY POINT.** Retained for the historical GitHub mirror's UX regression tests and design evidence. The root `AGENTS.md` in canonical AWH VPS Git alone governs AI work, permissions, releases, and Source authority. In a conflict, use the current VPS policy and verified Production state; no extra chat, Vault, designer, or approval gate is created here.\n\n# Design Review Checklist (legacy mirror)
 
-These rules apply to Codex and any AI/automation that changes KRUART/AWH/BAY presentation.
+These design acceptance checks are subordinate to the current central AWH/VPS rules and apply only when validating KRUART/AWH/BAY presentation.
 
-## Authority order
+## Design reference order (subordinate to VPS policy)
 
 1. Platform/security/data-integrity constraints.
 2. Product/data/identity architecture and current runtime Source of Truth.
