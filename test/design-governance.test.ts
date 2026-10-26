@@ -51,9 +51,10 @@ test('KRUART design governance files and overlays are complete', async () => {
     'design/overlays/bay-hub.md',
   ];
   for (const path of required) await access(path);
-  const agents = await read('AGENTS.md');
-  assert.match(agents, /design\/DESIGN\.md/);
-  assert.match(agents, /config\/kruart-visual-assets\.json/);
+  const designChecklist = await read('design/AGENT-DESIGN-RULES.md');
+  assert.match(designChecklist, /SUBORDINATE DESIGN CHECKLIST/);
+  assert.match(designChecklist, /design\/DESIGN\.md/);
+  assert.match(designChecklist, /config\/kruart-visual-assets\.json/);
 });
 
 test('DTCG tokens are typed and preserve the Golden KRUART runtime palette', async () => {
