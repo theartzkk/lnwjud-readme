@@ -1,4 +1,5 @@
 name: Temporary audited dependency repair (GitHub mirror only)
+# Run again after aligning the historical CURRENT_STATE.md archival test.
 on:
   push:
     branches: [main]
