@@ -1,18 +1,16 @@
-import { readFile } from 'node:fs/promises';
-
-export const OWNER_PROTOCOL_VERSION = '1.5' as const;
-export const OWNER_PROTOCOL_FILENAME = 'ART_AI_WORKING_PROTOCOL.md' as const;
-const MAX_OWNER_PROTOCOL_BYTES = 96 * 1024;
-
-/**
- * Load the bundled owner-level working contract before project-specific memory.
- * The file is versioned with AWH source/package contents and contains no secret.
+/** Deprecated compatibility API for the historical GitHub mirror.
+ * The canonical VPS Git repository's root AGENTS.md is the only active policy authority.
+ * Do not read or inject ART_AI_WORKING_PROTOCOL.md: it is archival evidence, not executable instructions.
+ * A caller must resolve current rules from the authenticated AWH/VPS authority before mutation.
  */
+export const OWNER_PROTOCOL_VERSION = '1.5' as const; // historical compatibility only
+export const OWNER_PROTOCOL_FILENAME = 'ART_AI_WORKING_PROTOCOL.md' as const; // archived, never loaded
+
 export async function loadOwnerProtocol(): Promise<string> {
-  const url = new URL(`../${OWNER_PROTOCOL_FILENAME}`, import.meta.url);
-  const bytes = await readFile(url);
-  if (bytes.byteLength < 1 || bytes.byteLength > MAX_OWNER_PROTOCOL_BYTES) throw new Error('AWH owner working protocol is unavailable or outside the safe bound');
-  const text = bytes.toString('utf8');
-  if (!text.includes('Art ↔ AI Working Constitution') || !text.includes(`Version: ${OWNER_PROTOCOL_VERSION}`)) throw new Error('AWH owner working protocol identity is invalid');
-  return text;
+  return [
+    'ARCHIVED_GITHUB_MIRROR_NOT_POLICY_AUTHORITY',
+    'The single active AWH/KRUART/BAY policy is the root AGENTS.md in canonical AWH VPS Git.',
+    'Resolve current rules through the authenticated AWH/VPS project source before editing or releasing.',
+    'This GitHub mirror does not bundle an active owner protocol; do not infer approval or routing rules here.',
+  ].join('\n');
 }
