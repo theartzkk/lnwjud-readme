@@ -39,8 +39,8 @@ test('current-state authority prevents historical checkpoints from masquerading 
  const current=await readFile(join(root,'CURRENT_STATE.md'),'utf8');
  assert.match(current,/current-state authority/i);
  assert.match(current,/fresh observed runtime\/source evidence outranks this snapshot/i);
- const agents=await readFile(join(root,'AGENTS.md'),'utf8');
- assert.ok(agents.indexOf('`CURRENT_STATE.md`')>=0 && agents.indexOf('`CURRENT_STATE.md`')<agents.indexOf('`PROJECT.md`'));
+ assert.match(current.slice(0,600), /ARCHIVED REFERENCE.*NOT AN ACTIVE RULE OR SOURCE AUTHORITY/s);
+ assert.match(current.slice(0,600), /root `AGENTS\.md` of the canonical AWH VPS Git repository/);
  for(const name of ['PROJECT.md','HANDOFF.md','TASKS.md','DECISIONS.md']){
   const memory=await readFile(join(root,name),'utf8');
   assert.match(memory.slice(0,500),/Current-state authority.*CURRENT_STATE\.md/s);
