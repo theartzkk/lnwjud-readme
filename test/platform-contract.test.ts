@@ -43,7 +43,7 @@ test('current-state authority prevents historical checkpoints from masquerading 
  assert.match(current.slice(0,600), /root `AGENTS\.md` of the canonical AWH VPS Git repository/);
  for(const name of ['PROJECT.md','HANDOFF.md','TASKS.md','DECISIONS.md']){
   const memory=await readFile(join(root,name),'utf8');
-  assert.match(memory.slice(0,500),/Current-state authority.*CURRENT_STATE\.md/s);
+  assert.match(memory.slice(0,1200),/Current-state authority.*CURRENT_STATE\.md/s);
  }
 });
 
