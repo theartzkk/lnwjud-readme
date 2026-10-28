@@ -86,12 +86,12 @@ test('KRUART Golden Home ships the approved generated human artwork family and a
   assert.match(pwaManifest, /"name": "KRUART · Art’s Workspace Hub"/);
   assert.match(pwaManifest, /kruart-app-icon-512\.png/);
   assert.match(css, /Approved-reference calibration — 1536×864 desktop frame/);
-  assert.match(css, /body\.public-home-active \.awh-mobile-nav\{display:none!important\}/);
+  assert.match(css, /body\.public-home-active \.awh-mobile-nav\{display:none\}/);
   assert.match(html, /https:\/\/school\.kruart\.online\/news\//);
   assert.match(html, /https:\/\/school\.kruart\.online\/parent\//);
   for (const quickLogo of ['brand-awh.webp','logo-bay-learnlab.webp','logo-bay-excuse-x.webp','logo-bay-app.webp']) assert.ok(html.includes(quickLogo), quickLogo+' missing from owner quick access');
   assert.doesNotMatch(html, /banauedyai\.ac\.th\/mainpage/);
   assert.match(finalCss, /Public mobile accessibility closure/);
-  assert.match(finalCss, /body\.public-home-active \.kruart-shortcut small\{font-size:11\.5px!important/);
-  assert.match(finalCss, /body\.public-home-active \.kruart-role-copy>b\{font-size:12px!important/);
+  assert.match(finalCss, /body\.public-home-active \.kruart-shortcut small\{font-size:11\.5px/);
+  assert.match(finalCss, /body\.public-home-active \.kruart-role-copy>b\{font-size:12px/);
 });

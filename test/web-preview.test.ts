@@ -77,7 +77,7 @@ test('one canonical light-first canvas is used by html, body, and the applicatio
   assert.match(css, /\.app-shell\s*\{[\s\S]*background-color:\s*var\(--canvas\)/);
   assert.match(css, /min-height:\s*100dvh/);
   assert.match(css, /overscroll-behavior-y:\s*none/);
-  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important/);
+  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*/);
   assert.doesNotMatch(css, /radial-gradient|linear-gradient|background-image/i);
   assert.doesNotMatch(css, /body\s*\{[\s\S]*#ff8a36/);
 });

@@ -1,3 +1,5 @@
+/* KRUART CSS cascade cleanup: owner awh-responsive, no priority overrides. */
+@layer awh-responsive {
 /*
  * Shared responsive-width contract.
  *
@@ -90,3 +92,4 @@ body { overflow-x: clip; }
 :where(.awh-heading-actions) { display: flex; flex-wrap: wrap; }
 :where(.awh-recent-item > span, .awh-status-item > span:last-child, .awh-artifact-card > span:last-child, .awh-pulse-card > span:last-child) { min-width: 0; max-width: 100%; flex: 1 1 auto; }
 :where(.awh-status-item strong, .awh-status-item small, .awh-recent-item strong, .awh-recent-item small, .awh-tool-copy strong, .awh-tool-copy small, .awh-artifact-card strong, .awh-artifact-card small, .awh-owner-command-copy strong, .awh-owner-command-copy small, .awh-pulse-card strong, .awh-pulse-card small, .awh-pulse-card em) { overflow-wrap: anywhere; word-break: break-word; }
+}

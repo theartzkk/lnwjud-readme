@@ -1,3 +1,5 @@
+/* KRUART CSS cascade cleanup: owner awh-page, no priority overrides. */
+@layer awh-page {
 :root{
   color-scheme:light;
   --hosting-bg:#f5f7fb;
@@ -210,4 +212,5 @@ a.site-url{font-weight:750}
   .create-button{min-height:44px;padding:9px 14px}
   .form-message{min-height:12px}
 }
-@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto;transition:none}}
+}
